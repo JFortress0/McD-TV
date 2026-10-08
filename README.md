@@ -7,18 +7,32 @@ McD TV is a player and an interface. It ships with no content sources. You add e
 
 **First time? Follow [SETUP.md](SETUP.md).** It takes you from this folder to the app on your TV.
 
-## Phase 1 (this version)
+## What it does (v0.2)
 
-- Broadcast-style intro with the "This is McD TV" voiceover. Press any button to skip. Turn it off in Settings.
-- Home screen with rows of cards. Use the remote's arrow keys and OK button.
-- Settings screen. Paste any stream link there. It appears on Home as "My Stream."
-- Video player (Media3 / ExoPlayer). It plays HLS, DASH, MP4 and MKV.
-- Remote controls in the player:
-  - OK: show the control bar.
-  - LEFT / RIGHT (control bar hidden): jump back or ahead 10 seconds.
-  - CC button: turn subtitles on or off.
-  - Gear button: choose the audio track and playback speed.
-  - BACK: hide the control bar, then press BACK again to leave the player.
+McD TV copies the HuberTV layout and runs it natively on the TV. It talks straight to TMDB, your Real-Debrid account and the addons you install. It needs no server.
+
+- **Intro:** broadcast-style open with the "This is McD TV" voiceover. Any button skips it.
+- **Home:** rotating hero banner, Continue Watching, Watchlist, Favorites, Trending, Popular, Now Playing, Top Rated, Family Movie Night, Browse by Year.
+- **Title page:** backdrop, poster, cast, similar titles, seasons and episodes. Buttons: Play, Choose Source, Favorite, Watchlist, Mark as Watched, Mindless TV, Not for me.
+- **Source picker:** every stream your addons return, with quality, size and a CACHED badge. Play picks the best one by itself.
+- **Real-Debrid:** sign in with a code at real-debrid.com/device. You type nothing on the TV.
+- **My List:** Watchlist, Favorites, Mindless TV shows, Watch History.
+- **Sports:** live scores and today's games for NFL, college football, NBA, MLB, NHL, college hoops and the Premier League. Select a game to see matching channels from your own playlist.
+- **Live TV:** your M3U playlist, grouped by category.
+- **Services:** browse the Netflix, Prime, Disney+, Hulu, Apple TV+, Peacock, Max, Paramount+, Crunchyroll and Starz catalogs.
+- **Mindless TV:** pick shows once. Random episodes keep playing.
+- **Calendar:** upcoming episodes for shows on your Watchlist.
+- **Phone setup:** paste keys and links from your phone over home Wi-Fi.
+- **Settings:** US only, Slow connection (smaller files first), intro on or off.
+
+McD TV ships with no content sources. You add the TMDB key, addons, Real-Debrid account and playlist yourself.
+
+### Remote controls in the player
+
+- OK: show the control bar.
+- LEFT / RIGHT (control bar hidden): jump back or ahead 10 seconds.
+- CC button: subtitles on or off. Gear button: audio track and speed.
+- BACK: hide the control bar, then press BACK again to leave the player.
 
 ## Project map
 
@@ -31,8 +45,8 @@ McD TV/
 │       ├── AndroidManifest.xml   Tells Fire TV this is a TV app
 │       ├── java/com/mcd/tv/
 │       │   ├── MainActivity.kt   Starts the app and moves between screens
-│       │   ├── data/             Saved settings and the test streams
-│       │   ├── ui/               Intro, Home, Settings, colors, cards
+│       │   ├── data/             TMDB, Real-Debrid, addons, library, live TV, scores, phone setup
+│       │   ├── ui/               Intro, Home, title page, sources, sports, settings, cards
 │       │   └── player/           Video player and remote-key handling
 │       └── res/
 │           ├── raw/mcd_intro.ogg Intro music and voiceover
@@ -50,10 +64,10 @@ McD TV/
 2. GitHub Actions starts `build.yml` on a GitHub computer.
 3. The build signs the APK with your key (the `KEYSTORE_BASE64` secret).
 4. GitHub publishes a Release with two copies of the APK:
-   - `McD-TV-v0.1.N.apk` keeps a record of each version.
+   - `McD-TV-v0.2.N.apk` keeps a record of each version.
    - `McD-TV.apk` always holds the newest build.
 5. On the TV, the Downloader app uses this link. It never changes:
-   `https://github.com/YOUR-USERNAME/McD-TV/releases/latest/download/McD-TV.apk`
+   `https://github.com/JFortress0/McD-TV/releases/latest/download/McD-TV.apk`
 
 Each build gets a higher version number, so the TV installs it as an update. Your settings stay.
 
@@ -61,18 +75,16 @@ Each build gets a higher version number, so the TV installs it as an update. You
 
 - **Newest APK:** open your repository page. Click **Releases** on the right side. Click `McD-TV.apk` under the top release.
 - **One build's APK:** click the **Actions** tab. Click a run. Scroll to **Artifacts**.
-- **Roll back:** in **Releases**, download an older `McD-TV-v0.1.N.apk` and install it.
+- **Roll back:** in **Releases**, download an older `McD-TV-v0.2.N.apk` and install it.
 
 ## Roadmap
 
 | Phase | Adds |
 |---|---|
-| 1 | Intro, home, settings, player (this version) |
-| 2 | Network files (SMB / WebDAV), TMDB posters, Continue Watching |
-| 3 | Real-Debrid |
-| 4 | Live TV: M3U, Xtream login, program guide |
-| 5 | Stremio addon client, My List |
-| 6 | Trakt sync, profiles with PIN, search, speed tuning |
+| 1 | Intro, home, settings, player |
+| 2 | HuberTV-style browsing, sources, Real-Debrid, library, sports, live TV (this version) |
+| 3 | Live TV program guide (XMLTV), Xtream login, network files (SMB / WebDAV) |
+| 4 | Goose-style plain-English search, Trakt sync, profiles with PIN, speed tuning |
 
 ## Tech stack
 

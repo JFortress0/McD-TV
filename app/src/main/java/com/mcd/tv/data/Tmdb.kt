@@ -1,0 +1,179 @@
+package com.mcd.tv.data
+
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** A movie or TV show as shown on a card. type is "movie" or "tv". */
+data class Title(
+    val id: Int,
+    val type: String,
+    val name: String,
+    val overview: String,
+    val poster: String?,
+    val backdrop: String?,
+    val rating: Double,
+    val year: String,
+)
+
+data class CastMember(val name: String, val character: String, val photo: String?)
+data class SeasonInfo(val number: Int, val name: String, val episodeCount: Int)
+data class Episode(
+    val season: Int,
+    val number: Int,
+    val name: String,
+    val overview: String,
+    val still: String?,
+    val airDate: String,
+)
+
+data class Details(
+    val title: Title,
+    val tagline: String,
+    val runtimeMin: Int,
+    val genres: List<String>,
+    val imdbId: String?,
+    val cast: List<CastMember>,
+    val similar: List<Title>,
+    val seasons: List<SeasonInfo>,
+    val nextEpisode: Episode?,
+)
+
+/** Streaming services shown on the Services screen (TMDB watch-provider ids, US). */
+data class Service(val id: Int, val name: String)
+
+val SERVICES = listOf(
+    Service(8, "Netflix"), Service(9, "Amazon Prime"), Service(337, "Disney+"), Service(15, "Hulu"),
+    Service(350, "Apple TV+"), Service(386, "Peacock"), Service(1899, "Max"), Service(531, "Paramount+"),
+    Service(283, "Crunchyroll"), Service(43, "Starz"),
+)
+
+/** JSON null-safe string (Android's optString returns the text "null" for JSON nulls). */
+fun JSONObject.s(key: String): String? = if (isNull(key)) null else optString(key).ifBlank { null }
+
+/**
+ * TMDB client: posters, descriptions, cast, seasons. Needs a free TMDB API key,
+ * entered from your phone (Settings > Phone setup). Accepts a v3 key or a v4 read token.
+ */
+object Tmdb {
+    private const val BASE = "https://api.themoviedb.org/3"
+    private const val IMG = "https://image.tmdb.org/t/p/"
+
+    fun img(path: String?, size: String = "w342"): String? = path?.let { IMG + size + it }
+
+    private suspend fun get(path: String, params: Map<String, String> = emptyMap()): JSONObject {
+        val key = Prefs.tmdbKey
+        if (key.isBlank()) throw IllegalStateException("Add your TMDB API key: Settings > Phone setup")
+        val all = params.toMutableMap()
+        val headers = mutableMapOf<String, String>()
+        if (key.length > 40) headers["Authorization"] = "Bearer $key" else all["api_key"] = key
+        all.putIfAbsent("language", "en-US")
+        val url = "$BASE$path?" + Http.form(all)
+        return JSONObject(Http.get(url, headers))
+    }
+
+    private fun parse(o: JSONObject, forcedType: String?): Title? {
+        val type = forcedType ?: o.s("media_type") ?: return null
+        if (type != "movie" && type != "tv") return null
+        val date = o.s("release_date") ?: o.s("first_air_date") ?: ""
+        return Title(
+            id = o.optInt("id"),
+            type = type,
+            name = o.s("title") ?: o.s("name") ?: "Untitled",
+            overview = o.s("overview") ?: "",
+            poster = o.s("poster_path"),
+            backdrop = o.s("backdrop_path"),
+            rating = o.optDouble("vote_average", 0.0),
+            year = date.take(4),
+        )
+    }
+
+    private fun parseList(arr: JSONArray?, forcedType: String?): List<Title> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { parse(arr.getJSONObject(it), forcedType) }
+    }
+
+    private fun region(): Map<String, String> = if (Prefs.usOnly) mapOf("region" to "US") else emptyMap()
+
+    private suspend fun list(path: String, type: String?, params: Map<String, String> = emptyMap()) =
+        parseList(get(path, params).optJSONArray("results"), type)
+
+    suspend fun trending() = list("/trending/all/week", null)
+    suspend fun popular(type: String) = list("/$type/popular", type, region())
+    suspend fun topRated(type: String) = list("/$type/top_rated", type, region())
+    suspend fun nowPlaying() = list("/movie/now_playing", "movie", region())
+    suspend fun search(q: String) = list("/search/multi", null, mapOf("query" to q, "include_adult" to "false"))
+
+    suspend fun discover(type: String, params: Map<String, String>, page: Int = 1): List<Title> {
+        val p = params.toMutableMap()
+        p["page"] = page.toString()
+        p.putIfAbsent("sort_by", "popularity.desc")
+        if (Prefs.usOnly) p.putIfAbsent("watch_region", "US")
+        return list("/discover/$type", type, p)
+    }
+
+    suspend fun byService(type: String, providerId: Int, page: Int = 1) = discover(
+        type,
+        mapOf("with_watch_providers" to providerId.toString(), "watch_region" to "US"),
+        page,
+    )
+
+    suspend fun byYear(type: String, year: Int) = discover(
+        type,
+        if (type == "movie") mapOf("primary_release_year" to "$year") else mapOf("first_air_date_year" to "$year"),
+    )
+
+    /** Family-friendly picks for Family Movie Night (genre 10751 = Family). */
+    suspend fun familyMovies(page: Int) = discover(
+        "movie",
+        mapOf("with_genres" to "10751", "vote_count.gte" to "300", "certification_country" to "US", "certification.lte" to "PG"),
+        page,
+    )
+
+    suspend fun details(type: String, id: Int): Details {
+        val o = get("/$type/$id", mapOf("append_to_response" to "credits,similar,external_ids"))
+        val t = parse(o, type) ?: throw IllegalStateException("Not found")
+        val genres = o.optJSONArray("genres")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).optString("name") } } ?: emptyList()
+        val castArr = o.optJSONObject("credits")?.optJSONArray("cast")
+        val cast = castArr?.let { a ->
+            (0 until minOf(a.length(), 20)).map {
+                val c = a.getJSONObject(it)
+                CastMember(c.s("name") ?: "", c.s("character") ?: "", c.s("profile_path"))
+            }
+        } ?: emptyList()
+        val seasons = o.optJSONArray("seasons")?.let { a ->
+            (0 until a.length()).map { a.getJSONObject(it) }
+                .filter { it.optInt("season_number") > 0 }
+                .map { SeasonInfo(it.optInt("season_number"), it.s("name") ?: "Season", it.optInt("episode_count")) }
+        } ?: emptyList()
+        val runtime = if (type == "movie") o.optInt("runtime") else
+            o.optJSONArray("episode_run_time")?.let { if (it.length() > 0) it.optInt(0) else 0 } ?: 0
+        val imdb = o.s("imdb_id") ?: o.optJSONObject("external_ids")?.s("imdb_id")
+        val next = o.optJSONObject("next_episode_to_air")?.let { parseEpisode(it) }
+        return Details(
+            title = t,
+            tagline = o.s("tagline") ?: "",
+            runtimeMin = runtime,
+            genres = genres,
+            imdbId = imdb,
+            cast = cast,
+            similar = parseList(o.optJSONObject("similar")?.optJSONArray("results"), type),
+            seasons = seasons,
+            nextEpisode = next,
+        )
+    }
+
+    private fun parseEpisode(e: JSONObject) = Episode(
+        season = e.optInt("season_number"),
+        number = e.optInt("episode_number"),
+        name = e.s("name") ?: "Episode",
+        overview = e.s("overview") ?: "",
+        still = e.s("still_path"),
+        airDate = e.s("air_date") ?: "",
+    )
+
+    suspend fun season(tvId: Int, season: Int): List<Episode> {
+        val o = get("/tv/$tvId/season/$season")
+        val a = o.optJSONArray("episodes") ?: return emptyList()
+        return (0 until a.length()).map { parseEpisode(a.getJSONObject(it)) }
+    }
+}

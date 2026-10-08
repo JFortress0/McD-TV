@@ -7,61 +7,115 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
+import com.mcd.tv.data.PlayMeta
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
+import com.mcd.tv.ui.CalendarScreen
+import com.mcd.tv.ui.DetailScreen
 import com.mcd.tv.ui.HomeScreen
 import com.mcd.tv.ui.IntroScreen
+import com.mcd.tv.ui.LibraryScreen
+import com.mcd.tv.ui.LiveTvScreen
 import com.mcd.tv.ui.McdTheme
+import com.mcd.tv.ui.MindlessRunScreen
+import com.mcd.tv.ui.MindlessScreen
+import com.mcd.tv.ui.NavTab
+import com.mcd.tv.ui.PhoneSetupScreen
+import com.mcd.tv.ui.RdConnectScreen
+import com.mcd.tv.ui.SearchScreen
+import com.mcd.tv.ui.ServiceGridScreen
+import com.mcd.tv.ui.ServicesScreen
 import com.mcd.tv.ui.SettingsScreen
+import com.mcd.tv.ui.SourcesScreen
+import com.mcd.tv.ui.SportsScreen
 
 /** Every screen in the app. Navigation is a simple back stack of these. */
 sealed interface Screen {
     data object Intro : Screen
     data object Home : Screen
+    data object Search : Screen
+    data object Library : Screen
+    data object Sports : Screen
+    data object Live : Screen
+    data object Services : Screen
+    data class ServiceGrid(val service: Service) : Screen
+    data object Mindless : Screen
+    data object MindlessRun : Screen
+    data object Calendar : Screen
     data object Settings : Screen
-    data class Player(val url: String, val title: String) : Screen
+    data object PhoneSetup : Screen
+    data object RdConnect : Screen
+    data class Detail(val type: String, val id: Int) : Screen
+    /** autoPlay = the Play button: pick the best source and start immediately. */
+    data class Sources(val meta: PlayMeta, val imdbId: String, val autoPlay: Boolean) : Screen
+    data class Player(val url: String, val title: String, val meta: PlayMeta? = null) : Screen
 }
+
+/** Navigation actions handed to every screen. */
+class Nav(
+    val push: (Screen) -> Unit,
+    val back: () -> Unit,
+    val replace: (Screen) -> Unit,
+    val tab: (NavTab) -> Unit,
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            McdTheme {
-                App()
-            }
-        }
+        Prefs.init(this)
+        setContent { McdTheme { App() } }
     }
 }
 
 @Composable
 private fun App() {
-    val context = LocalContext.current
-    // Start on the intro unless the user turned it off in Settings.
-    val backStack = remember {
-        mutableStateListOf<Screen>(if (Prefs.playIntro(context)) Screen.Intro else Screen.Home)
-    }
-    val current = backStack.last()
-
-    fun push(s: Screen) { backStack.add(s) }
+    val stack = remember { mutableStateListOf<Screen>(if (Prefs.playIntro) Screen.Intro else Screen.Home) }
     // removeAt instead of removeLast: removeLast crashes on older Android versions.
-    fun pop() { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
-    fun replaceTop(s: Screen) { backStack[backStack.lastIndex] = s }
-
-    // BACK pops one screen. On the bottom screen, BACK falls through and exits the app.
-    BackHandler(enabled = backStack.size > 1) { pop() }
-
-    when (current) {
-        Screen.Intro -> IntroScreen(onDone = { replaceTop(Screen.Home) })
-        Screen.Home -> HomeScreen(
-            onPlay = { url, title -> push(Screen.Player(url, title)) },
-            onOpenSettings = { push(Screen.Settings) },
+    fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
+    val nav = remember {
+        Nav(
+            push = { stack.add(it) },
+            back = { pop() },
+            replace = { stack[stack.lastIndex] = it },
+            tab = { t ->
+                while (stack.size > 1) stack.removeAt(stack.lastIndex)
+                stack[0] = Screen.Home
+                val s = when (t) {
+                    NavTab.Home -> null
+                    NavTab.Search -> Screen.Search
+                    NavTab.Library -> Screen.Library
+                    NavTab.Sports -> Screen.Sports
+                    NavTab.Live -> Screen.Live
+                    NavTab.Services -> Screen.Services
+                    NavTab.Mindless -> Screen.Mindless
+                    NavTab.Calendar -> Screen.Calendar
+                    NavTab.Settings -> Screen.Settings
+                }
+                if (s != null) stack.add(s)
+            },
         )
-        Screen.Settings -> SettingsScreen(
-            onPlay = { url, title -> push(Screen.Player(url, title)) },
-            onReplayIntro = { push(Screen.Intro) },
-            onBack = { pop() },
-        )
-        is Screen.Player -> PlayerScreen(url = current.url, title = current.title)
+    }
+
+    BackHandler(enabled = stack.size > 1) { pop() }
+
+    when (val s = stack.last()) {
+        Screen.Intro -> IntroScreen(onDone = { nav.replace(Screen.Home) })
+        Screen.Home -> HomeScreen(nav)
+        Screen.Search -> SearchScreen(nav)
+        Screen.Library -> LibraryScreen(nav)
+        Screen.Sports -> SportsScreen(nav)
+        Screen.Live -> LiveTvScreen(nav)
+        Screen.Services -> ServicesScreen(nav)
+        is Screen.ServiceGrid -> ServiceGridScreen(nav, s.service)
+        Screen.Mindless -> MindlessScreen(nav)
+        Screen.MindlessRun -> MindlessRunScreen(nav)
+        Screen.Calendar -> CalendarScreen(nav)
+        Screen.Settings -> SettingsScreen(nav)
+        Screen.PhoneSetup -> PhoneSetupScreen(nav)
+        Screen.RdConnect -> RdConnectScreen(nav)
+        is Screen.Detail -> DetailScreen(nav, s.type, s.id)
+        is Screen.Sources -> SourcesScreen(nav, s.meta, s.imdbId, s.autoPlay)
+        is Screen.Player -> PlayerScreen(url = s.url, title = s.title, meta = s.meta)
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,7 +35,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
+import com.mcd.tv.data.Library
+import com.mcd.tv.data.PlayMeta
 import com.mcd.tv.ui.McdColors
+import kotlinx.coroutines.delay
 import com.mcd.tv.ui.broadcastStyle
 
 private const val SEEK_MS = 10_000L
@@ -52,7 +56,7 @@ private fun mediaItemFor(url: String): MediaItem {
 
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(url: String, title: String) {
+fun PlayerScreen(url: String, title: String, meta: PlayMeta? = null, onEnded: (() -> Unit)? = null) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -75,6 +79,8 @@ fun PlayerScreen(url: String, title: String) {
             .build()
             .apply {
                 setMediaItem(mediaItemFor(url))
+                // Resume where you left off (Continue Watching).
+                meta?.let { m -> Library.resumePosition(m).takeIf { it > 0 }?.let { seekTo(it) } }
                 prepare()
                 playWhenReady = true
             }
@@ -82,14 +88,30 @@ fun PlayerScreen(url: String, title: String) {
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    saveProgress(player, meta)
+                    onEnded?.invoke()
+                }
+            }
+
             override fun onPlayerError(e: PlaybackException) {
                 error = "${e.errorCodeName}\n${e.cause?.message ?: e.message ?: ""}"
             }
         }
         player.addListener(listener)
         onDispose {
+            saveProgress(player, meta)
             player.removeListener(listener)
             player.release() // frees the hardware decoder; important on low-RAM Fire Sticks
+        }
+    }
+
+    // Save the position every 15 seconds so Continue Watching survives a crash or power-off.
+    LaunchedEffect(player) {
+        while (true) {
+            delay(15_000)
+            saveProgress(player, meta)
         }
     }
 
@@ -149,4 +171,11 @@ fun PlayerScreen(url: String, title: String) {
             }
         }
     }
+}
+
+private fun saveProgress(player: Player, meta: PlayMeta?) {
+    if (meta == null) return
+    val dur = player.duration
+    if (dur <= 0) return
+    Library.record(meta, player.currentPosition, dur)
 }
