@@ -34,10 +34,10 @@ object HouseSync {
     /** One encrypted message must stay under ntfy's 4 KB, so the settings are sent in parts of this size. */
     private const val CHUNK = 1800
 
-    /** The settings all linked TVs share. Watch history, favorites and Live TV recents stay per TV. */
+    /** The settings all linked TVs share. Profile data (watch history, lists, Live TV favorites and recents) stays per TV. */
     private val SHARED = listOf(
         "addon_urls", "websites",
-        "m3u_url", "custom_stream_url", "live_favorites",
+        "m3u_url", "custom_stream_url",
         "tmdb_key", "mdblist_key", "jarvis_key", "jarvis_model",
         "origin_filter", "us_only", "slow_connection", "play_intro", "max_movie_gb", "max_episode_gb",
         "rd_client_id", "rd_client_secret", "rd_access", "rd_refresh", "rd_expires",

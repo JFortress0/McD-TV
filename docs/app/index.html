@@ -1221,7 +1221,6 @@ async function renderTitle(v, tok, type, id) {
   const directors = ((d.credits && d.credits.crew) || []).filter((c) => c.job === "Director").map((c) => c.name).slice(0, 2);
   const creators = (d.created_by || []).map((c) => c.name).slice(0, 2);
   const similar = toList(d.similar && d.similar.results, type);
-  const prov = (((d["watch/providers"] || {}).results || {}).US || {}).flatrate || [];
   const cont = contFor(type, id);
   const resumeLabel = cont && type === "tv" && cont.season > 0 ? `&#9654; Resume S${cont.season} E${cont.episode} on TV` : cont ? "&#9654; Resume on TV" : "&#9654; Play on TV";
   const meta = [t.year, type === "tv" ? (seasons.length ? seasons.length + (seasons.length === 1 ? " season" : " seasons") : "Series") : "Movie",
@@ -1246,7 +1245,6 @@ async function renderTitle(v, tok, type, id) {
         ${wlButton(t)}
         ${trailer ? `<button class="btn" data-act="trailer">Trailer</button>` : ""}
       </div>
-      ${prov.length ? `<div class="prov">Streaming on ${prov.slice(0, 6).map((p) => `<b>${esc(p.provider_name)}</b>`).join(", ")}</div>` : ""}
       ${directors.length ? `<div class="prov">Directed by <b>${esc(directors.join(", "))}</b></div>` : creators.length ? `<div class="prov">Created by <b>${esc(creators.join(", "))}</b></div>` : ""}
       ${trailer ? `<div class="section-h" id="trailerH"><h2>Trailer</h2></div><button class="trailer" id="trailerBox" data-yt="${esc(trailer)}" aria-label="Play trailer">
         <img loading="lazy" src="https://i.ytimg.com/vi/${encodeURIComponent(trailer)}/hqdefault.jpg" alt=""><span class="pb">&#9654;</span></button>` : ""}

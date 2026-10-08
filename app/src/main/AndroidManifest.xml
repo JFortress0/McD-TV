@@ -7,18 +7,6 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
-    <!-- Lets McD TV see and open other installed TV apps (Netflix, Hulu...) on Android 11+. -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-    </queries>
-
     <!-- usesCleartextTraffic: many user-supplied streams (IPTV, LAN servers) are plain http. -->
     <application
         android:allowBackup="true"

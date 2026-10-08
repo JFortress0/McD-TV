@@ -25,7 +25,7 @@ data class HistoryEntry(val meta: PlayMeta, val positionMs: Long, val durationMs
 
 /**
  * Favorites, Watchlist, watch history (Continue Watching) and the Background Noise show list.
- * Stored on the device as JSON. Phase 6 adds Trakt sync on top.
+ * Stored on the device as JSON, separately for each profile (see Prefs.profileKey).
  */
 object Library {
     private fun Title.toJson() = JSONObject()
@@ -39,12 +39,12 @@ object Library {
     )
 
     private fun loadTitles(key: String): List<Title> = runCatching {
-        val a = JSONArray(Prefs.json(key).ifBlank { "[]" })
+        val a = JSONArray(Prefs.json(Prefs.profileKey(key)).ifBlank { "[]" })
         (0 until a.length()).map { a.getJSONObject(it).toTitle() }
     }.getOrDefault(emptyList())
 
     private fun saveTitles(key: String, list: List<Title>) =
-        Prefs.putJson(key, JSONArray().apply { list.forEach { put(it.toJson()) } }.toString())
+        Prefs.putJson(Prefs.profileKey(key), JSONArray().apply { list.forEach { put(it.toJson()) } }.toString())
 
     private fun toggle(key: String, t: Title): Boolean {
         val list = loadTitles(key)
@@ -82,7 +82,7 @@ object Library {
     )
 
     fun history(): List<HistoryEntry> = runCatching {
-        val a = JSONArray(Prefs.json("lib_history").ifBlank { "[]" })
+        val a = JSONArray(Prefs.json(Prefs.profileKey("lib_history")).ifBlank { "[]" })
         (0 until a.length()).map {
             val o = a.getJSONObject(it)
             HistoryEntry(o.getJSONObject("meta").toMeta(), o.optLong("pos"), o.optLong("dur"), o.optLong("at"))
@@ -98,7 +98,7 @@ object Library {
      */
     fun isWatched(type: String, id: Int): Boolean {
         if (type != "movie") return false
-        val raw = Prefs.json("lib_history")
+        val raw = Prefs.json(Prefs.profileKey("lib_history"))
         val cached = watchedCache
         val set = if (cached != null && cached.first == raw) cached.second else {
             history().filter { it.meta.type == "movie" && it.progress >= 0.9f }.map { it.meta.tmdbId }.toSet()
@@ -118,7 +118,7 @@ object Library {
         val rest = history().filterNot { it.meta.historyKey == meta.historyKey }
         val list = listOf(HistoryEntry(meta, positionMs, durationMs, System.currentTimeMillis())) + rest
         Prefs.putJson(
-            "lib_history",
+            Prefs.profileKey("lib_history"),
             JSONArray().apply {
                 list.take(200).forEach {
                     put(JSONObject().put("meta", it.meta.toJson()).put("pos", it.positionMs).put("dur", it.durationMs).put("at", it.updatedAt))
@@ -133,7 +133,7 @@ object Library {
     private const val EPISODES_KEY = "lib_episodes"
     private const val EPISODES_MAX = 3000
 
-    private fun loadEpisodes(): JSONObject = runCatching { JSONObject(Prefs.json(EPISODES_KEY).ifBlank { "{}" }) }.getOrDefault(JSONObject())
+    private fun loadEpisodes(): JSONObject = runCatching { JSONObject(Prefs.json(Prefs.profileKey(EPISODES_KEY)).ifBlank { "{}" }) }.getOrDefault(JSONObject())
 
     private fun recordEpisode(meta: PlayMeta, progress: Float) {
         val o = loadEpisodes()
@@ -146,7 +146,7 @@ object Library {
             while (keys.hasNext() && o.length() - drop.size > EPISODES_MAX) drop.add(keys.next())
             drop.forEach { k2 -> o.remove(k2) }
         }
-        Prefs.putJson(EPISODES_KEY, o.toString())
+        Prefs.putJson(Prefs.profileKey(EPISODES_KEY), o.toString())
     }
 
     /** Watched fraction (0..1) of one episode, or null if it was never played. */

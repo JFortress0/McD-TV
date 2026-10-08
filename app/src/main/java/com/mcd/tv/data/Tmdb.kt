@@ -139,22 +139,7 @@ val BROWSE_LANGUAGES = listOf(
 )
 
 /** Streaming services shown on the Services screen (TMDB watch-provider ids, US). */
-data class Service(val id: Int, val name: String) {
-    /** Fire TV / Android TV app packages for each service, tried in order. */
-    val packages: List<String> get() = when (id) {
-        8 -> listOf("com.netflix.ninja", "com.netflix.mediaclient")
-        9, 119 -> listOf("com.amazon.avod", "com.amazon.amazonvideo.livingroom")
-        337 -> listOf("com.disney.disneyplus")
-        15 -> listOf("com.hulu.livingroomplus", "com.hulu.plus")
-        350, 2 -> listOf("com.apple.atve.amazon.appletv", "com.apple.atve.androidtv.appletv")
-        386, 387 -> listOf("com.peacocktv.peacockandroid")
-        1899, 384 -> listOf("com.wbd.stream", "com.hbo.hbonow")
-        531, 2303 -> listOf("com.cbs.ott", "com.cbs.app")
-        283 -> listOf("com.crunchyroll.crunchyroid")
-        43 -> listOf("com.bydeluxe.d3.android.program.starz")
-        else -> emptyList()
-    }
-}
+data class Service(val id: Int, val name: String)
 
 val SERVICES = listOf(
     Service(8, "Netflix"), Service(9, "Amazon Prime"), Service(337, "Disney+"), Service(15, "Hulu"),
@@ -402,6 +387,30 @@ object Tmdb {
         mapOf("with_genres" to "10751", "vote_count.gte" to "300", "certification_country" to "US", "certification.lte" to "PG"),
         page,
     )
+
+    /**
+     * Kids profile rows: US-rated G or PG movies in one genre (default 10751 = Family; 16 = Animation).
+     * topRated = best rated first instead of most popular.
+     */
+    suspend fun kidsMovies(genreId: Int = 10751, topRated: Boolean = false, page: Int = 1): List<Title> = discover(
+        "movie",
+        buildMap {
+            put("with_genres", genreId.toString())
+            put("certification_country", "US")
+            put("certification.lte", "PG")
+            if (topRated) {
+                put("sort_by", "vote_average.desc")
+                put("vote_count.gte", "500")
+            } else {
+                put("vote_count.gte", "100")
+            }
+        },
+        page,
+    )
+
+    /** Kids profile: TV shows in TMDB's Kids genre (10762). */
+    suspend fun kidsShows(page: Int = 1): List<Title> =
+        discover("tv", mapOf("with_genres" to "10762", "vote_count.gte" to "20"), page)
 
     suspend fun details(type: String, id: Int): Details {
         val o = get("/$type/$id", mapOf("append_to_response" to "credits,similar,external_ids,watch/providers,videos"))

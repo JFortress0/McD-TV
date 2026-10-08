@@ -28,8 +28,9 @@ Last updated: 2026-10-08.
 | Player | `player/`, `ui/UpNext.kt` | Media3 ExoPlayer. Remote: LEFT/RIGHT seek 10 s, BACK hides the controls, MENU sets a sleep timer. Saves progress; pauses when the app leaves the screen. Live streams recover from falling behind and retry network errors. Episodes end with a 10 s Up Next card. |
 | Library | `data/Library.kt` | Favorites, Watchlist, history / Continue Watching, Background Noise shows, hidden titles. Stored in SharedPreferences as JSON. |
 | Live TV | `data/Live.kt`, `data/Epg.kt`, `ui/LiveScreens.kt`, `ui/LivePlayer.kt` | M3U playlist (user supplied; movie/series entries skipped) plus addon live catalogs. Now/next from the playlist's XMLTV guide, favorites (MENU), recents, last channel, search. Live player: UP/DOWN change channel. |
-| Sports | `ui/SportsScreens.kt` | ESPN public scoreboard, matching playlist channels per game, user-added websites. |
-| Websites | `ui/WebScreen.kt` | Built-in browser with a D-pad pointer. Blocks pop-up windows and cross-site redirects without a click. Sites are user-added (Sports > Websites). |
+| Websites | `ui/SportsScreens.kt` | User-added websites list (route `Screen.Sports`, QA `--es screen sports`). Sports scores were removed. |
+| Profiles | `ui/ProfilesScreen.kt` | "Who's watching?" picker (Dad, Mom, Kids). Per-profile keys are `<key>@p1..p3` (Prefs.profileKey); old unscoped data migrates to p1. |
+| Websites | `ui/WebScreen.kt` | Built-in browser with a D-pad pointer. Blocks pop-up windows and cross-site redirects without a click. Sites are user-added (Home > More > Websites). |
 | Setup page | `data/PhoneSetup.kt` | Home-Wi-Fi fallback page on port 8642, only while Phone & Computer Setup is open (or a QA launch). Shows addon hosts, never full addon URLs. `/qa-relay` answers only in QA mode. |
 | Accounts | `data/Account.kt`, `ui/AccountScreen.kt`, `server/` | Optional Node server (no dependencies) with accounts, sync and the web Control page (`server/admin.html`). Sign in on the TV with a code. Not deployed yet. |
 

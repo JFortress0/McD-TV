@@ -232,13 +232,21 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.weight(1f).fillMaxWidth().padding(start = 24.dp, top = 4.dp)) {
-            LiveRail(
-                entries = entries,
-                selected = sel,
-                requesterFor = requesterFor,
-                onSelect = { selected = it },
-                onOpen = { focusManager.moveFocus(FocusDirection.Right) },
-            )
+            Column(Modifier.width(200.dp).fillMaxHeight()) {
+                // Multiview: watch 1, 2 or 4 channels at once (UP from the top of the rail).
+                ActionButton(
+                    "Multiview",
+                    { nav.push(Screen.Multiview) },
+                    Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                )
+                LiveRail(
+                    entries = entries,
+                    selected = sel,
+                    requesterFor = requesterFor,
+                    onSelect = { selected = it },
+                    onOpen = { focusManager.moveFocus(FocusDirection.Right) },
+                )
+            }
             Spacer(Modifier.width(16.dp))
             // Back inside the content returns to the rail (Back on the rail leaves Live TV as usual).
             Box(

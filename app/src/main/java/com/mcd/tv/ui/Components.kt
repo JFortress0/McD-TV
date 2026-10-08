@@ -82,7 +82,7 @@ fun TileCard(
     }
 }
 
-/** Small tile for the "More" row on Home (Browse, Sports scores, Background Noise). */
+/** Small tile for the "More" row on Home (Browse, Websites, Background Noise). */
 @Composable
 fun CompactTile(title: String, subtitle: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     HudCard(onClick = onClick, modifier = modifier.width(220.dp).height(84.dp)) { focused ->

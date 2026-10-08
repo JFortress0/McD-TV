@@ -13,7 +13,58 @@ object Prefs {
 
     fun init(context: Context) {
         sp = context.applicationContext.getSharedPreferences("mcdtv_settings", Context.MODE_PRIVATE)
+        migrateToProfiles()
     }
+
+    // ---- Profiles (no login): Dad, Mom, Kids on this TV ----
+    /** Fixed profile ids. Names can be changed in Settings; the ids never change. */
+    val PROFILE_IDS = listOf("p1", "p2", "p3")
+    private val PROFILE_DEFAULT_NAMES = mapOf("p1" to "Dad", "p2" to "Mom", "p3" to "Kids")
+    /** The kids profile: Home shows family and animation rows. */
+    const val KIDS_PROFILE = "p3"
+
+    /**
+     * Settings stored once per profile (watch history, progress, My List, favorites, Live TV favorites,
+     * recents and last channel). The stored key is "<key>@<profile id>". Everything else is shared by the whole TV.
+     */
+    private val PROFILE_KEYS = listOf(
+        "lib_favorites", "lib_watchlist", "lib_noise", "lib_hidden", "lib_history", "lib_episodes",
+        "live_favorites", "live_recents", "live_last_url",
+    )
+
+    /** The profile watching now (this TV only, never synced). */
+    var activeProfile: String
+        get() = str("active_profile").takeIf { it in PROFILE_IDS } ?: PROFILE_IDS[0]
+        set(v) = put("active_profile", if (v in PROFILE_IDS) v else PROFILE_IDS[0])
+
+    val isKidsProfile: Boolean get() = activeProfile == KIDS_PROFILE
+
+    fun profileName(id: String): String = str("profile_name_$id").ifBlank { PROFILE_DEFAULT_NAMES[id] ?: "Profile" }
+
+    fun setProfileName(id: String, name: String) = put("profile_name_$id", name.take(20))
+
+    val activeProfileName: String get() = profileName(activeProfile)
+
+    /** The storage key for [key] in the active profile. */
+    fun profileKey(key: String): String = "$key@$activeProfile"
+
+    /**
+     * Data saved before profiles existed (or copied in from an older TV through the account) has no
+     * "@profile" suffix: it becomes the first profile's data, so nothing is lost. Safe to run any time.
+     */
+    private fun migrateToProfiles() { synchronized(listLock) {
+        val all = sp.all
+        val e = sp.edit()
+        var changed = false
+        PROFILE_KEYS.forEach { k ->
+            val v = all[k] as? String ?: return@forEach
+            val target = "$k@${PROFILE_IDS[0]}"
+            if (!all.containsKey(target)) e.putString(target, v)
+            e.remove(k)
+            changed = true
+        }
+        if (changed) e.apply()
+    } }
 
     private fun str(key: String) = sp.getString(key, "") ?: ""
     private fun put(key: String, value: String) = sp.edit().putString(key, value.trim()).apply()
@@ -93,29 +144,31 @@ object Prefs {
     }
 
     /** Favorite Live TV channels, by stream URL. */
-    val liveFavorites: List<String> get() = strList("live_favorites")
+    val liveFavorites: List<String> get() = strList(profileKey("live_favorites"))
 
     /** Adds or removes a favorite channel. Returns true when it is now a favorite. */
     fun toggleLiveFavorite(url: String): Boolean = synchronized(listLock) {
-        val cur = strList("live_favorites")
+        val k = profileKey("live_favorites")
+        val cur = strList(k)
         val nowFav = url !in cur
-        putStrList("live_favorites", if (nowFav) cur + url else cur - url)
+        putStrList(k, if (nowFav) cur + url else cur - url)
         nowFav
     }
 
     /** Recently watched Live TV channels (stream URLs), most recent first, at most 20. */
-    val liveRecents: List<String> get() = strList("live_recents")
+    val liveRecents: List<String> get() = strList(profileKey("live_recents"))
 
     /** Records a channel as watched: moves it to the front of Recent and makes it the last channel. */
     fun addLiveRecent(url: String) = synchronized(listLock) {
-        putStrList("live_recents", (listOf(url) + strList("live_recents").filter { it != url }).take(20))
-        put("live_last_url", url)
+        val k = profileKey("live_recents")
+        putStrList(k, (listOf(url) + strList(k).filter { it != url }).take(20))
+        put(profileKey("live_last_url"), url)
     }
 
     /** The Live TV channel watched last ("" if none). */
     var liveLastUrl: String
-        get() = str("live_last_url")
-        set(v) = put("live_last_url", v)
+        get() = str(profileKey("live_last_url"))
+        set(v) = put(profileKey("live_last_url"), v)
 
     // ---- Addons (Stremio protocol): list of manifest URLs ----
     var addonUrls: List<String>
@@ -200,7 +253,7 @@ object Prefs {
 
     /** Keys that belong to this TV only and never sync to the account. */
     private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key",
-        "house_id", "house_key", "house_since", "house_stamp", "device_id")
+        "house_id", "house_key", "house_since", "house_stamp", "device_id", "active_profile")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String
@@ -294,6 +347,8 @@ object Prefs {
             }
         }
         e.apply()
+        // A copy saved by an older version has data without a profile: it goes to the first profile.
+        migrateToProfiles()
     }
 
     // ---- Raw JSON blobs used by Library ----

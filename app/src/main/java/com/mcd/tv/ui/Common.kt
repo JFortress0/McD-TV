@@ -364,9 +364,9 @@ fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)
 }
 
 /** Top navigation: wordmark, uppercase Orbitron tabs (current one cyan with an underline and dot), clock, profile ring. */
-enum class NavTab(val label: String) { Home("Home"), Search("Search"), Browse("Browse"), Library("My List"), Genres("Genres"), Sports("Sports"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
+enum class NavTab(val label: String) { Home("Home"), Search("Search"), Browse("Browse"), Library("My List"), Genres("Genres"), Sports("Websites"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
 
-/** Tabs shown in the bar, in order. Genres, Sports, Services and Background Noise live under Browse. */
+/** Tabs shown in the bar, in order. Genres, Websites (NavTab.Sports), Services and Background Noise live under Browse. */
 private val BarTabs = listOf(NavTab.Home, NavTab.Search, NavTab.Browse, NavTab.Live, NavTab.Library)
 
 /** The bar tab to highlight for a page: pages reached from Browse highlight Browse. */
@@ -446,9 +446,19 @@ private fun ProfileCircle(selected: Boolean, onClick: () -> Unit, modifier: Modi
     }
 }
 
-/** Transparent top bar (it floats over hero backdrops): wordmark, text tabs, clock, profile ring. */
+/**
+ * Transparent top bar (it floats over hero backdrops): wordmark, text tabs, clock, who is watching, profile ring.
+ * [profileName] + [onProfile]: shows the active profile; selecting it opens "Who's watching?" to switch.
+ */
 @Composable
-fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier, autoFocus: Boolean = false) {
+fun TopNav(
+    current: NavTab,
+    onSelect: (NavTab) -> Unit,
+    modifier: Modifier = Modifier,
+    autoFocus: Boolean = false,
+    profileName: String? = null,
+    onProfile: (() -> Unit)? = null,
+) {
     val currentFocus = remember { FocusRequester() }
     if (autoFocus) {
         // Give the remote somewhere to start: focus the current tab once the page is laid out.
@@ -468,6 +478,10 @@ fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Mod
         Spacer(Modifier.weight(1f))
         HudClock()
         Spacer(Modifier.width(14.dp))
+        if (profileName != null && onProfile != null) {
+            NavItem("◉ $profileName", false, onProfile)
+            Spacer(Modifier.width(6.dp))
+        }
         ProfileCircle(current == NavTab.Settings, { onSelect(NavTab.Settings) }, if (current == NavTab.Settings) Modifier.focusRequester(currentFocus) else Modifier)
     }
 }

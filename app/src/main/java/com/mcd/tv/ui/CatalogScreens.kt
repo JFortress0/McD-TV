@@ -65,7 +65,7 @@ private fun browseMenu(): List<MenuEntry> = buildList {
     SERVICES.forEachIndexed { i, s ->
         add(MenuEntry(s.name, "Current catalog", Screen.ServiceGrid(s), section = if (i == 0) "Streaming services" else null))
     }
-    add(MenuEntry("Sports", "Scores, schedules and websites", Screen.Sports, section = "More"))
+    add(MenuEntry("Websites", "Sites you added on the Control page", Screen.Sports, section = "More"))
     add(MenuEntry("Background Noise", "Random episodes of your shows", Screen.Noise))
 }
 

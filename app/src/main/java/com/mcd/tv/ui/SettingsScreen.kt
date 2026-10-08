@@ -60,6 +60,23 @@ fun SettingsScreen(nav: Nav) {
             }
 
             HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Profiles")
+                var watching by remember { mutableStateOf(Prefs.activeProfileName) }
+                Text(
+                    "Watching as $watching. Each profile has its own history, Continue Watching, My List, favorites and Live TV favorites. " +
+                        "Settings, keys, addons and the playlist are shared by the whole TV.",
+                    color = McdColors.White, fontSize = 16.sp,
+                )
+                ActionButton("Switch profile", { nav.push(Screen.Profiles) }, primary = true)
+                Text("Rename: select a name, press OK to type, then Save.", color = McdColors.Muted, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Prefs.PROFILE_IDS.forEach { id ->
+                        ProfileNameEditor(id) { watching = Prefs.activeProfileName }
+                    }
+                }
+            }
+
+            HudPanel(Modifier.fillMaxWidth()) {
                 RailHeader("Account")
                 Text(
                     if (com.mcd.tv.data.Account.signedIn) "Signed in as ${Prefs.accountName}" else "Not signed in. Optional: sign in to sync across TVs.",

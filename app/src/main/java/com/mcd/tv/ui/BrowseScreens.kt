@@ -67,7 +67,11 @@ fun TabPage(nav: Nav, tab: NavTab, autoFocus: Boolean = true, content: @Composab
     Column(Modifier.fillMaxSize().hudBackground()) {
         // autoFocus: start on the current tab so the remote has somewhere to go. Screens that focus
         // something themselves (Search's text field) pass false.
-        TopNav(tab, nav.tab, autoFocus = autoFocus)
+        TopNav(
+            tab, nav.tab, autoFocus = autoFocus,
+            profileName = com.mcd.tv.data.Prefs.activeProfileName,
+            onProfile = { nav.push(com.mcd.tv.Screen.Profiles) },
+        )
         content()
     }
 }

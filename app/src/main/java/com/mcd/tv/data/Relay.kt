@@ -512,6 +512,7 @@ object Relay {
             .put("rd_connected", RealDebrid.connected)
             .put("version", com.mcd.tv.BuildConfig.VERSION_NAME)
             .put("device_name", HouseSync.deviceName())
+            .put("profile", Prefs.activeProfileName)
             .put("house", HouseSync.houseLink())
             .put("house_joining", HouseSync.joining())
         Http.postText(BASE + outTopic, encrypt(state.toString()))

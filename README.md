@@ -19,7 +19,7 @@ Jarvis copies the HuberTV layout and runs it natively on the TV. It talks straig
 - **Source picker:** every stream your addons return, with quality, size and a CACHED badge. Play picks the best one by itself.
 - **Real-Debrid:** sign in with a code at real-debrid.com/device. You type nothing on the TV.
 - **My List:** Watchlist, Favorites, Background Noise shows, Watch History.
-- **Sports:** live scores and today's games for NFL, college football, NBA, MLB, NHL, college hoops and the Premier League. Select a game to see matching channels from your own playlist.
+- **Profiles:** "Who's watching?" after the intro: Dad, Mom and Kids (rename in Settings). Each has its own history, Continue Watching, My List, favorites and Live TV favorites; settings are shared. Kids gets family and animation rows on Home.
 - **Live TV:** your M3U playlist by category, plus live channel and event lists from your addons. Now / next from the playlist's program guide (XMLTV), favorites (Menu button), recent channels, last channel, channel search. In the player, UP / DOWN change the channel.
 - **Services:** browse the Netflix, Prime, Disney+, Hulu, Apple TV+, Peacock, Max, Paramount+, Crunchyroll and Starz catalogs. Title pages show which service carries a title and open that service's own app.
 - **Background Noise:** pick shows once. Random episodes keep playing.
@@ -27,7 +27,7 @@ Jarvis copies the HuberTV layout and runs it natively on the TV. It talks straig
 - **Title origin filter:** show all countries, US-made only, or hide Asian-made titles (Settings or the web page).
 - **Phone setup:** paste keys and links from your phone over home Wi-Fi.
 - **Accounts (optional):** sign in to your own Jarvis server and your lists, history, addons and Real-Debrid link follow you to any TV. See `server/README.md`.
-- **Websites:** a built-in browser with a remote-controlled pointer, for sites you add in Phone setup (Sports > Websites).
+- **Websites:** a built-in browser with a remote-controlled pointer, for sites you add in Phone setup (Home > More > Websites).
 - **Settings:** US only, Slow connection (smaller files first), intro on or off.
 
 Jarvis ships with no content sources. You add the TMDB key, addons, Real-Debrid account and playlist yourself.

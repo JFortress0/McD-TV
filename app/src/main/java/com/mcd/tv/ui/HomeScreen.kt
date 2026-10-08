@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -64,18 +65,31 @@ private data class HomeData(
 
 /**
  * Home: at most 8 rows. Continue Watching, Live TV favorites (when a playlist is set), Suggested for You, Trending This Week, Popular on <service>,
- * Top Rated, New Releases, then a small "More" row (Ask Jarvis, Browse, Sports scores, Background Noise).
+ * Top Rated, New Releases, then a small "More" row (Ask Jarvis, Browse, Live TV, Websites, Background Noise).
  * Everything else lives under Browse. Each catalog row ends in a "See all" tile that opens its full grid.
+ * Everything personal (history, lists, Live TV favorites) belongs to the active profile, so the page is
+ * keyed on it: switching profiles rebuilds Home. The Kids profile gets family, animation and kids rows instead.
  */
 @Composable
 fun HomeScreen(nav: Nav) {
+    key(Prefs.activeProfile) { HomeContent(nav, Prefs.isKidsProfile) }
+}
+
+@Composable
+private fun HomeContent(nav: Nav, kids: Boolean) {
     val hidden = remember { Library.hidden().map { "${it.type}-${it.id}" }.toSet() }
     fun List<Title>.visible() = filterNot { "${it.type}-${it.id}" in hidden }
     val service = SERVICES.first()
 
     var retry by remember { mutableIntStateOf(0) }
     val data by rememberLoad(retry) {
-        coroutineScope {
+        if (kids) coroutineScope {
+            val fam = async { Tmdb.kidsMovies() }
+            val anim = async { Tmdb.kidsMovies(genreId = 16) }
+            val shows = async { Tmdb.kidsShows() }
+            val best = async { Tmdb.kidsMovies(genreId = 16, topRated = true) }
+            HomeData(fam.await(), anim.await(), false, shows.await(), best.await())
+        } else coroutineScope {
             val tr = async { Tmdb.trending() }
             val ps = async { runCatching { Tmdb.byService("movie", service.id) }.getOrNull()?.takeIf { it.isNotEmpty() } }
             val np = async { Tmdb.nowPlaying() }
@@ -136,7 +150,7 @@ fun HomeScreen(nav: Nav) {
         item(key = "top") {
             Box(Modifier.fillMaxWidth()) {
                 if (heroOnTop && heroes.isNotEmpty()) Hero(heroes, nav, takeFocus = true, underNav = true)
-                TopNav(NavTab.Home, nav.tab)
+                TopNav(NavTab.Home, nav.tab, profileName = Prefs.activeProfileName, onProfile = { nav.push(Screen.Profiles) })
             }
         }
 
@@ -163,6 +177,12 @@ fun HomeScreen(nav: Nav) {
             }
             is Load.Ok -> {
                 val v = d.value
+                if (kids) {
+                    item(key = "kids_family") { TitleRow("Family Movies", v.trending.visible(), openTitle) }
+                    item(key = "kids_animation") { TitleRow("Animated Movies", v.popular.visible(), openTitle) }
+                    item(key = "kids_shows") { TitleRow("Kids Shows", v.nowPlaying.visible(), openTitle) }
+                    if (!dropTopRated) item(key = "kids_best") { TitleRow("Best Rated Animation", v.topMovies.visible(), openTitle) }
+                } else {
                 item(key = "trending") {
                     TitleRail("Trending This Week", v.trending.visible(), { nav.push(Screen.BrowseGrid("trending")) }, openTitle)
                 }
@@ -178,6 +198,7 @@ fun HomeScreen(nav: Nav) {
                 }
                 item(key = "new") {
                     TitleRail("New Releases · In Theaters", v.nowPlaying.visible(), { nav.push(Screen.BrowseGrid("new")) }, openTitle)
+                }
                 }
             }
         }
@@ -197,7 +218,7 @@ private fun MoreRow(nav: Nav) {
             item { CompactTile("Ask Jarvis", "Describe it, Jarvis finds it", { nav.push(Screen.AskJarvis()) }) }
             item { CompactTile("Browse", "Genres, years, languages, services", { nav.tab(NavTab.Browse) }) }
             item { CompactTile("Live TV", "Your channels and favorites", { nav.tab(NavTab.Live) }) }
-            item { CompactTile("Sports scores", "Live scores and schedules", { nav.push(Screen.Sports) }) }
+            item { CompactTile("Websites", "Sites you added on the Control page", { nav.push(Screen.Sports) }) }
             item { CompactTile("Background Noise", "Random episodes of your shows", { nav.push(Screen.Noise) }) }
         }
     }

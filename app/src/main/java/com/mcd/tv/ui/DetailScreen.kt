@@ -179,7 +179,7 @@ private fun DetailBody(nav: Nav, d: Details) {
                         }
                         if (more) {
                             Spacer(Modifier.height(8.dp))
-                            // LazyRow: provider buttons and long labels scroll instead of running off the screen.
+                            // LazyRow: long labels scroll instead of running off the screen.
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (t.type == "movie") item { ActionButton("Choose Source", { play(0, 0, false) }, Modifier.focusRequester(moreFocus)) }
                                 item {
@@ -193,9 +193,6 @@ private fun DetailBody(nav: Nav, d: Details) {
                                     ActionButton(if (noise) "✓ In Background Noise" else "+ Background Noise", { noise = Library.toggleNoise(t) })
                                 }
                                 item { ActionButton("Not for me", { Library.hide(t); note = "Hidden from home rows"; nav.back() }) }
-                                items(d.providers.take(4)) { svc ->
-                                    ActionButton("Open ${svc.name}", { if (!openApp(context, svc.packages)) note = "${svc.name} app is not installed on this TV" })
-                                }
                             }
                         }
                         if (note.isNotBlank()) Text(note, color = McdColors.Amber, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
@@ -289,17 +286,6 @@ fun openYouTube(context: android.content.Context, key: String): Boolean {
         if (tryStart(web, pkg) || tryStart(app, pkg)) return true
     }
     return tryStart(web, null)
-}
-
-/** Opens another app (Netflix, Hulu…) on this TV. Returns false if none of the packages is installed. */
-fun openApp(context: android.content.Context, packages: List<String>): Boolean {
-    val pm = context.packageManager
-    for (p in packages) {
-        val intent = pm.getLeanbackLaunchIntentForPackage(p) ?: pm.getLaunchIntentForPackage(p) ?: continue
-        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        return runCatching { context.startActivity(intent); true }.getOrDefault(false)
-    }
-    return false
 }
 
 /** Scores as small HUD arc gauges: TMDB, plus IMDb, Rotten Tomatoes critics / audience and Metacritic when MDBList is set up. */

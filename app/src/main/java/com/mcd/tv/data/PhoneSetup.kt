@@ -242,7 +242,7 @@ button{margin-top:12px;background:#00E5FF;color:#02060A;border:0;padding:12px 18
 <label>Live TV playlist (M3U URL). ${if (Prefs.m3uUrl.isNotBlank()) "✅ set" else "Not set"}</label><input name=m3u placeholder="https://…/playlist.m3u">
 <label>Add a magnet link to your Real-Debrid cloud (plays under My List &gt; Real-Debrid Cloud)</label><input name=magnet placeholder="magnet:?xt=urn:btih:…">
 <label>Direct stream link (shows as My Stream)</label><input name=stream placeholder="https://…/video.m3u8">
-<label>Add a website (opens in the TV's built-in browser, under Sports &gt; Websites)</label><input name=site placeholder="https://example.com">
+<label>Add a website (opens in the TV's built-in browser, under Home &gt; More &gt; Websites)</label><input name=site placeholder="https://example.com">
 <label>Name for that website (optional)</label><input name=siteName placeholder="My site">
 <button>Save to TV</button></form>
 <h3>Websites</h3><ul>$sites</ul>
