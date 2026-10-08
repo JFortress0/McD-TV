@@ -90,11 +90,10 @@ sleep 3 # let Android write the setting to disk before the app is restarted
 check_screen live "QA Test Channel"
 if grep -q "QA Movie Entry" qa-out/ui-live.xml 2>/dev/null; then fail "Live TV hides movie entries"; else pass "Live TV hides movie entries"; fi
 # Play the first channel with the remote and make sure the player opens.
-# Focus starts on the "Live TV" tab: DOWN -> "My Playlist" (source row), DOWN -> "All (n)" (group row),
-# DOWN -> first channel row. (A spare DOWN on the last row is harmless: there is nothing below it.)
-adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
-adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
-adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+# With no addon live catalogs there is no source row. Once the playlist loads, focus sits on the selected
+# entry of the left rail: with no favorites or recents that is the first section ("Sports": the QA channel is
+# in group "QA Sports"). RIGHT -> first channel card in the grid, CENTER -> play.
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
 adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 10
 shot live-playing
 adb shell dumpsys activity activities | grep -q "com.mcd.tv" && pass "Live channel opens the player without leaving the app" || fail "Live channel opens the player without leaving the app"

@@ -34,6 +34,7 @@ import coil.compose.AsyncImage
 import com.mcd.tv.Nav
 import com.mcd.tv.data.Channel
 import com.mcd.tv.data.Epg
+import com.mcd.tv.data.LiveOrganizer
 import com.mcd.tv.data.M3u
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Programme
@@ -159,7 +160,7 @@ fun LivePlayerScreen(nav: Nav, index: Int) {
         key(playingChannel.url) {
             PlayerScreen(
                 url = playingChannel.url,
-                title = playingChannel.name,
+                title = LiveOrganizer.cleanName(playingChannel.name),
                 headers = mapOf("User-Agent" to M3u.userAgent),
                 onKeyEvent = onKey,
                 autoShowControls = false,
@@ -191,6 +192,8 @@ private fun ChannelOverlay(
 ) {
     val now = System.currentTimeMillis()
     val (cur, next) = remember(guide, ch.url, now / 60_000L) { Epg.nowNext(Epg.keyOf(ch), guide, now) }
+    val name = remember(ch.name) { LiveOrganizer.cleanName(ch.name) }
+    val group = remember(ch.group) { LiveOrganizer.cleanGroup(ch.group) }
     Column(
         modifier
             .width(540.dp)
@@ -201,11 +204,11 @@ private fun ChannelOverlay(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("$number", style = broadcastStyle(30.sp, McdColors.Red))
             Spacer(Modifier.width(14.dp))
-            AsyncImage(ch.logo, ch.name, contentScale = ContentScale.Fit, modifier = Modifier.size(width = 84.dp, height = 52.dp))
+            AsyncImage(ch.logo, name, contentScale = ContentScale.Fit, modifier = Modifier.size(width = 84.dp, height = 52.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(ch.name, style = broadcastStyle(22.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${ch.group}  •  $number of $total", color = McdColors.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(name, style = broadcastStyle(22.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("$group  •  $number of $total", color = McdColors.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (cur != null) {

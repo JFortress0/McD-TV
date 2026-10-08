@@ -21,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -40,11 +41,15 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.mcd.tv.Nav
 import com.mcd.tv.Screen
+import com.mcd.tv.data.Channel
 import com.mcd.tv.data.Library
+import com.mcd.tv.data.LiveOrganizer
+import com.mcd.tv.data.M3u
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.SERVICES
 import com.mcd.tv.data.Title
 import com.mcd.tv.data.Tmdb
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -59,7 +64,7 @@ private data class HomeData(
 )
 
 /**
- * Home: at most 8 rows. Continue Watching, Suggested for You, Trending This Week, Popular on <service>,
+ * Home: at most 8 rows. Continue Watching, Live TV favorites (when a playlist is set), Suggested for You, Trending This Week, Popular on <service>,
  * Top Rated, New Releases, then a small "More" row (Browse, Sports scores, Background Noise).
  * Everything else lives under Browse. Each catalog row ends in a "See all" tile that opens its full grid.
  */
@@ -94,6 +99,31 @@ fun HomeScreen(nav: Nav) {
     LaunchedEffect(Unit) {
         if (continueWatching.isNotEmpty()) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
     }
+    // Live TV row: favorite channels (or recent ones) from the playlist. Loads in the background (playlist
+    // cached 6 h) and only appears once ready, so Home never waits on a big playlist.
+    val liveRow by produceState<Pair<String, List<Channel>>?>(null) {
+        if (Prefs.m3uUrl.isBlank()) return@produceState
+        val favs = Prefs.liveFavorites
+        val recents = Prefs.liveRecents
+        if (favs.isEmpty() && recents.isEmpty()) return@produceState
+        val all = try {
+            M3u.load()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return@produceState
+        }
+        val index = LiveOrganizer.indexFor(all)
+        val fav = index.indicesOf(favs)
+        val recent = if (fav.isEmpty()) index.indicesOf(recents) else IntArray(0)
+        value = when {
+            fav.isNotEmpty() -> "Live TV · Favorites" to index.channelsOf(fav)
+            recent.isNotEmpty() -> "Recent channels" to index.channelsOf(recent)
+            else -> null
+        }
+    }
+    // Home stays at 8 rows or fewer: with Continue Watching and the hero both showing, the live row takes Top Rated's place.
+    val dropTopRated = liveRow != null && continueWatching.isNotEmpty()
     val openTitle: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
     val heroes = (data as? Load.Ok<HomeData>)?.value?.trending?.visible()?.filter { it.backdrop != null }?.take(6) ?: emptyList()
     // Nothing to resume: the hero goes full-bleed at the very top of the page, behind the transparent
@@ -114,6 +144,7 @@ fun HomeScreen(nav: Nav) {
         if (continueWatching.isNotEmpty()) item(key = "continue") {
             HistoryRow("Continue Watching", continueWatching, nav, firstFocus)
         }
+        liveRow?.let { (label, channels) -> item(key = "live") { LiveChannelsRow(label, channels, nav) } }
         if (!heroOnTop && heroes.isNotEmpty()) item(key = "hero") { Hero(heroes, nav, takeFocus = false) }
         item(key = "suggested") {
             val sg = suggestions
@@ -143,7 +174,7 @@ fun HomeScreen(nav: Nav) {
                         TitleRail("Popular · Movies", v.popular.visible(), { nav.push(Screen.BrowseGrid("popular", "movie")) }, openTitle)
                     }
                 }
-                item(key = "toprated") {
+                if (!dropTopRated) item(key = "toprated") {
                     TitleRail("Top Rated · Movies", v.topMovies.visible(), { nav.push(Screen.BrowseGrid("top", "movie")) }, openTitle)
                 }
                 item(key = "new") {
@@ -165,6 +196,7 @@ private fun MoreRow(nav: Nav) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item { CompactTile("Browse", "Genres, years, languages, services", { nav.tab(NavTab.Browse) }) }
+            item { CompactTile("Live TV", "Your channels and favorites", { nav.tab(NavTab.Live) }) }
             item { CompactTile("Sports scores", "Live scores and schedules", { nav.push(Screen.Sports) }) }
             item { CompactTile("Background Noise", "Random episodes of your shows", { nav.push(Screen.Noise) }) }
         }

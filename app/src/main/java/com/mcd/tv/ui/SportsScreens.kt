@@ -117,7 +117,7 @@ fun SportsScreen(nav: Nav) {
         val p = picked
         if (p != null) {
             val list = (channels as? Load.Ok<List<Channel>>)?.value ?: emptyList()
-            GameChannels(p, list, onPlay = { ch -> nav.push(Screen.Player(ch.url, "${p.away.short} @ ${p.home.short}  •  ${ch.name}")) }, onClose = { picked = null; switched++ }, closeFocus = closeFocus)
+            GameChannels(p, list, onPlay = { ch -> nav.push(Screen.Player(ch.url, "${p.away.short} @ ${p.home.short}  •  ${com.mcd.tv.data.LiveOrganizer.cleanName(ch.name)}")) }, onClose = { picked = null; switched++ }, closeFocus = closeFocus)
         } else when (val g = games) {
             is Load.Loading -> StatusText("Loading scores…", Modifier.padding(start = 48.dp))
             is Load.Err -> StatusText(g.message, Modifier.padding(start = 48.dp))
@@ -182,7 +182,7 @@ private fun GameCard(g: Game, onClick: () -> Unit) {
 
 @Composable
 private fun GameChannels(g: Game, all: List<Channel>, onPlay: (Channel) -> Unit, onClose: () -> Unit, closeFocus: FocusRequester) {
-    val matches = remember(g, all) { M3u.matchesFor(g, all) }
+    val matches = remember(g, all) { M3u.matchesFor(g, all).filterNot { com.mcd.tv.data.LiveOrganizer.isSeparator(it.name) } }
     Column(Modifier.padding(horizontal = 48.dp)) {
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
@@ -223,9 +223,10 @@ fun ChannelRow(ch: Channel, onClick: () -> Unit) {
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(ch.logo, ch.name, contentScale = ContentScale.Fit, modifier = Modifier.size(width = 64.dp, height = 40.dp))
+            val name = remember(ch.name) { com.mcd.tv.data.LiveOrganizer.cleanName(ch.name) }
+            AsyncImage(ch.logo, name, contentScale = ContentScale.Fit, modifier = Modifier.size(width = 64.dp, height = 40.dp))
             Spacer(Modifier.width(16.dp))
-            Text(ch.name, style = broadcastStyle(18.sp))
+            Text(name, style = broadcastStyle(18.sp))
             Spacer(Modifier.width(12.dp))
             Text(ch.group, color = McdColors.Muted, fontSize = 13.sp)
         }
