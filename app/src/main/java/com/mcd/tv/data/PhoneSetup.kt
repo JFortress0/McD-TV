@@ -18,13 +18,17 @@ import java.net.URLDecoder
 object LocalWeb {
     var lastMessage by androidx.compose.runtime.mutableStateOf("Waiting for a browser…")
     var error by androidx.compose.runtime.mutableStateOf<String?>(null)
+    /** How many browser requests reached the TV. If this stays 0, the network is blocking the phone. */
+    var requests by androidx.compose.runtime.mutableIntStateOf(0)
+    val running: Boolean get() = server != null
     private var server: PhoneSetupServer? = null
 
     fun start() {
         if (server != null) return
         val s = PhoneSetupServer { lastMessage = it }
-        error = runCatching { s.start() }.exceptionOrNull()?.message
-        server = if (error == null) s else null // failed: try again next time
+        val failure = runCatching { s.start() }.exceptionOrNull()
+        error = failure?.let { it.message ?: it.javaClass.simpleName }
+        server = if (failure == null) s else null // failed: try again next time
     }
 
     fun stop() {
@@ -64,7 +68,9 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
         if (server != null) return
         val s = ServerSocket()
         s.reuseAddress = true
-        s.bind(java.net.InetSocketAddress("0.0.0.0", port))
+        // Bind to the wildcard address (IPv4 and IPv6). v0.2.2 used ServerSocket(port), which worked;
+        // binding to "0.0.0.0" on Android's dual-stack sockets is what broke phone access in v0.2.4.
+        s.bind(java.net.InetSocketAddress(port))
         server = s
         scope.launch {
             while (!s.isClosed) {
@@ -81,6 +87,7 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
     }
 
     private fun handle(c: Socket) {
+        LocalWeb.requests++
         val input = c.getInputStream().bufferedReader()
         val requestLine = input.readLine() ?: return
         var length = 0

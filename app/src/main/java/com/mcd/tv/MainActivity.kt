@@ -85,7 +85,20 @@ class MainActivity : ComponentActivity() {
                 kotlinx.coroutines.delay(120_000)
             }
         }
-        setContent { McdTheme { App() } }
+        // QA hook: "--es screen settings" opens a screen directly (used by the automated emulator test).
+        val startScreen: Screen? = when (intent?.getStringExtra("screen")) {
+            "settings" -> Screen.Settings
+            "phone" -> Screen.PhoneSetup
+            "genres" -> Screen.Genres
+            "sports" -> Screen.Sports
+            "noise" -> Screen.Noise
+            "library" -> Screen.Library
+            "live" -> Screen.Live
+            "services" -> Screen.Services
+            "search" -> Screen.Search
+            else -> null
+        }
+        setContent { McdTheme { App(startScreen) } }
     }
 
     override fun onStart() {
@@ -103,8 +116,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun App() {
-    val stack = remember { mutableStateListOf<Screen>(if (Prefs.playIntro) Screen.Intro else Screen.Home) }
+private fun App(startScreen: Screen? = null) {
+    val stack = remember {
+        when {
+            startScreen != null -> mutableStateListOf<Screen>(Screen.Home, startScreen)
+            Prefs.playIntro -> mutableStateListOf<Screen>(Screen.Intro)
+            else -> mutableStateListOf<Screen>(Screen.Home)
+        }
+    }
     // removeAt instead of removeLast: removeLast crashes on older Android versions.
     fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
     val nav = remember {

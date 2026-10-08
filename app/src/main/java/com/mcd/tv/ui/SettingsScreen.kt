@@ -133,6 +133,24 @@ fun PhoneSetupScreen(nav: Nav) {
         if (addrs.size > 1) Text("If that one doesn't load, try: " + addrs.drop(1).joinToString("   "), fontSize = 16.sp, color = McdColors.White)
         Text("3.  Paste your keys and links, then tap Save to TV.", fontSize = 20.sp, color = McdColors.White)
         Text(LocalWeb.error?.let { "Could not start: $it" } ?: LocalWeb.lastMessage, fontSize = 18.sp, color = McdColors.Muted)
+        // Diagnostics: the TV loads its own page. OK here + nothing on the phone = the network blocks the phone.
+        var selfTest by remember { mutableStateOf("Checking the page…") }
+        LaunchedEffect(Unit) {
+            selfTest = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                addrs.map { a ->
+                    runCatching {
+                        val c = java.net.URL(a).openConnection() as java.net.HttpURLConnection
+                        c.connectTimeout = 3000; c.readTimeout = 3000
+                        val code = c.responseCode; c.disconnect()
+                        "$a  ${if (code == 200) "OK" else "HTTP $code"}"
+                    }.getOrElse { "$a  FAILED (${it.javaClass.simpleName})" }
+                }.joinToString("    ")
+            }
+        }
+        Text(
+            "Page running: ${if (LocalWeb.running) "yes" else "no"}   •   Self-test: $selfTest   •   Requests from browsers: ${LocalWeb.requests}",
+            fontSize = 14.sp, color = McdColors.Muted,
+        )
         Text("The page works whenever McD TV is open. Bookmark it.", fontSize = 14.sp, color = McdColors.Muted)
     }
 }
