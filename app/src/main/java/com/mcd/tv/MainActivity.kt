@@ -68,6 +68,8 @@ sealed interface Screen {
     data class Sources(val meta: PlayMeta, val imdbId: String, val autoPlay: Boolean) : Screen
     data class Web(val url: String, val name: String) : Screen
     data class LiveChannel(val item: com.mcd.tv.data.LiveItem) : Screen
+    /** A playlist channel: [index] into com.mcd.tv.ui.LiveSession.channels (channel up/down moves through that list). */
+    data class LivePlay(val index: Int) : Screen
     /** imdbId lets a TV episode roll into the next one when it ends. */
     data class Player(
         val url: String,
@@ -215,6 +217,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         is Screen.Detail -> DetailScreen(nav, s.type, s.id, s.openSources)
         is Screen.Sources -> SourcesScreen(nav, s.meta, s.imdbId, s.autoPlay)
         is Screen.LiveChannel -> com.mcd.tv.ui.LiveChannelScreen(nav, s.item)
+        is Screen.LivePlay -> com.mcd.tv.ui.LivePlayerScreen(nav, s.index)
         is Screen.Web -> WebScreen(s.url) { url, headers, title -> nav.push(Screen.Player(url, title, headers = headers)) }
         is Screen.Player -> {
             val m = s.meta
