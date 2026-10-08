@@ -408,6 +408,9 @@ async function copyLink() {
   catch { prompt("Copy this link:", url); }
 }
 
+// Scanning another TV's QR code can reuse this tab with only the "#..." part changed: reload so the page switches TVs.
+window.addEventListener("hashchange", () => { const l = parseLink(location.hash); if (l && (!link || l.id !== link.id)) location.reload(); });
+
 (async function start() {
   if (!link) { $("noLink").classList.remove("hidden"); $("tvStatus").lastChild.textContent = "Not linked"; return; }
   if (!location.hash) history.replaceState(null, "", "#" + link.id + "." + link.key);
