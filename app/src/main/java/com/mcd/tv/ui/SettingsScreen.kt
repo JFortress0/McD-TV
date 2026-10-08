@@ -54,6 +54,14 @@ fun SettingsScreen(nav: Nav) {
             ActionButton("Open Phone Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
 
             Spacer(Modifier.height(6.dp))
+            RailHeader("Account")
+            Text(
+                if (com.mcd.tv.data.Account.signedIn) "Signed in as ${Prefs.accountName}" else "Not signed in. Optional: sign in to sync across TVs.",
+                color = McdColors.White, fontSize = 16.sp,
+            )
+            ActionButton("Account", { nav.push(Screen.AccountPage) })
+
+            Spacer(Modifier.height(6.dp))
             RailHeader("Real-Debrid")
             Text(
                 when (val r = rd) { is Load.Ok -> r.value; is Load.Err -> "Error: ${r.message}"; else -> "Checking…" },

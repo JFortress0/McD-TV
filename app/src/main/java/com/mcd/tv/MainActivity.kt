@@ -7,10 +7,15 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.lifecycle.lifecycleScope
+import com.mcd.tv.data.Account
 import com.mcd.tv.data.PlayMeta
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
+import com.mcd.tv.ui.AccountScreen
 import com.mcd.tv.ui.CalendarScreen
 import com.mcd.tv.ui.DetailScreen
 import com.mcd.tv.ui.HomeScreen
@@ -47,6 +52,7 @@ sealed interface Screen {
     data object Settings : Screen
     data object PhoneSetup : Screen
     data object RdConnect : Screen
+    data object AccountPage : Screen
     data class Detail(val type: String, val id: Int) : Screen
     /** autoPlay = the Play button: pick the best source and start immediately. */
     data class Sources(val meta: PlayMeta, val imdbId: String, val autoPlay: Boolean) : Screen
@@ -66,7 +72,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
+        // Signed in to a McD TV account? Pick up changes made on other TVs.
+        lifecycleScope.launch { runCatching { Account.pull() } }
         setContent { McdTheme { App() } }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Leaving the app (Home button, TV off): save lists and history to the account.
+        if (Account.signedIn) Thread { runCatching { runBlocking { Account.push() } } }.start()
     }
 }
 
@@ -116,6 +130,7 @@ private fun App() {
         Screen.Settings -> SettingsScreen(nav)
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)
+        Screen.AccountPage -> AccountScreen(nav)
         is Screen.Detail -> DetailScreen(nav, s.type, s.id)
         is Screen.Sources -> SourcesScreen(nav, s.meta, s.imdbId, s.autoPlay)
         is Screen.Web -> WebScreen(s.url)

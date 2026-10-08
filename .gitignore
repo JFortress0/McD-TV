@@ -8,3 +8,4 @@ local.properties
 captures/
 # Signing key stays private. CI rebuilds it from the KEYSTORE_BASE64 secret.
 keystore/
+server/data/

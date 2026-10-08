@@ -85,6 +85,53 @@ object Prefs {
             .remove("rd_refresh").remove("rd_expires").apply()
     }
 
+    // ---- McD TV account server (optional) ----
+    var serverUrl: String
+        get() = str("server_url")
+        set(v) = put("server_url", v.trimEnd('/'))
+    var accountToken: String
+        get() = str("account_token")
+        set(v) = put("account_token", v)
+    var accountName: String
+        get() = str("account_name")
+        set(v) = put("account_name", v)
+    var lastSyncAt: Long
+        get() = sp.getLong("last_sync_at", 0L)
+        set(v) = sp.edit().putLong("last_sync_at", v).apply()
+
+    /** Keys that belong to this TV only and never sync to the account. */
+    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at")
+
+    /** Every synced setting and list, as JSON, for the account server. */
+    fun exportAll(): org.json.JSONObject {
+        val o = org.json.JSONObject()
+        sp.all.forEach { (k, v) ->
+            if (k in localOnly || v == null) return@forEach
+            val t = when (v) { is Boolean -> "b"; is Long -> "l"; is Int -> "i"; is Float -> "f"; else -> "s" }
+            o.put(k, org.json.JSONObject().put("t", t).put("v", v.toString()))
+        }
+        return o
+    }
+
+    /** Replaces this TV's synced settings and lists with the account's copy. */
+    fun importAll(o: org.json.JSONObject) {
+        val e = sp.edit()
+        sp.all.keys.filter { it !in localOnly }.forEach { e.remove(it) }
+        o.keys().forEach { k ->
+            if (k in localOnly) return@forEach
+            val item = o.getJSONObject(k)
+            val v = item.optString("v")
+            when (item.optString("t")) {
+                "b" -> e.putBoolean(k, v.toBoolean())
+                "l" -> e.putLong(k, v.toLongOrNull() ?: 0L)
+                "i" -> e.putInt(k, v.toIntOrNull() ?: 0)
+                "f" -> e.putFloat(k, v.toFloatOrNull() ?: 0f)
+                else -> e.putString(k, v)
+            }
+        }
+        e.apply()
+    }
+
     // ---- Raw JSON blobs used by Library ----
     fun json(key: String): String = sp.getString(key, "") ?: ""
     fun putJson(key: String, value: String) = sp.edit().putString(key, value).apply()

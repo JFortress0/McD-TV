@@ -32,6 +32,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +67,7 @@ private fun DetailBody(nav: Nav, d: Details) {
     var noise by remember { mutableStateOf(Library.inNoise(t)) }
     var note by remember { mutableStateOf("") }
     val playFocus = remember { FocusRequester() }
+    val context = LocalContext.current
 
     // TV: resume the last episode watched, else S1E1.
     val last = remember { Library.history().firstOrNull { it.meta.historyKey == "tv:${t.id}" } }
@@ -123,6 +125,15 @@ private fun DetailBody(nav: Nav, d: Details) {
                             if (t.type == "tv") ActionButton(if (noise) "✓ In Background Noise" else "+ Background Noise", { noise = Library.toggleNoise(t) })
                             ActionButton("Not for me", { Library.hide(t); note = "Hidden from home rows"; nav.back() })
                         }
+                        if (d.providers.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("ALSO ON", style = broadcastStyle(13.sp, McdColors.Muted))
+                                d.providers.take(4).forEach { svc ->
+                                    ActionButton("Open ${svc.name}", { if (!openApp(context, svc.packages)) note = "${svc.name} app is not installed on this TV" })
+                                }
+                            }
+                        }
                         if (note.isNotBlank()) Text(note, color = McdColors.Red, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
@@ -173,4 +184,15 @@ private fun EpisodeRow(tvId: Int, season: Int, onPlay: (Episode) -> Unit) {
             }
         }
     }
+}
+
+/** Opens another app (Netflix, Hulu…) on this TV. Returns false if none of the packages is installed. */
+fun openApp(context: android.content.Context, packages: List<String>): Boolean {
+    val pm = context.packageManager
+    for (p in packages) {
+        val intent = pm.getLeanbackLaunchIntentForPackage(p) ?: pm.getLaunchIntentForPackage(p) ?: continue
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { context.startActivity(intent); true }.getOrDefault(false)
+    }
+    return false
 }

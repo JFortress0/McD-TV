@@ -36,10 +36,27 @@ data class Details(
     val similar: List<Title>,
     val seasons: List<SeasonInfo>,
     val nextEpisode: Episode?,
+    /** US subscription services carrying this title (e.g. Netflix), from TMDB / JustWatch. */
+    val providers: List<Service> = emptyList(),
 )
 
 /** Streaming services shown on the Services screen (TMDB watch-provider ids, US). */
-data class Service(val id: Int, val name: String)
+data class Service(val id: Int, val name: String) {
+    /** Fire TV / Android TV app packages for each service, tried in order. */
+    val packages: List<String> get() = when (id) {
+        8 -> listOf("com.netflix.ninja", "com.netflix.mediaclient")
+        9, 119 -> listOf("com.amazon.avod", "com.amazon.amazonvideo.livingroom")
+        337 -> listOf("com.disney.disneyplus")
+        15 -> listOf("com.hulu.livingroomplus", "com.hulu.plus")
+        350, 2 -> listOf("com.apple.atve.amazon.appletv", "com.apple.atve.androidtv.appletv")
+        386, 387 -> listOf("com.peacocktv.peacockandroid")
+        1899, 384 -> listOf("com.wbd.stream", "com.hbo.hbonow")
+        531, 2303 -> listOf("com.cbs.ott", "com.cbs.app")
+        283 -> listOf("com.crunchyroll.crunchyroid")
+        43 -> listOf("com.bydeluxe.d3.android.program.starz")
+        else -> emptyList()
+    }
+}
 
 val SERVICES = listOf(
     Service(8, "Netflix"), Service(9, "Amazon Prime"), Service(337, "Disney+"), Service(15, "Hulu"),
@@ -148,7 +165,7 @@ object Tmdb {
     )
 
     suspend fun details(type: String, id: Int): Details {
-        val o = get("/$type/$id", mapOf("append_to_response" to "credits,similar,external_ids"))
+        val o = get("/$type/$id", mapOf("append_to_response" to "credits,similar,external_ids,watch/providers"))
         val t = parse(o, type) ?: throw IllegalStateException("Not found")
         val genres = o.optJSONArray("genres")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).optString("name") } } ?: emptyList()
         val castArr = o.optJSONObject("credits")?.optJSONArray("cast")
@@ -177,6 +194,10 @@ object Tmdb {
             similar = parseList(o.optJSONObject("similar")?.optJSONArray("results"), type),
             seasons = seasons,
             nextEpisode = next,
+            providers = o.optJSONObject("watch/providers")?.optJSONObject("results")?.optJSONObject("US")
+                ?.optJSONArray("flatrate")?.let { a ->
+                    (0 until a.length()).map { a.getJSONObject(it) }.map { Service(it.optInt("provider_id"), it.s("provider_name") ?: "") }
+                } ?: emptyList(),
         )
     }
 

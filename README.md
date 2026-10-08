@@ -19,10 +19,12 @@ McD TV copies the HuberTV layout and runs it natively on the TV. It talks straig
 - **My List:** Watchlist, Favorites, Background Noise shows, Watch History.
 - **Sports:** live scores and today's games for NFL, college football, NBA, MLB, NHL, college hoops and the Premier League. Select a game to see matching channels from your own playlist.
 - **Live TV:** your M3U playlist, grouped by category.
-- **Services:** browse the Netflix, Prime, Disney+, Hulu, Apple TV+, Peacock, Max, Paramount+, Crunchyroll and Starz catalogs.
+- **Services:** browse the Netflix, Prime, Disney+, Hulu, Apple TV+, Peacock, Max, Paramount+, Crunchyroll and Starz catalogs. Title pages show which service carries a title and open that service's own app.
 - **Background Noise:** pick shows once. Random episodes keep playing.
 - **Calendar:** upcoming episodes for shows on your Watchlist.
 - **Phone setup:** paste keys and links from your phone over home Wi-Fi.
+- **Accounts (optional):** sign in to your own McD TV server and your lists, history, addons and Real-Debrid link follow you to any TV. See `server/README.md`.
+- **Websites:** a built-in browser with a remote-controlled pointer, for sites you add in Phone setup (Sports > Websites).
 - **Settings:** US only, Slow connection (smaller files first), intro on or off.
 
 McD TV ships with no content sources. You add the TMDB key, addons, Real-Debrid account and playlist yourself.
@@ -52,6 +54,7 @@ McD TV/
 │           ├── raw/mcd_intro.ogg Intro music and voiceover
 │           ├── drawable-xhdpi/   TV launcher banner
 │           └── mipmap-*/         App icon
+├── server/                       Optional account server (runs on a spare Mac)
 ├── gradle/libs.versions.toml     Library versions, all in one place
 ├── keystore/                     Your private signing key. Never uploaded.
 ├── README.md                     This file
