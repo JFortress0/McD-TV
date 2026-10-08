@@ -38,8 +38,8 @@ object Relay {
     const val CONTROL_PAGE = "https://jfortress0.github.io/McD-TV/"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var started = false
-    private var generation = 0
+    @Volatile private var started = false
+    @Volatile private var generation = 0
     private val rng = SecureRandom()
 
     var status by mutableStateOf("Starting…")
@@ -59,6 +59,7 @@ object Relay {
     }
 
     /** Makes a fresh link. Phones and computers using the old link stop working. */
+    @Synchronized
     fun newLink() {
         val alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
         Prefs.relayId = (1..22).map { alphabet[rng.nextInt(alphabet.length)] }.joinToString("")
@@ -69,6 +70,7 @@ object Relay {
         if (started) scope.launch { listen(generation) }
     }
 
+    @Synchronized
     fun start() {
         if (started) return
         started = true
@@ -121,9 +123,10 @@ object Relay {
     private suspend fun listen(gen: Int) {
         var backoff = 2000L
         while (gen == generation) {
+            var c: HttpURLConnection? = null
             try {
                 val since = Prefs.relaySince.ifBlank { "12h" }
-                val c = URL("$BASE$inTopic/json?since=$since").openConnection() as HttpURLConnection
+                c = URL("$BASE$inTopic/json?since=$since").openConnection() as HttpURLConnection
                 c.connectTimeout = 15_000
                 c.readTimeout = 120_000 // ntfy sends a keepalive every ~45 s
                 c.inputStream.bufferedReader().use { reader ->
@@ -139,12 +142,14 @@ object Relay {
                         handle(cmd)
                     }
                 }
-                c.disconnect()
                 delay(1000)
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 status = "No internet connection to the setup relay. Retrying…"
                 delay(backoff)
                 backoff = (backoff * 2).coerceAtMost(60_000L)
+            } finally {
+                runCatching { c?.disconnect() }
             }
         }
     }
@@ -167,9 +172,13 @@ object Relay {
     }
 
     private fun apply(d: JSONObject) {
-        d.optJSONArray("addon_urls")?.let { a -> Prefs.addonUrls = List(a.length()) { a.getString(it) } }
+        d.optJSONArray("addon_urls")?.let { a ->
+            val urls = List(a.length()) { a.getString(it) }
+            Prefs.updateAddonUrls { urls }
+        }
         d.optJSONArray("websites")?.let { a ->
-            Prefs.websites = List(a.length()) { a.getJSONArray(it) }.map { it.optString(0) to it.optString(1) }
+            val sites = List(a.length()) { a.getJSONArray(it) }.map { it.optString(0) to it.optString(1) }
+            Prefs.updateWebsites { sites }
         }
         if (d.has("m3u_url")) Prefs.m3uUrl = d.optString("m3u_url")
         if (d.has("custom_stream_url")) Prefs.customUrl = d.optString("custom_stream_url")
@@ -186,7 +195,7 @@ object Relay {
     /** Sends the TV's current setup to the Control page (encrypted). */
     suspend fun publishState(note: String) {
         val names = JSONObject()
-        Prefs.addonUrls.forEach { u -> names.put(u, runCatching { Addons.manifest(u).name }.getOrDefault("")) }
+        Prefs.addonUrls.forEach { u -> names.put(u, Addons.nameOf(u, fallback = "")) }
         val state = JSONObject()
             .put("type", "state")
             .put("note", note)

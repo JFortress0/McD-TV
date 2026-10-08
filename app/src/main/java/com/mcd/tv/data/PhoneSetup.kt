@@ -5,7 +5,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import java.net.Inet4Address
@@ -21,22 +20,34 @@ object LocalWeb {
     /** How many browser requests reached the TV. If this stays 0, the network is blocking the phone. */
     var requests by androidx.compose.runtime.mutableIntStateOf(0)
     val running: Boolean get() = server != null
-    private var server: PhoneSetupServer? = null
+    @Volatile private var server: PhoneSetupServer? = null
 
+    /**
+     * Automated QA only: lets /qa-relay (loopback, via adb forward) return the internet setup link.
+     * Off by default. MainActivity turns it on when launched with the QA intent extra.
+     * The persisted Prefs.qaMode switch works the same way.
+     */
+    @Volatile var qaMode = false
+
+    /** Starts the page. Safe to call any number of times: does nothing while it is already running. */
+    @Synchronized
     fun start() {
         if (server != null) return
         val s = PhoneSetupServer { lastMessage = it }
         val failure = runCatching { s.start() }.exceptionOrNull()
         error = failure?.let { it.message ?: it.javaClass.simpleName }
-        server = if (failure == null) s else null // failed: try again next time
+        if (failure != null) s.stop() // release anything half-opened; try again next time
+        server = if (failure == null) s else null
     }
 
+    /** Stops the page and closes its server socket. Safe to call when not running. */
+    @Synchronized
     fun stop() {
         server?.stop()
         server = null
     }
 
-    fun addresses(): List<String> = (server ?: PhoneSetupServer {}).addresses()
+    fun addresses(): List<String> = PhoneSetupServer.addresses()
 }
 
 /**
@@ -45,22 +56,30 @@ object LocalWeb {
  * the TMDB key, addon URLs, playlist URL or a stream link. Only reachable on your own network.
  */
 class PhoneSetupServer(private val onChange: (String) -> Unit) {
-    val port = 8642
-    private var server: ServerSocket? = null
+    val port = PORT
+    @Volatile private var server: ServerSocket? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Every likely address of this TV on the home network (Wi-Fi first, then Ethernet). */
-    fun addresses(): List<String> {
-        val all = runCatching {
-            NetworkInterface.getNetworkInterfaces().toList()
-                .filter { it.isUp && !it.isLoopback }
-                .sortedBy { n -> when { n.name.startsWith("wlan") -> 0; n.name.startsWith("eth") -> 1; else -> 2 } }
-                .flatMap { it.inetAddresses.toList() }
-                .filter { it is Inet4Address && !it.isLoopbackAddress }
-                .mapNotNull { it.hostAddress }
-        }.getOrDefault(emptyList())
-        return all.distinct().map { "http://$it:$port" }.ifEmpty { listOf("http://this-tv-ip:$port") }
+    companion object {
+        const val PORT = 8642
+        private const val MAX_BODY = 65_536
+        private const val MAX_HEADERS = 100
+
+        /** Every likely address of this TV on the home network (Wi-Fi first, then Ethernet). */
+        fun addresses(): List<String> {
+            val all = runCatching {
+                NetworkInterface.getNetworkInterfaces().toList()
+                    .filter { it.isUp && !it.isLoopback }
+                    .sortedBy { n -> when { n.name.startsWith("wlan") -> 0; n.name.startsWith("eth") -> 1; else -> 2 } }
+                    .flatMap { it.inetAddresses.toList() }
+                    .filter { it is Inet4Address && !it.isLoopbackAddress }
+                    .mapNotNull { it.hostAddress }
+            }.getOrDefault(emptyList())
+            return all.distinct().map { "http://$it:$PORT" }.ifEmpty { listOf("http://this-tv-ip:$PORT") }
+        }
     }
+
+    fun addresses(): List<String> = Companion.addresses()
 
     fun address(): String = addresses().first()
 
@@ -70,12 +89,26 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
         s.reuseAddress = true
         // Bind to the wildcard address (IPv4 and IPv6). v0.2.2 used ServerSocket(port), which worked;
         // binding to "0.0.0.0" on Android's dual-stack sockets is what broke phone access in v0.2.4.
-        s.bind(java.net.InetSocketAddress(port))
+        try {
+            s.bind(java.net.InetSocketAddress(port))
+        } catch (e: Exception) {
+            runCatching { s.close() }
+            throw e
+        }
         server = s
         scope.launch {
             while (!s.isClosed) {
                 val client = runCatching { s.accept() }.getOrNull() ?: break
-                launch { runCatching { handle(client) }; runCatching { client.close() } }
+                launch {
+                    try {
+                        client.soTimeout = 10_000 // a stalled browser cannot hold a thread forever
+                        handle(client)
+                    } catch (e: Exception) {
+                        // bad request or dropped connection: nothing to do
+                    } finally {
+                        runCatching { client.close() }
+                    }
+                }
             }
         }
     }
@@ -86,21 +119,42 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
         scope.cancel()
     }
 
-    private fun handle(c: Socket) {
+    private fun respond(c: Socket, status: String, type: String, body: ByteArray) {
+        val out = c.getOutputStream()
+        out.write("HTTP/1.1 $status\r\nContent-Type: $type\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+        out.write(body)
+        out.flush()
+    }
+
+    private suspend fun handle(c: Socket) {
         LocalWeb.requests++
         val input = c.getInputStream().bufferedReader()
         val requestLine = input.readLine() ?: return
         var length = 0
+        var headerCount = 0
         while (true) {
             val h = input.readLine() ?: break
             if (h.isEmpty()) break
-            if (h.lowercase().startsWith("content-length:")) length = h.substringAfter(":").trim().toIntOrNull() ?: 0
+            if (++headerCount > MAX_HEADERS) {
+                respond(c, "431 Request Header Fields Too Large", "text/plain", "Too many headers".toByteArray())
+                return
+            }
+            if (h.lowercase().startsWith("content-length:")) {
+                val n = h.substringAfter(":").trim().toLongOrNull()
+                if (n == null || n < 0 || n > MAX_BODY) {
+                    respond(c, "413 Payload Too Large", "text/plain", "Request too large".toByteArray())
+                    return
+                }
+                length = n.toInt()
+            }
         }
-        if (requestLine.startsWith("GET /qa-relay") && c.inetAddress.isLoopbackAddress) {
-            val b = Relay.controlUrl().toByteArray()
-            val o = c.getOutputStream()
-            o.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${b.size}\r\nConnection: close\r\n\r\n".toByteArray())
-            o.write(b); o.flush()
+        if (requestLine.startsWith("GET /qa-relay")) {
+            // QA only: loopback (adb forward) AND QA mode switched on. Otherwise it does not exist.
+            if (c.inetAddress.isLoopbackAddress && (LocalWeb.qaMode || runCatching { Prefs.qaMode }.getOrDefault(false))) {
+                respond(c, "200 OK", "text/plain", Relay.controlUrl().toByteArray())
+            } else {
+                respond(c, "404 Not Found", "text/plain", "Not found".toByteArray())
+            }
             return
         }
         var message = ""
@@ -115,48 +169,55 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
             message = save(parseForm(String(buf, 0, read)))
             onChange(message)
         }
-        val body = page(message).toByteArray()
-        val out = c.getOutputStream()
-        out.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
-        out.write(body)
-        out.flush()
+        respond(c, "200 OK", "text/html; charset=utf-8", page(message).toByteArray())
     }
 
     private fun parseForm(s: String): Map<String, String> = s.split("&").filter { it.contains("=") }.associate {
         URLDecoder.decode(it.substringBefore("="), "UTF-8") to URLDecoder.decode(it.substringAfter("="), "UTF-8").trim()
     }
 
-    private fun save(f: Map<String, String>): String {
+    private suspend fun save(f: Map<String, String>): String {
         val done = mutableListOf<String>()
         f["tmdb"]?.takeIf { it.isNotBlank() }?.let { Prefs.tmdbKey = it; done += "TMDB key saved" }
-        f["server"]?.takeIf { it.isNotBlank() }?.let { Prefs.serverUrl = if (it.startsWith("http")) it else "https://$it"; done += "Server address saved" }
         f["magnet"]?.takeIf { it.isNotBlank() }?.let { m ->
-            done += runCatching { "Added to Real-Debrid: " + runBlocking { RdCloud.addMagnet(m) } }
+            done += runCatching { "Added to Real-Debrid: " + RdCloud.addMagnet(m) }
                 .getOrElse { "Real-Debrid add failed: ${it.message}" }
         }
         f["m3u"]?.takeIf { it.isNotBlank() }?.let { Prefs.m3uUrl = it; done += "Playlist saved" }
         f["stream"]?.takeIf { it.isNotBlank() }?.let { Prefs.customUrl = it; done += "Stream link saved" }
         f["addon"]?.takeIf { it.isNotBlank() }?.let { url ->
-            done += runCatching { "Addon added: " + runBlocking { Addons.install(url).name } }
+            done += runCatching { "Addon added: " + Addons.install(url).name }
                 .getOrElse { "Addon failed: ${it.message}" }
         }
         f["site"]?.takeIf { it.isNotBlank() }?.let { raw ->
             val url = if (raw.startsWith("http")) raw else "https://$raw"
             val name = f["siteName"]?.takeIf { it.isNotBlank() } ?: url.removePrefix("https://").removePrefix("http://").substringBefore("/")
-            Prefs.websites = Prefs.websites + (name to url)
+            Prefs.updateWebsites { it + (name to url) }
             done += "Website added: $name"
         }
-        f["removeSite"]?.takeIf { it.isNotBlank() }?.let { u -> Prefs.websites = Prefs.websites.filterNot { it.second == u }; done += "Website removed" }
-        f["remove"]?.takeIf { it.isNotBlank() }?.let { Addons.remove(it); done += "Addon removed" }
+        f["removeSite"]?.takeIf { it.isNotBlank() }?.let { u -> Prefs.updateWebsites { l -> l.filterNot { it.second == u } }; done += "Website removed" }
+        f["remove"]?.takeIf { it.isNotBlank() }?.let { key ->
+            // The page sends a short id, never the full addon URL (those can contain API keys).
+            val url = Prefs.addonUrls.firstOrNull { addonKey(it) == key || it == key }
+            if (url != null) { Addons.remove(url); done += "Addon removed" } else done += "Addon not found"
+        }
         return done.joinToString(" • ").ifBlank { "Nothing to save" }
     }
 
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace("\"", "&quot;")
 
+    /** Short stable id for an addon URL, so the page never has to contain the URL itself. */
+    private fun addonKey(url: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray())
+            .take(8).joinToString("") { "%02x".format(it) }
+
+    private fun hostOf(url: String): String =
+        runCatching { java.net.URI(url).host }.getOrNull()?.takeIf { it.isNotBlank() } ?: "addon"
+
     private fun page(msg: String): String {
         val addons = Prefs.addonUrls.joinToString("") { u ->
-            "<li><code>${esc(u.take(60))}${if (u.length > 60) "…" else ""}</code>" +
-                "<form method=post style='display:inline'><input type=hidden name=remove value=\"${esc(u)}\"><button>Remove</button></form></li>"
+            "<li><code>${esc(hostOf(u))}</code>" +
+                "<form method=post style='display:inline'><input type=hidden name=remove value=\"${addonKey(u)}\"><button>Remove</button></form></li>"
         }.ifBlank { "<li>None yet</li>" }
         val sites = Prefs.websites.joinToString("") { (n, u) ->
             "<li>${esc(n)} <code>${esc(u.take(50))}</code>" +
@@ -175,7 +236,6 @@ button{margin-top:12px;background:#D61828;color:#fff;border:0;border-radius:8px;
 <label>TMDB API key (posters and info). ${if (Prefs.tmdbKey.isNotBlank()) "✅ set" else "Not set"}</label><input name=tmdb placeholder="Paste key or read token">
 <label>Add an addon (manifest URL or stremio:// link)</label><input name=addon placeholder="https://…/manifest.json">
 <label>Live TV playlist (M3U URL). ${if (Prefs.m3uUrl.isNotBlank()) "✅ set" else "Not set"}</label><input name=m3u placeholder="https://…/playlist.m3u">
-<label>McD TV server address (for accounts). ${if (Prefs.serverUrl.isNotBlank()) "✅ " + esc(Prefs.serverUrl) else "Not set"}</label><input name=server placeholder="https://tv.yourdomain.com">
 <label>Add a magnet link to your Real-Debrid cloud (plays under My List &gt; Real-Debrid Cloud)</label><input name=magnet placeholder="magnet:?xt=urn:btih:…">
 <label>Direct stream link (shows as My Stream)</label><input name=stream placeholder="https://…/video.m3u8">
 <label>Add a website (opens in the TV's built-in browser, under Sports &gt; Websites)</label><input name=site placeholder="https://example.com">

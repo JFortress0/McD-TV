@@ -1,6 +1,8 @@
 package com.mcd.tv.data
 
+import org.json.JSONException
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 /** Scores from several sites for one title. null = not available. */
 data class Ratings(
@@ -17,14 +19,25 @@ data class Ratings(
  * MDBLIST_API_KEY, or the McD TV Control page.
  */
 object RatingsSource {
-    private val cache = HashMap<String, Ratings>()
+    /** Results per IMDb id, including "no scores" results, so misses are not asked for again. */
+    private val cache = ConcurrentHashMap<String, Ratings>()
 
     val configured: Boolean get() = Prefs.mdblistKey.isNotBlank()
 
     suspend fun forImdb(imdbId: String): Ratings {
         cache[imdbId]?.let { return it }
         if (!configured) return Ratings()
-        val o = JSONObject(Http.get("https://mdblist.com/api/?apikey=${Http.enc(Prefs.mdblistKey)}&i=${Http.enc(imdbId)}"))
+        val o = try {
+            JSONObject(Http.get("https://mdblist.com/api/?apikey=${Http.enc(Prefs.mdblistKey)}&i=${Http.enc(imdbId)}"))
+        } catch (e: HttpException) {
+            // Unknown title: remember the miss. Key, rate-limit and server errors may clear up, so retry those later.
+            if (e.code in 400..499 && e.code != 401 && e.code != 403 && e.code != 429) {
+                return Ratings().also { cache[imdbId] = it }
+            }
+            throw e
+        } catch (e: JSONException) {
+            return Ratings().also { cache[imdbId] = it }
+        }
         val list = o.optJSONArray("ratings")
         fun num(source: String): Double? {
             if (list == null) return null

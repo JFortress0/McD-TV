@@ -1,6 +1,11 @@
 package com.mcd.tv.data
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -61,71 +66,213 @@ object RealDebrid {
         Prefs.rdExpiresAt = System.currentTimeMillis() + o.optLong("expires_in", 3600) * 1000 - 60_000
     }
 
+    private const val RECONNECT = "Real-Debrid needs reconnecting. Go to Settings > Real-Debrid."
+
+    /** Only one token refresh at a time; the others wait and reuse its result. */
+    private val refreshLock = Mutex()
+
     private suspend fun token(): String {
         if (!connected) throw IllegalStateException("Connect Real-Debrid in Settings first")
-        if (System.currentTimeMillis() > Prefs.rdExpiresAt) {
-            saveToken(
-                JSONObject(
-                    Http.postForm(
-                        "$OAUTH/token",
-                        mapOf(
-                            "client_id" to Prefs.rdClientId, "client_secret" to Prefs.rdClientSecret,
-                            "code" to Prefs.rdRefreshToken, "grant_type" to "http://oauth.net/grant_type/device/1.0",
-                        ),
-                    ),
-                ),
-            )
-        }
+        if (System.currentTimeMillis() > Prefs.rdExpiresAt) refresh(stale = Prefs.rdAccessToken, force = false)
         return Prefs.rdAccessToken
     }
 
-    private suspend fun auth() = mapOf("Authorization" to "Bearer ${token()}")
+    /**
+     * Refreshes the access token. [stale] is the token the caller saw; if another caller already
+     * replaced it while we waited for the lock, its new token is used instead of refreshing again.
+     * A refused refresh (400/401) means the grant is gone: tokens are cleared and the user must reconnect.
+     */
+    private suspend fun refresh(stale: String, force: Boolean) {
+        refreshLock.withLock {
+            if (Prefs.rdAccessToken != stale && Prefs.rdAccessToken.isNotBlank()) return
+            if (!force && System.currentTimeMillis() <= Prefs.rdExpiresAt) return
+            if (!connected) throw IllegalStateException(RECONNECT)
+            val reply = try {
+                Http.postForm(
+                    "$OAUTH/token",
+                    mapOf(
+                        "client_id" to Prefs.rdClientId, "client_secret" to Prefs.rdClientSecret,
+                        "code" to Prefs.rdRefreshToken, "grant_type" to "http://oauth.net/grant_type/device/1.0",
+                    ),
+                )
+            } catch (e: HttpException) {
+                if (e.code == 400 || e.code == 401) {
+                    Prefs.clearRealDebrid()
+                    throw IllegalStateException(RECONNECT)
+                }
+                throw e
+            }
+            saveToken(JSONObject(reply))
+        }
+    }
+
+    /**
+     * Runs one authorized API call. If RD answers 401 (token revoked or expired early),
+     * refreshes the token once and retries.
+     */
+    internal suspend fun <T> authed(call: suspend (Map<String, String>) -> T): T {
+        val t = token()
+        return try {
+            call(mapOf("Authorization" to "Bearer $t"))
+        } catch (e: HttpException) {
+            if (e.code != 401) throw e
+            refresh(stale = t, force = true)
+            call(mapOf("Authorization" to "Bearer ${Prefs.rdAccessToken}"))
+        }
+    }
+
+    internal suspend fun apiGet(path: String): String = authed { Http.get("$API$path", it) }
+    internal suspend fun apiPost(path: String, fields: Map<String, String>): String = authed { Http.postForm("$API$path", fields, it) }
+    internal suspend fun apiDelete(path: String): String = authed { Http.delete("$API$path", it) }
 
     /** Valid access token (refreshed if needed), for other RD helpers. */
     suspend fun accessToken(): String = token()
 
     /** Account status line for Settings, e.g. "jfortress • premium until 2027-01-02". */
     suspend fun accountSummary(): String {
-        val o = JSONObject(Http.get("$API/user", auth()))
+        val o = JSONObject(apiGet("/user"))
         val exp = (o.s("expiration") ?: "").take(10)
         return "${o.s("username") ?: "?"} • ${o.s("type") ?: "?"}" + if (exp.isNotBlank()) " until $exp" else ""
     }
 
     /** Hoster / RD link -> direct streamable URL. */
     suspend fun unrestrict(link: String): String {
-        val o = JSONObject(Http.postForm("$API/unrestrict/link", mapOf("link" to link), auth()))
+        val o = JSONObject(apiPost("/unrestrict/link", mapOf("link" to link)))
         return o.getString("download")
     }
 
-    private val videoExt = Regex("\\.(mkv|mp4|avi|m4v|mov|webm|ts)$", RegexOption.IGNORE_CASE)
+    internal val videoExt = Regex("\\.(mkv|mp4|avi|m4v|mov|webm|ts)$", RegexOption.IGNORE_CASE)
+    private val failedStatuses = setOf("magnet_error", "error", "virus", "dead")
+    private val busyStatuses = setOf("queued", "downloading", "compressing", "uploading")
+
+    internal suspend fun torrentInfo(id: String): JSONObject = JSONObject(apiGet("/torrents/info/$id"))
+
+    /** Waits (up to ~10 s) while RD is still turning the magnet into a file list. */
+    internal suspend fun waitForFiles(id: String): JSONObject {
+        var info = torrentInfo(id)
+        var waited = 0L
+        while (info.optString("status") == "magnet_conversion" && waited < 10_000) {
+            delay(1000)
+            waited += 1000
+            info = torrentInfo(id)
+        }
+        return info
+    }
+
+    private fun filesOf(info: JSONObject): List<JSONObject> {
+        val files: JSONArray = info.optJSONArray("files") ?: JSONArray()
+        return (0 until files.length()).map { files.getJSONObject(it) }
+    }
+
+    private fun isVideo(f: JSONObject) = videoExt.containsMatchIn(f.optString("path"))
+
+    /**
+     * Picks the file to play:
+     *  1. the addon's fileIdx (Stremio counts from 0, RD file ids from 1), else the old by-position match;
+     *  2. for TV, the file named for the episode (S01E05, s1e5, 1x05);
+     *  3. the largest video file.
+     */
+    private fun chooseFile(list: List<JSONObject>, fileIdx: Int?, season: Int?, episode: Int?): JSONObject? {
+        if (fileIdx != null) {
+            list.firstOrNull { it.optInt("id") == fileIdx + 1 }?.takeIf { isVideo(it) }?.let { return it }
+            list.getOrNull(fileIdx)?.takeIf { isVideo(it) }?.let { return it }
+        }
+        val videos = list.filter { isVideo(it) }
+        if (season != null && episode != null && season > 0 && episode > 0) {
+            val rx = Regex(
+                "(s0*$season[ ._-]?e0*$episode(?!\\d))|((?<!\\d)0*${season}x0*$episode(?!\\d))",
+                RegexOption.IGNORE_CASE,
+            )
+            videos.filter { rx.containsMatchIn(it.optString("path").substringAfterLast('/')) }
+                .maxByOrNull { it.optLong("bytes") }?.let { return it }
+            videos.filter { rx.containsMatchIn(it.optString("path")) }
+                .maxByOrNull { it.optLong("bytes") }?.let { return it }
+        }
+        return videos.maxByOrNull { it.optLong("bytes") }
+    }
+
+    /** The RD link for [chosen] in a downloaded torrent. RD gives one link per selected file, in file order. */
+    private fun linkFor(info: JSONObject, chosen: JSONObject?): String? {
+        val links = info.optJSONArray("links") ?: return null
+        if (links.length() == 0) return null
+        val selected = filesOf(info).filter { it.optInt("selected") == 1 }.sortedBy { it.optInt("id") }
+        val i = if (chosen == null) 0 else selected.indexOfFirst { it.optInt("id") == chosen.optInt("id") }
+        if (i < 0 || i >= links.length()) return null
+        return links.getString(i)
+    }
+
+    /** The newest torrent with this hash already in your RD account (first page only), or null. */
+    private suspend fun findExisting(hash: String): JSONObject? {
+        val body = apiGet("/torrents?limit=100&page=1")
+        if (body.isBlank()) return null // RD answers 204 with no body when the list is empty
+        val a = JSONArray(body)
+        return (0 until a.length()).map { a.getJSONObject(it) }
+            .firstOrNull { it.optString("hash").equals(hash, ignoreCase = true) }
+    }
 
     /**
      * Torrent hash -> direct URL, through your own RD account:
-     * add magnet, select the right file, and unrestrict once RD has it.
-     * Cached torrents finish in a few seconds. Uncached ones throw with the progress.
+     * reuse the torrent if it is already in your account, otherwise add the magnet,
+     * select the right file, and unrestrict once RD has it.
+     * Cached torrents finish in a few seconds. Uncached ones throw with the progress,
+     * and torrents added here that do not play are deleted again so the RD cloud stays clean.
      */
-    suspend fun resolveHash(infoHash: String, fileIdx: Int?): String {
-        val h = auth()
-        val added = JSONObject(Http.postForm("$API/torrents/addMagnet", mapOf("magnet" to "magnet:?xt=urn:btih:$infoHash"), h))
-        val id = added.getString("id")
-        var info = JSONObject(Http.get("$API/torrents/info/$id", h))
-        val files: JSONArray = info.optJSONArray("files") ?: JSONArray()
-        val list = (0 until files.length()).map { files.getJSONObject(it) }
-        val chosen = fileIdx?.let { idx -> list.getOrNull(idx)?.takeIf { videoExt.containsMatchIn(it.optString("path")) } }
-            ?: list.filter { videoExt.containsMatchIn(it.optString("path")) }.maxByOrNull { it.optLong("bytes") }
-        Http.postForm("$API/torrents/selectFiles/$id", mapOf("files" to (chosen?.optInt("id")?.toString() ?: "all")), h)
+    suspend fun resolveHash(infoHash: String, fileIdx: Int?, season: Int? = null, episode: Int? = null): String {
+        val hash = infoHash.trim().lowercase()
 
-        repeat(8) {
-            info = JSONObject(Http.get("$API/torrents/info/$id", h))
-            val status = info.optString("status")
-            if (status == "downloaded") {
-                val links = info.optJSONArray("links")
-                if (links != null && links.length() > 0) return unrestrict(links.getString(0))
-            }
-            if (status in listOf("magnet_error", "error", "virus", "dead")) throw IllegalStateException("Real-Debrid: $status")
-            delay(1500)
+        var reuseId: String? = null
+        val existing = try {
+            findExisting(hash)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IllegalStateException) {
+            throw e // not connected / needs reconnecting
+        } catch (e: Exception) {
+            null // listing failed: just add the magnet
         }
-        throw IllegalStateException("Not cached on Real-Debrid yet (${info.optInt("progress")}% downloaded). Pick a cached source.")
+        if (existing != null) {
+            val id = existing.optString("id")
+            when (existing.optString("status")) {
+                "downloaded" -> {
+                    val info = torrentInfo(id)
+                    val chosen = chooseFile(filesOf(info), fileIdx, season, episode)
+                    // If the file we want was not selected in that copy, fall through and add a fresh one.
+                    linkFor(info, chosen)?.let { return unrestrict(it) }
+                }
+                in busyStatuses ->
+                    throw IllegalStateException("Not cached on Real-Debrid yet (${existing.optInt("progress")}% downloaded). Pick a cached source.")
+                "waiting_files_selection", "magnet_conversion" -> reuseId = id
+                else -> Unit // broken or unknown copy: add a fresh one
+            }
+        }
+
+        val owned = reuseId == null
+        val id = reuseId ?: JSONObject(apiPost("/torrents/addMagnet", mapOf("magnet" to "magnet:?xt=urn:btih:$hash"))).getString("id")
+        try {
+            var info = waitForFiles(id)
+            var status = info.optString("status")
+            if (status == "magnet_conversion") throw IllegalStateException("Real-Debrid is still reading this torrent. Pick another source.")
+            if (status in failedStatuses) throw IllegalStateException("Real-Debrid: $status")
+            val chosen = chooseFile(filesOf(info), fileIdx, season, episode)
+            if (status == "waiting_files_selection") {
+                apiPost("/torrents/selectFiles/$id", mapOf("files" to (chosen?.optInt("id")?.toString() ?: "all")))
+            }
+            repeat(8) {
+                info = torrentInfo(id)
+                status = info.optString("status")
+                if (status == "downloaded") {
+                    val link = linkFor(info, chosen) ?: info.optJSONArray("links")?.takeIf { it.length() > 0 }?.getString(0)
+                    if (link != null) return unrestrict(link)
+                }
+                if (status in failedStatuses) throw IllegalStateException("Real-Debrid: $status")
+                delay(1500)
+            }
+            throw IllegalStateException("Not cached on Real-Debrid yet (${info.optInt("progress")}% downloaded). Pick a cached source.")
+        } catch (e: Throwable) {
+            // Not playable (uncached, failed, or the user backed out): remove it from the RD cloud.
+            if (owned) withContext(NonCancellable) { runCatching { apiDelete("/torrents/delete/$id") } }
+            throw e
+        }
     }
 }
 
@@ -136,14 +283,13 @@ data class RdItem(val id: String, val name: String, val sizeGb: Double, val stat
 data class RdFile(val name: String, val link: String, val sizeGb: Double)
 
 object RdCloud {
-    private const val API = "https://api.real-debrid.com/rest/1.0"
-    private val videoExt = Regex("\\.(mkv|mp4|avi|m4v|mov|webm|ts)$", RegexOption.IGNORE_CASE)
-
-    private suspend fun auth() = mapOf("Authorization" to "Bearer ${RealDebrid.accessToken()}")
+    private val videoExt = RealDebrid.videoExt
 
     /** Everything in your RD cloud, newest first. */
     suspend fun list(): List<RdItem> {
-        val a = JSONArray(Http.get("$API/torrents?limit=200", auth()))
+        val body = RealDebrid.apiGet("/torrents?limit=200")
+        if (body.isBlank()) return emptyList() // 204: empty cloud
+        val a = JSONArray(body)
         return (0 until a.length()).map { a.getJSONObject(it) }.map {
             RdItem(
                 id = it.optString("id"),
@@ -158,7 +304,7 @@ object RdCloud {
 
     /** The video files in one item, in order, each with its RD link. */
     suspend fun files(id: String): List<RdFile> {
-        val info = JSONObject(Http.get("$API/torrents/info/$id", auth()))
+        val info = RealDebrid.torrentInfo(id)
         val links = info.optJSONArray("links") ?: JSONArray()
         val files = info.optJSONArray("files") ?: JSONArray()
         // RD returns one link per selected file, in file order.
@@ -172,35 +318,50 @@ object RdCloud {
 
     /** Adds a magnet link you supply to your RD account and selects its video files. */
     suspend fun addMagnet(magnet: String): String {
-        val h = auth()
-        val id = JSONObject(Http.postForm("$API/torrents/addMagnet", mapOf("magnet" to magnet.trim()), h)).getString("id")
-        val info = JSONObject(Http.get("$API/torrents/info/$id", h))
-        val files = info.optJSONArray("files") ?: JSONArray()
-        val ids = (0 until files.length()).map { files.getJSONObject(it) }
-            .filter { videoExt.containsMatchIn(it.optString("path")) }.map { it.optInt("id") }
-        Http.postForm("$API/torrents/selectFiles/$id", mapOf("files" to if (ids.isEmpty()) "all" else ids.joinToString(",")), h)
+        val id = JSONObject(RealDebrid.apiPost("/torrents/addMagnet", mapOf("magnet" to magnet.trim()))).getString("id")
+        val info = RealDebrid.waitForFiles(id)
+        if (info.optString("status") == "waiting_files_selection") {
+            val files = info.optJSONArray("files") ?: JSONArray()
+            val ids = (0 until files.length()).map { files.getJSONObject(it) }
+                .filter { videoExt.containsMatchIn(it.optString("path")) }.map { it.optInt("id") }
+            RealDebrid.apiPost("/torrents/selectFiles/$id", mapOf("files" to if (ids.isEmpty()) "all" else ids.joinToString(",")))
+        }
         return info.optString("filename", "Added")
     }
 }
 
 /** Turns any source into a URL the player can open. */
 object Resolver {
-    suspend fun resolve(s: StreamSource): String = when {
+    /**
+     * meta (optional) supplies season/episode for TV when the source itself does not carry them,
+     * so Real-Debrid picks the right file out of a season pack.
+     */
+    suspend fun resolve(s: StreamSource, meta: PlayMeta? = null): String = when {
         s.url != null && s.url.contains("real-debrid.com/d/") && RealDebrid.connected -> RealDebrid.unrestrict(s.url)
         s.url != null -> s.url
-        s.infoHash != null -> RealDebrid.resolveHash(s.infoHash, s.fileIdx)
+        s.infoHash != null -> {
+            val tv = meta != null && meta.type == "tv" && meta.season > 0 && meta.episode > 0
+            RealDebrid.resolveHash(
+                s.infoHash,
+                s.fileIdx,
+                season = s.season ?: if (tv) meta?.season else null,
+                episode = s.episode ?: if (tv) meta?.episode else null,
+            )
+        }
         else -> throw IllegalStateException("This source has no playable link")
     }
 
     /** Tries the top sources in order until one resolves. Used by Play and Background Noise. */
-    suspend fun best(list: List<StreamSource>): Pair<StreamSource, String> {
+    suspend fun best(list: List<StreamSource>, meta: PlayMeta? = null): Pair<StreamSource, String> {
         var last: Exception? = null
         for (s in list.take(5)) {
             try {
-                return s to resolve(s)
+                return s to resolve(s, meta)
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is CancellationException) throw e
                 last = e
+                // Real-Debrid needs reconnecting: no point trying the other torrents.
+                if (e is IllegalStateException && e.message?.startsWith("Real-Debrid needs reconnecting") == true) throw e
             }
         }
         throw last ?: IllegalStateException("No sources found. Add an addon in Settings.")

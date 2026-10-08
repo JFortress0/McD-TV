@@ -138,7 +138,31 @@ object Tmdb {
         if (key.length > 40) headers["Authorization"] = "Bearer $key" else all["api_key"] = key
         all.putIfAbsent("language", "en-US")
         val url = "$BASE$path?" + Http.form(all)
-        return JSONObject(Http.get(url, headers))
+        cacheGet(url)?.let { return JSONObject(it) }
+        val body = Http.get(url, headers)
+        val parsed = JSONObject(body) // only cache replies that parse
+        cachePut(url, body)
+        return parsed
+    }
+
+    // ---- Small in-memory LRU cache of GET replies (text, so callers always get a fresh JSONObject) ----
+    private const val CACHE_MAX = 150
+    private const val CACHE_TTL_MS = 10 * 60_000L
+    internal class CacheEntry(val body: String, val at: Long)
+    private val cache = object : LinkedHashMap<String, CacheEntry>(CACHE_MAX + 1, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CacheEntry>?): Boolean = size > CACHE_MAX
+    }
+
+    private fun cacheGet(url: String): String? = synchronized(cache) {
+        val e = cache[url] ?: return null
+        if (System.currentTimeMillis() - e.at > CACHE_TTL_MS) {
+            cache.remove(url)
+            null
+        } else e.body
+    }
+
+    private fun cachePut(url: String, body: String) = synchronized(cache) {
+        cache[url] = CacheEntry(body, System.currentTimeMillis())
     }
 
     private fun parse(o: JSONObject, forcedType: String?): Title? {

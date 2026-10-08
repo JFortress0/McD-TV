@@ -5,6 +5,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 /** One playable option from an addon, shown in the source picker. */
 data class StreamSource(
@@ -21,6 +22,9 @@ data class StreamSource(
     val cached: Boolean,
     /** HTTP headers the addon says the stream needs (behaviorHints.proxyHeaders.request). */
     val headers: Map<String, String> = emptyMap(),
+    /** Season and episode this source was requested for (TV only), so Real-Debrid can pick the right file in a pack. */
+    val season: Int? = null,
+    val episode: Int? = null,
 )
 
 /** A browsable addon catalog of live channels or events (Stremio types tv, channel, events). */
@@ -49,8 +53,18 @@ object Addons {
 
     private fun base(manifestUrl: String) = manifestUrl.removeSuffix("/manifest.json")
 
+    /** Per-request timeout for addon calls, so one slow addon cannot hold up the list. */
+    private const val ADDON_TIMEOUT_MS = 10_000
+
+    /** Addon display names by manifest URL, filled on install and on every manifest fetch. */
+    private val names = ConcurrentHashMap<String, String>()
+
+    /** The addon's name, from cache when we have it; fetches the manifest once otherwise. */
+    suspend fun nameOf(manifestUrl: String, fallback: String = "Addon"): String =
+        names[manifestUrl] ?: runCatching { manifest(manifestUrl).name }.getOrDefault(fallback)
+
     suspend fun manifest(url: String): AddonInfo {
-        val o = JSONObject(Http.get(url))
+        val o = JSONObject(Http.get(url, timeoutMs = ADDON_TIMEOUT_MS))
         val res = o.optJSONArray("resources")
         var streams = false
         if (res != null) for (i in 0 until res.length()) {
@@ -58,7 +72,9 @@ object Addons {
             val name = if (r is JSONObject) r.optString("name") else r.toString()
             if (name == "stream") streams = true
         }
-        return AddonInfo(url, o.s("name") ?: "Addon", o.s("description") ?: "", streams)
+        val name = o.s("name") ?: "Addon"
+        names[url] = name
+        return AddonInfo(url, name, o.s("description") ?: "", streams)
     }
 
     private val liveTypes = setOf("tv", "channel", "events")
@@ -69,8 +85,9 @@ object Addons {
             async {
                 withTimeoutOrNull(15_000) {
                     runCatching {
-                        val o = JSONObject(Http.get(m))
+                        val o = JSONObject(Http.get(m, timeoutMs = ADDON_TIMEOUT_MS))
                         val addonName = o.s("name") ?: "Addon"
+                        names[m] = addonName
                         val cats = o.optJSONArray("catalogs") ?: return@runCatching emptyList<LiveCatalog>()
                         (0 until cats.length()).mapNotNull { i ->
                             val c = cats.getJSONObject(i)
@@ -94,7 +111,7 @@ object Addons {
     /** One page of a live catalog. */
     suspend fun catalog(c: LiveCatalog, skip: Int = 0): List<LiveItem> {
         val path = if (skip > 0) "${c.id}/skip=$skip" else c.id
-        val o = JSONObject(Http.get("${base(c.addonUrl)}/catalog/${c.type}/$path.json"))
+        val o = JSONObject(Http.get("${base(c.addonUrl)}/catalog/${c.type}/$path.json", timeoutMs = ADDON_TIMEOUT_MS))
         val metas = o.optJSONArray("metas") ?: return emptyList()
         return (0 until metas.length()).map { i ->
             val m = metas.getJSONObject(i)
@@ -106,8 +123,8 @@ object Addons {
 
     /** Streams for one live channel or event, from the addon that listed it. Torrent-only results are dropped. */
     suspend fun liveStreams(item: LiveItem): List<StreamSource> {
-        val addonName = runCatching { manifest(item.addonUrl).name }.getOrDefault("Addon")
-        val o = JSONObject(Http.get("${base(item.addonUrl)}/stream/${item.type}/${enc(item.id)}.json"))
+        val addonName = nameOf(item.addonUrl)
+        val o = JSONObject(Http.get("${base(item.addonUrl)}/stream/${item.type}/${enc(item.id)}.json", timeoutMs = ADDON_TIMEOUT_MS))
         val arr = o.optJSONArray("streams") ?: return emptyList()
         return (0 until arr.length()).map { parse(addonName, arr.getJSONObject(it)) }.filter { it.url != null }
     }
@@ -116,12 +133,13 @@ object Addons {
     suspend fun install(input: String): AddonInfo {
         val url = normalize(input)
         val info = manifest(url)
-        Prefs.addonUrls = Prefs.addonUrls + url
+        Prefs.updateAddonUrls { it + url }
         return info
     }
 
     fun remove(url: String) {
-        Prefs.addonUrls = Prefs.addonUrls - url
+        Prefs.updateAddonUrls { it - url }
+        names.remove(url)
     }
 
     private val qualityRx = Regex("(2160p|4k|1080p|720p|480p)", RegexOption.IGNORE_CASE)
@@ -138,14 +156,19 @@ object Addons {
      */
     suspend fun streams(type: String, id: String): List<StreamSource> = coroutineScope {
         val stremioType = if (type == "tv") "series" else "movie"
+        // TV ids look like "tt123:1:5" (season 1, episode 5).
+        val parts = id.split(":")
+        val season = if (type == "tv") parts.getOrNull(1)?.toIntOrNull() else null
+        val episode = if (type == "tv") parts.getOrNull(2)?.toIntOrNull() else null
         Prefs.addonUrls.map { m ->
             async {
                 withTimeoutOrNull(20_000) {
                     runCatching {
-                        val addonName = runCatching { manifest(m).name }.getOrDefault("Addon")
-                        val o = JSONObject(Http.get("${base(m)}/stream/$stremioType/$id.json"))
+                        val addonName = nameOf(m)
+                        val o = JSONObject(Http.get("${base(m)}/stream/$stremioType/$id.json", timeoutMs = ADDON_TIMEOUT_MS))
                         val arr = o.optJSONArray("streams")
-                        if (arr == null) emptyList() else (0 until arr.length()).map { parse(addonName, arr.getJSONObject(it)) }
+                        if (arr == null) emptyList()
+                        else (0 until arr.length()).map { parse(addonName, arr.getJSONObject(it)).copy(season = season, episode = episode) }
                     }.getOrDefault(emptyList())
                 } ?: emptyList()
             }

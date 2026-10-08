@@ -57,21 +57,53 @@ object Prefs {
         get() = str("m3u_url")
         set(v) = put("m3u_url", v)
 
+    /** Guards the JSON list settings, which are read-modify-written from several threads. */
+    private val listLock = Any()
+
     // ---- Addons (Stremio protocol): list of manifest URLs ----
     var addonUrls: List<String>
-        get() = runCatching {
-            val a = JSONArray(sp.getString("addon_urls", "[]"))
-            List(a.length()) { a.getString(it) }
-        }.getOrDefault(emptyList())
-        set(v) = sp.edit().putString("addon_urls", JSONArray(v.distinct()).toString()).apply()
+        get() = synchronized(listLock) {
+            runCatching {
+                val a = JSONArray(sp.getString("addon_urls", "[]"))
+                List(a.length()) { a.getString(it) }
+            }.getOrDefault(emptyList())
+        }
+        set(v) = synchronized(listLock) { sp.edit().putString("addon_urls", JSONArray(v.distinct()).toString()).apply() }
+
+    /** Atomically changes the addon list (no lost updates between threads). Returns the new list. */
+    fun updateAddonUrls(change: (List<String>) -> List<String>): List<String> = synchronized(listLock) {
+        val next = change(addonUrls).distinct()
+        addonUrls = next
+        next
+    }
 
     // ---- Websites you add (opened in the built-in browser): list of name|url ----
     var websites: List<Pair<String, String>>
-        get() = runCatching {
-            val a = JSONArray(sp.getString("websites", "[]"))
-            List(a.length()) { a.getString(it) }.map { it.substringBefore("|") to it.substringAfter("|") }
-        }.getOrDefault(emptyList())
-        set(v) = sp.edit().putString("websites", JSONArray(v.distinctBy { it.second }.map { "${it.first}|${it.second}" }).toString()).apply()
+        get() = synchronized(listLock) {
+            runCatching {
+                val a = JSONArray(sp.getString("websites", "[]"))
+                List(a.length()) { a.getString(it) }.map { it.substringBefore("|") to it.substringAfter("|") }
+            }.getOrDefault(emptyList())
+        }
+        set(v) = synchronized(listLock) {
+            sp.edit().putString("websites", JSONArray(v.distinctBy { it.second }.map { "${it.first}|${it.second}" }).toString()).apply()
+        }
+
+    /** Atomically changes the website list. Returns the new list. */
+    fun updateWebsites(change: (List<Pair<String, String>>) -> List<Pair<String, String>>): List<Pair<String, String>> =
+        synchronized(listLock) {
+            val next = change(websites).distinctBy { it.second }
+            websites = next
+            next
+        }
+
+    /**
+     * Automated-QA switch. When true, the home-network page answers /qa-relay on loopback (adb forward)
+     * with the internet setup link. Off by default; never synced to the account.
+     */
+    var qaMode: Boolean
+        get() = sp.getBoolean("qa_mode", false)
+        set(v) = sp.edit().putBoolean("qa_mode", v).apply()
 
     // ---- Real-Debrid (device-code OAuth; nothing typed on the TV) ----
     var rdClientId: String
@@ -110,7 +142,7 @@ object Prefs {
         set(v) = sp.edit().putLong("last_sync_at", v).apply()
 
     /** Keys that belong to this TV only and never sync to the account. */
-    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since")
+    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String
@@ -135,7 +167,7 @@ object Prefs {
     }
 
     /** Replaces this TV's synced settings and lists with the account's copy. */
-    fun importAll(o: org.json.JSONObject) {
+    fun importAll(o: org.json.JSONObject) = synchronized(listLock) {
         val e = sp.edit()
         sp.all.keys.filter { it !in localOnly }.forEach { e.remove(it) }
         o.keys().forEach { k ->
