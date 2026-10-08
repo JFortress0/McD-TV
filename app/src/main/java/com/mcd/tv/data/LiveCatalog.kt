@@ -183,7 +183,7 @@ object LiveOrganizer {
         "(?i)(?<![\\p{L}\\p{N}])(?:RAW|\\d{2,3}\\s?FPS|FHD|UHD|HD|SD|HQ|4K|8K|2160P|1080P|1080I|720P|480P|HEVC|H\\.?26[45]|X26[45]|HDR10\\+?|HDR|BACKUP|MULTI-?AUDIO)(?![\\p{L}\\p{N}])",
     )
 
-    private val EMPTY_BRACKETS = Regex("\\(\\s*\\)|\\[\\s*]|\\{\\s*}")
+    private val EMPTY_BRACKETS = Regex("\\(\\s*\\)|\\[\\s*\\]|\\{\\s*\\}")
     private val SPACES = Regex("\\s{2,}")
     private val LEAD_JUNK = Regex("^[\\s|:;,./\\\\\\-–—•·*#=_~★☆●◉►▶>]+")
     private val TRAIL_JUNK = Regex("[\\s|:;,./\\\\\\-–—•·*#=_~★☆●◉◄<(\\[]+$")
