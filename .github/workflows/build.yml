@@ -1,7 +1,7 @@
 # Builds the McD TV APK in the cloud on every push to main.
 # Output: (1) a downloadable workflow artifact, (2) a GitHub Release with the APK attached.
-# The Release always includes McD-TV.apk, so this link never changes:
-#   https://github.com/<you>/<repo>/releases/latest/download/McD-TV.apk
+# The Release always includes Jarvis.apk (and McD-TV.apk for old links), so this link never changes:
+#   https://github.com/<you>/<repo>/releases/latest/download/Jarvis.apk
 name: Build APK
 
 on:
@@ -63,6 +63,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           cp app/build/outputs/apk/release/app-release.apk "McD-TV-v$VERSION.apk"
           cp app/build/outputs/apk/release/app-release.apk "McD-TV.apk"
+          cp app/build/outputs/apk/release/app-release.apk "Jarvis.apk"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -74,9 +75,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
-          name: McD TV v${{ env.VERSION }}
+          name: Jarvis v${{ env.VERSION }}
           body: "Built from commit ${{ github.sha }}. Install on Fire TV with the Downloader app."
           make_latest: true
           files: |
             McD-TV-v${{ env.VERSION }}.apk
             McD-TV.apk
+            Jarvis.apk

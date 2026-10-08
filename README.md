@@ -72,15 +72,15 @@ Jarvis/
 3. The build signs the APK with your key (the `KEYSTORE_BASE64` secret).
 4. GitHub publishes a Release with two copies of the APK:
    - `McD-TV-v0.2.N.apk` keeps a record of each version.
-   - `McD-TV.apk` always holds the newest build.
+   - `Jarvis.apk` always holds the newest build.
 5. On the TV, the Downloader app uses this link. It never changes:
-   `https://github.com/JFortress0/McD-TV/releases/latest/download/McD-TV.apk`
+   `https://github.com/JFortress0/McD-TV/releases/latest/download/Jarvis.apk`
 
 Each build gets a higher version number, so the TV installs it as an update. Your settings stay.
 
 ## Where to find the APK on GitHub
 
-- **Newest APK:** open your repository page. Click **Releases** on the right side. Click `McD-TV.apk` under the top release.
+- **Newest APK:** open your repository page. Click **Releases** on the right side. Click `Jarvis.apk` under the top release.
 - **One build's APK:** click the **Actions** tab. Click a run. Scroll to **Artifacts**.
 - **Roll back:** in **Releases**, download an older `McD-TV-v0.2.N.apk` and install it.
 
