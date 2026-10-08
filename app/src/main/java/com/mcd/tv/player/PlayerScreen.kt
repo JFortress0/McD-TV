@@ -1,5 +1,6 @@
 package com.mcd.tv.player
 
+import android.view.KeyEvent
 import android.view.View
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
@@ -12,9 +13,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +77,10 @@ fun PlayerScreen(
     onKeyEvent: ((android.view.KeyEvent, Boolean) -> Boolean)? = null,
     /** false: the control bar appears only when a key asks for it (Live TV, so channel surfing isn't interrupted). */
     autoShowControls: Boolean = true,
+    /** MENU cycles a sleep timer (Off / 30 / 60 / 90 min / end of this video) on non-live video. */
+    sleepTimerEnabled: Boolean = true,
+    /** Called when the sleep timer fires, after pausing (e.g. leave the player). Null: just pause. */
+    onSleep: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
@@ -83,6 +90,12 @@ fun PlayerScreen(
     val progress = remember { ProgressSaver(meta) }
     @Suppress("DEPRECATION") // androidx.compose.ui.platform.LocalLifecycleOwner: always on the classpath with this BOM
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnSleep by rememberUpdatedState(onSleep)
+    val currentOnEnded by rememberUpdatedState(onEnded)
+    // Sleep timer: index into SLEEP_STEPS (0 = off). Each MENU press moves to the next step.
+    var sleepStep by remember { mutableIntStateOf(0) }
+    var sleepToast by remember { mutableStateOf<String?>(null) }
+    var sleepToastTick by remember { mutableIntStateOf(0) }
 
     val player = remember {
         // Follow http->https redirects (common with debrid and CDN links).
@@ -118,7 +131,14 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) networkRetries = 0 // playing again: reset the retry budget
                 if (state == Player.STATE_ENDED) {
                     progress.save(player, force = true)
-                    onEnded?.invoke()
+                    if (SLEEP_STEPS[sleepStep] == SLEEP_END_OF_VIDEO) {
+                        // "End of this video": stop here instead of rolling into the next episode.
+                        sleepStep = 0
+                        player.pause()
+                        currentOnSleep?.invoke()
+                    } else {
+                        currentOnEnded?.invoke()
+                    }
                 }
             }
 
@@ -181,6 +201,48 @@ fun PlayerScreen(
         }
     }
 
+    // Sleep timer countdown (restarts whenever the setting changes).
+    LaunchedEffect(sleepStep) {
+        val minutes = SLEEP_STEPS[sleepStep]
+        if (minutes > 0) {
+            delay(minutes * 60_000L)
+            sleepStep = 0
+            player.pause()
+            progress.save(player, force = true)
+            currentOnSleep?.invoke()
+        }
+    }
+
+    // Hide the "Sleep timer: ..." note 2.5 s after the last MENU press.
+    LaunchedEffect(sleepToastTick) {
+        if (sleepToast != null) {
+            delay(2_500)
+            sleepToast = null
+        }
+    }
+
+    // MENU cycles the sleep timer on non-live video. Consumes both down and up so Media3 ignores it.
+    val handleSleepKey: (KeyEvent) -> Boolean = { e ->
+        if (e.keyCode != KeyEvent.KEYCODE_MENU || player.isCurrentMediaItemLive) {
+            false
+        } else {
+            if (e.action == KeyEvent.ACTION_UP) {
+                sleepStep = (sleepStep + 1) % SLEEP_STEPS.size
+                val step = SLEEP_STEPS[sleepStep]
+                sleepToast = when {
+                    step == 0 -> "Sleep timer: Off"
+                    step == SLEEP_END_OF_VIDEO -> "Sleep timer: End of this video"
+                    else -> "Sleep timer: $step min"
+                }
+                sleepToastTick++
+            }
+            true
+        }
+    }
+    val keyHandler: (KeyEvent, Boolean) -> Boolean = { e, showing ->
+        onKeyEvent?.invoke(e, showing) == true || (sleepTimerEnabled && handleSleepKey(e))
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -205,7 +267,7 @@ fun PlayerScreen(
                     post { requestFocus() } // remote key presses go to the player
                 }
             },
-            update = { view -> view.keyInterceptor = onKeyEvent },
+            update = { view -> view.keyInterceptor = keyHandler },
         )
 
         // Title strip, shown with the controls (Media3's control bar has no title).
@@ -233,6 +295,19 @@ fun PlayerScreen(
             )
         }
 
+        sleepToast?.let { msg ->
+            Text(
+                text = msg,
+                color = McdColors.White,
+                fontSize = 18.sp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 32.dp, end = 40.dp)
+                    .background(McdColors.Card.copy(alpha = 0.9f))
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+
         error?.let { msg ->
             Column(
                 modifier = Modifier
@@ -253,6 +328,10 @@ fun PlayerScreen(
         }
     }
 }
+
+/** Sleep timer steps in minutes; 0 = off, [SLEEP_END_OF_VIDEO] = stop when this video ends. */
+private const val SLEEP_END_OF_VIDEO = -1
+private val SLEEP_STEPS = intArrayOf(0, 30, 60, 90, SLEEP_END_OF_VIDEO)
 
 /** Writes the resume position, skipping writes when the position moved 5 s or less since the last one. */
 private class ProgressSaver(private val meta: PlayMeta?) {
