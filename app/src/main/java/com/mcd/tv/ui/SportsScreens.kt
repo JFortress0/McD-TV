@@ -78,11 +78,19 @@ fun SportsScreen(nav: Nav) {
             Text("McD TV ", style = broadcastStyle(30.sp))
             Text("SPORTS CENTER", style = broadcastStyle(30.sp, McdColors.Red))
         }
-        val sites = remember { Prefs.websites }
-        if (sites.isNotEmpty()) {
-            LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { Text("WEBSITES  ", style = broadcastStyle(16.sp, McdColors.Muted)) }
-                items(sites) { (name, url) -> ActionButton("🌐 $name", { nav.push(Screen.Web(url, name)) }) }
+        // Websites you added (Control page or home setup page). Re-read every few seconds so a save shows up right away.
+        var sites by remember { mutableStateOf(Prefs.websites) }
+        LaunchedEffect(Unit) { while (true) { sites = Prefs.websites; delay(3000) } }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            item { Text("WEBSITES  ", style = broadcastStyle(16.sp, McdColors.Muted)) }
+            if (sites.isEmpty()) {
+                item { Text("None yet. Add them in McD TV Control (Settings > Phone & Computer Setup).", color = McdColors.Muted, fontSize = 14.sp) }
+            } else {
+                items(sites) { (name, url) -> ActionButton("🌐 $name", { nav.push(Screen.Web(url, name)) }, primary = true) }
             }
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

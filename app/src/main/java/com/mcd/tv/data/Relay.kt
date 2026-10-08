@@ -122,7 +122,7 @@ object Relay {
         var backoff = 2000L
         while (gen == generation) {
             try {
-                val since = Prefs.relaySince.ifBlank { "10m" }
+                val since = Prefs.relaySince.ifBlank { "12h" }
                 val c = URL("$BASE$inTopic/json?since=$since").openConnection() as HttpURLConnection
                 c.connectTimeout = 15_000
                 c.readTimeout = 120_000 // ntfy sends a keepalive every ~45 s

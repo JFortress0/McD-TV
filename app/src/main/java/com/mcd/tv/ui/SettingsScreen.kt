@@ -78,7 +78,9 @@ fun SettingsScreen(nav: Nav) {
             Text(
                 "TMDB: " + (if (Prefs.tmdbKey.isNotBlank()) "connected" else "add a key in Phone setup") +
                     "\nAddons: " + when (val a = addons) { is Load.Ok -> a.value.joinToString(", ").ifBlank { "none" }; else -> "…" } +
-                    "\nLive TV playlist: " + (if (Prefs.m3uUrl.isNotBlank()) "set" else "none"),
+                    "\nLive TV playlist: " + (if (Prefs.m3uUrl.isNotBlank()) "set" else "none") +
+                    "\nWebsites: " + Prefs.websites.joinToString(", ") { it.first }.ifBlank { "none" } +
+                    "\nControl page link: " + com.mcd.tv.data.Relay.status,
                 color = McdColors.White, fontSize = 15.sp,
             )
 
