@@ -114,7 +114,7 @@ object Prefs {
         set(v) = put("mdblist_key", v)
 
     // ---- Ask Jarvis ----
-    /** API key for Ask Jarvis. Never sent to the web pages; shared (encrypted) only with TVs linked by [HouseSync]. */
+    /** API key for Ask Jarvis. Shared (encrypted) with TVs linked by [HouseSync] and with the paired web app (web_init). */
     var jarvisKey: String
         get() = str("jarvis_key")
         set(v) = put("jarvis_key", v)

@@ -97,13 +97,19 @@ object Relay {
         ensureLink()
         scope.launch { listen(generation) }
         scope.launch { runCatching { publishState("TV started") } }
+        HouseSync.start()
     }
 
     // ---------------- crypto: deflate, then AES-256-GCM; "v1:" + base64url(iv || ciphertext+tag) ----------------
 
-    private fun key() = SecretKeySpec(Base64.decode(Prefs.relayKey, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), "AES")
+    private fun keyOf(b64: String) = SecretKeySpec(Base64.decode(b64, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), "AES")
 
-    fun encrypt(json: String): String {
+    fun encrypt(json: String): String = encryptWith(Prefs.relayKey, json)
+
+    fun decrypt(msg: String): JSONObject? = decryptWith(Prefs.relayKey, msg)
+
+    /** Same format as the Control page, with any 256-bit key (base64url). Also used by [HouseSync]. */
+    fun encryptWith(keyB64: String, json: String): String {
         val deflater = Deflater(Deflater.BEST_COMPRESSION, true)
         deflater.setInput(json.toByteArray())
         deflater.finish()
@@ -114,16 +120,16 @@ object Relay {
         deflater.end()
         val iv = ByteArray(12).also { rng.nextBytes(it) }
         val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.ENCRYPT_MODE, key(), GCMParameterSpec(128, iv))
+        c.init(Cipher.ENCRYPT_MODE, keyOf(keyB64), GCMParameterSpec(128, iv))
         val sealed = iv + c.doFinal(zipped)
         return "v1:" + Base64.encodeToString(sealed, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     }
 
-    fun decrypt(msg: String): JSONObject? = runCatching {
+    fun decryptWith(keyB64: String, msg: String): JSONObject? = runCatching {
         if (!msg.startsWith("v1:")) return null
         val sealed = Base64.decode(msg.removePrefix("v1:"), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, sealed.copyOfRange(0, 12)))
+        c.init(Cipher.DECRYPT_MODE, keyOf(keyB64), GCMParameterSpec(128, sealed.copyOfRange(0, 12)))
         val zipped = c.doFinal(sealed.copyOfRange(12, sealed.size))
         val inflater = Inflater(true)
         inflater.setInput(zipped)
@@ -183,13 +189,37 @@ object Relay {
                 LocalWeb.lastMessage = "Saved changes from the Control page"
                 publishState("Saved on the TV")
             }
+            // Control page: share settings with another TV (its shared-settings link is "id"."key").
+            "house_join" -> {
+                val id = cmd.optString("id")
+                val k = cmd.optString("key")
+                if (!Regex("[a-z0-9]{10,40}").matches(id) || !Regex("[A-Za-z0-9_-]{40,50}").matches(k)) return
+                HouseSync.join(id, k)
+                publishState("Linked. Copying settings from your other TV…")
+            }
+            "house_leave" -> {
+                HouseSync.leave()
+                publishState("This TV no longer shares settings")
+            }
             "magnet" -> {
                 val note = runCatching { "Added to Real-Debrid: " + RdCloud.addMagnet(cmd.optString("magnet")) }
                     .getOrElse { "Real-Debrid add failed: ${it.message}" }
                 publishState(note)
             }
             // ---- McD TV web app (docs/app) ----
-            "web_init" -> runCatching { publishWebInit(cmd.optString("req")) }
+            // Optional "profile" (p1/p2/p3): that profile's lists, without changing the TV's active profile.
+            "web_init" -> runCatching { publishWebInit(cmd.optString("req"), Library.validProfile(cmd.optString("profile"))) }
+            // The web app's "Play here" needs a fresh Real-Debrid token (its copy is old, or RD answered 401).
+            "rd_token" -> runCatching { publishRdToken(cmd.optString("req"), cmd.optBoolean("force", false)) }
+            // Progress from "Play here", so Continue Watching on the TV stays in sync.
+            "progress" -> runCatching { recordWebProgress(cmd) }
+            // Ask Jarvis from the web app. The key stays on the TV; the answer can take up to 30 s,
+            // so it runs on its own and doesn't hold up other commands.
+            "ask" -> {
+                val ts = cmd.optLong("ts", 0L)
+                if (ts > 0L && System.currentTimeMillis() - ts > 2 * 60_000L) return // the page stopped waiting long ago
+                scope.launch { runCatching { publishAsk(cmd.optString("req"), cmd.optString("q")) } }
+            }
             "open" -> {
                 val type = cmd.optString("type")
                 val id = cmd.optInt("id")
@@ -245,7 +275,8 @@ object Relay {
                     rating = 0.0,
                     year = cmd.optString("year"),
                 )
-                if (Library.inWatchlist(t) != on) Library.toggleWatchlist(t)
+                // Optional "profile": that profile's watchlist (default: the active profile).
+                Library.setWatchlist(t, on, Library.validProfile(cmd.optString("profile")))
                 publishAck(cmd, if (on) "Added ${t.name} to your watchlist" else "Removed ${t.name} from your watchlist")
             }
         }
@@ -274,32 +305,75 @@ object Relay {
     /**
      * Keys, filters and list ids for the web app. ids only, at most 60 per list, and the whole
      * encrypted message stays under 3500 characters (ntfy's limit is 4 KB per message).
+     * [profile]: whose lists to send (null = the active profile). The TV's active profile is not changed.
+     * Long lists (addon URLs, websites, Live TV favorites) that don't fit go in follow-up messages.
      */
-    private suspend fun publishWebInit(req: String) {
+    private suspend fun publishWebInit(req: String, profile: String?) {
+        val pid = profile ?: Prefs.activeProfile
         fun ref(type: String, id: Int) = JSONObject().put("type", type).put("id", id)
-        var watch = Library.watchlist().take(60).map { ref(it.type, it.id) }
-        var favs = Library.favorites().take(60).map { ref(it.type, it.id) }
-        var cont = Library.continueWatching().take(60).map {
+        var watch = Library.watchlist(pid).take(60).map { ref(it.type, it.id) }
+        var favs = Library.favorites(pid).take(60).map { ref(it.type, it.id) }
+        var cont = Library.continueWatching(pid).take(60).map {
             ref(it.meta.type, it.meta.tmdbId)
                 .put("season", it.meta.season)
                 .put("episode", it.meta.episode)
                 .put("progress", Math.round(it.progress * 100) / 100.0)
         }
+        // Real-Debrid access for "Play here" in the browser: the access token only (refreshed first if near expiry).
+        val rd: Pair<String, Long>? = if (RealDebrid.connected) runCatching { RealDebrid.webAccess() }.getOrNull() else null
+        val addons = Prefs.addonUrls
+        val sites: List<Any> = Prefs.websites.map { JSONArray().put(it.first).put(it.second) }
+        val liveFavs: List<Any> = liveFavoritesOf(pid)
+        val profiles = JSONArray().apply {
+            Prefs.PROFILE_IDS.forEach { id -> put(JSONObject().put("id", id).put("name", Prefs.profileName(id))) }
+        }
+        // Addon URLs can be long (their config is in the URL): if they don't fit, they go in follow-up "addons" messages.
+        var withAddons = true
+        var withSites = true
+        var withLiveFavs = true
         fun build(): String = encrypt(
             JSONObject()
                 .put("type", "web_init")
                 .put("req", req)
                 .put("ts", System.currentTimeMillis())
+                .put("profile", pid)
+                .put("profiles", profiles)
                 .put("tmdb_key", Prefs.tmdbKey)
                 .put("mdblist_key", Prefs.mdblistKey)
+                .put("jarvis_key", Prefs.jarvisKey)
+                .put("m3u_url", Prefs.m3uUrl)
                 .put("origin_filter", Prefs.origin.key)
                 .put("us_only", Prefs.usOnly)
+                .put("slow_connection", Prefs.slowConnection)
+                .put("max_movie_gb", Prefs.maxMovieGb)
+                .put("max_episode_gb", Prefs.maxEpisodeGb)
+                .put("rd_connected", RealDebrid.connected)
+                .put("rd_token", rd?.first ?: "")
+                .put("rd_expires_at", rd?.second ?: 0L)
+                .put("addons_separate", !withAddons)
+                .apply { if (withAddons) put("addon_urls", JSONArray(addons)) }
+                .put("websites_separate", !withSites)
+                .apply { if (withSites) put("websites", JSONArray(sites)) }
+                .put("live_favorites_separate", !withLiveFavs)
+                .apply { if (withLiveFavs) put("live_favorites", JSONArray(liveFavs)) }
                 .put("watchlist", JSONArray(watch))
                 .put("favorites", JSONArray(favs))
                 .put("continue", JSONArray(cont))
                 .toString(),
         )
         var msg = build()
+        if (msg.length > 3500 && addons.isNotEmpty()) {
+            withAddons = false
+            msg = build()
+        }
+        if (msg.length > 3500 && liveFavs.isNotEmpty()) {
+            withLiveFavs = false
+            msg = build()
+        }
+        if (msg.length > 3500 && sites.isNotEmpty()) {
+            withSites = false
+            msg = build()
+        }
         while (msg.length > 3500 && (watch.size + favs.size + cont.size) > 0) {
             // Drop from the end of the longest list, a few at a time.
             val longest = maxOf(watch.size, favs.size, cont.size)
@@ -310,8 +384,161 @@ object Relay {
             }
             msg = build()
         }
-        status = "Connected to the McD TV web app"
+        status = "Connected to the Jarvis web app"
         Http.postText(BASE + outTopic, msg)
+        if (!withAddons) publishAddons(req, addons)
+        if (!withSites) publishWebList(req, pid, "websites", sites)
+        if (!withLiveFavs) publishWebList(req, pid, "live_favorites", liveFavs)
+    }
+
+    /** [profile]'s favorite Live TV channels (stream URLs), read without changing the active profile. */
+    private fun liveFavoritesOf(profile: String): List<Any> = runCatching {
+        val a = JSONArray(Prefs.json("live_favorites@$profile").ifBlank { "[]" })
+        List(a.length()) { a.optString(it) }.filter { it.isNotBlank() }
+    }.getOrDefault(emptyList())
+
+    /**
+     * A web_init list that didn't fit, in as few messages as fit the 3500-character budget.
+     * Each message: {type:"web_list", req, profile, field, part, parts, items}; the page joins the parts of one req and field.
+     * [items] are JSON values (strings, or [name, url] arrays for websites).
+     */
+    private suspend fun publishWebList(req: String, profile: String, field: String, items: List<Any>) {
+        fun build(chunk: List<Any>, part: Int, parts: Int): String = encrypt(
+            JSONObject()
+                .put("type", "web_list")
+                .put("req", req)
+                .put("ts", System.currentTimeMillis())
+                .put("profile", profile)
+                .put("field", field)
+                .put("part", part)
+                .put("parts", parts)
+                .put("items", JSONArray(chunk))
+                .toString(),
+        )
+        val chunks = mutableListOf<List<Any>>()
+        var cur = mutableListOf<Any>()
+        for (item in items) {
+            val next = cur + item
+            if (cur.isNotEmpty() && build(next, 99, 99).length > 3500) {
+                chunks.add(cur)
+                cur = mutableListOf(item)
+            } else if (cur.isEmpty() && build(next, 99, 99).length > 3500) {
+                continue // one item alone is too big to send: skip it
+            } else {
+                cur = next.toMutableList()
+            }
+        }
+        if (cur.isNotEmpty()) chunks.add(cur)
+        if (chunks.isEmpty()) chunks.add(emptyList())
+        chunks.forEachIndexed { i, c -> Http.postText(BASE + outTopic, build(c, i, chunks.size)) }
+    }
+
+    /**
+     * Addon URLs for the web app, in as few messages as fit the 3500-character budget.
+     * Each message: {type:"addons", req, part, parts, addon_urls}; the page joins the parts of one req.
+     */
+    private suspend fun publishAddons(req: String, urls: List<String>) {
+        fun build(chunk: List<String>, part: Int, parts: Int): String = encrypt(
+            JSONObject()
+                .put("type", "addons")
+                .put("req", req)
+                .put("ts", System.currentTimeMillis())
+                .put("part", part)
+                .put("parts", parts)
+                .put("addon_urls", JSONArray(chunk))
+                .toString(),
+        )
+        // Greedy split; "parts" is filled in afterwards (a few more digits never matter at this size).
+        val chunks = mutableListOf<List<String>>()
+        var cur = mutableListOf<String>()
+        for (u in urls) {
+            val next = cur + u
+            if (cur.isNotEmpty() && build(next, 99, 99).length > 3500) {
+                chunks.add(cur)
+                cur = mutableListOf(u)
+            } else {
+                cur = next.toMutableList()
+            }
+        }
+        if (cur.isNotEmpty()) chunks.add(cur)
+        chunks.forEachIndexed { i, c -> Http.postText(BASE + outTopic, build(c, i, chunks.size)) }
+    }
+
+    /**
+     * Reply to "ask": {type:"ask", req, ts, guesses:[{type, id, why, confidence}], clarify, error}.
+     * TMDB ids only (the web app loads posters itself), so the message stays small.
+     */
+    private suspend fun publishAsk(req: String, q: String) {
+        val o = JSONObject()
+            .put("type", "ask")
+            .put("req", req)
+            .put("ts", System.currentTimeMillis())
+        try {
+            val a = Jarvis.ask(q.take(600))
+            val arr = JSONArray()
+            a.matches.take(6).forEach { m ->
+                arr.put(
+                    JSONObject()
+                        .put("type", m.title.type)
+                        .put("id", m.title.id)
+                        .put("why", m.why.take(160))
+                        .put("confidence", m.confidence),
+                )
+            }
+            o.put("guesses", arr).put("clarify", a.clarify.take(200)).put("error", "")
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            o.put("guesses", JSONArray()).put("clarify", "")
+                .put("error", (if (e is JarvisException) e.message else null) ?: "Jarvis could not answer. Try again.")
+        }
+        Http.postText(BASE + outTopic, encrypt(o.toString()))
+    }
+
+    /** Reply to "rd_token": a fresh Real-Debrid access token for the web app's "Play here". */
+    private suspend fun publishRdToken(req: String, force: Boolean) {
+        val o = JSONObject()
+            .put("type", "rd_token")
+            .put("req", req)
+            .put("ts", System.currentTimeMillis())
+        try {
+            val (token, expiresAt) = RealDebrid.webAccess(force = force)
+            o.put("rd_token", token).put("rd_expires_at", expiresAt)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            o.put("rd_token", "").put("rd_expires_at", 0L)
+                .put("error", e.message ?: "Real-Debrid is not connected on the TV")
+        }
+        Http.postText(BASE + outTopic, encrypt(o.toString()))
+    }
+
+    /**
+     * "progress" from the web app's player: {type, id, season, episode, position_ms, duration_ms, name, poster, backdrop, profile}.
+     * Optional "profile" (p1/p2/p3): recorded in that profile's history (default: the active profile).
+     * Recorded like the TV player does, so Continue Watching stays in sync. Ignored when fields are missing,
+     * or when the TV already has newer progress for this title (an old message replayed after the TV was off).
+     */
+    private fun recordWebProgress(cmd: JSONObject) {
+        val type = cmd.optString("type")
+        val id = cmd.optInt("id")
+        val pos = cmd.optLong("position_ms", -1L)
+        val dur = cmd.optLong("duration_ms", -1L)
+        val name = cmd.optString("name")
+        if ((type != "movie" && type != "tv") || id <= 0 || pos < 0 || dur <= 0 || name.isBlank()) return
+        val season = if (type == "tv") cmd.optInt("season", 0) else 0
+        val episode = if (type == "tv") cmd.optInt("episode", 0) else 0
+        if (type == "tv" && (season <= 0 || episode <= 0)) return
+        val meta = PlayMeta(
+            type, id, name,
+            cmd.optString("poster").ifBlank { null },
+            cmd.optString("backdrop").ifBlank { null },
+            season, episode,
+        )
+        val ts = cmd.optLong("ts", 0L)
+        val profile = Library.validProfile(cmd.optString("profile"))
+        val newer = Library.history(profile).firstOrNull { it.meta.historyKey == meta.historyKey }?.updatedAt ?: 0L
+        // Only for messages over 10 minutes old, so a phone clock a little behind the TV doesn't drop live updates.
+        if (isStale(cmd) && newer > ts) return
+        Library.record(meta, pos.coerceAtMost(dur), dur, profile)
     }
 
     private fun apply(d: JSONObject) {
@@ -327,6 +554,7 @@ object Relay {
         if (d.has("custom_stream_url")) Prefs.customUrl = d.optString("custom_stream_url")
         d.optString("tmdb_key").takeIf { it.isNotBlank() }?.let { Prefs.tmdbKey = it }
         d.optString("mdblist_key").takeIf { it.isNotBlank() }?.let { Prefs.mdblistKey = it }
+        d.optString("jarvis_key").takeIf { it.isNotBlank() }?.let { Prefs.jarvisKey = it }
         d.optString("origin_filter").takeIf { it.isNotBlank() }?.let { k ->
             OriginFilter.entries.firstOrNull { it.key == k }?.let { Prefs.origin = it }
         }
@@ -350,12 +578,17 @@ object Relay {
             .put("custom_stream_url", Prefs.customUrl)
             .put("tmdb_set", Prefs.tmdbKey.isNotBlank())
             .put("mdblist_set", Prefs.mdblistKey.isNotBlank())
+            .put("jarvis_set", Prefs.jarvisKey.isNotBlank())
             .put("origin_filter", Prefs.origin.key)
             .put("us_only", Prefs.usOnly)
             .put("slow_connection", Prefs.slowConnection)
             .put("play_intro", Prefs.playIntro)
             .put("rd_connected", RealDebrid.connected)
             .put("version", com.mcd.tv.BuildConfig.VERSION_NAME)
+            .put("device_name", HouseSync.deviceName())
+            .put("profile", Prefs.activeProfileName)
+            .put("house", HouseSync.houseLink())
+            .put("house_joining", HouseSync.joining())
         Http.postText(BASE + outTopic, encrypt(state.toString()))
     }
 }

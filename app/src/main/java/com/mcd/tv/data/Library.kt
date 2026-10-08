@@ -26,8 +26,22 @@ data class HistoryEntry(val meta: PlayMeta, val positionMs: Long, val durationMs
 /**
  * Favorites, Watchlist, watch history (Continue Watching) and the Background Noise show list.
  * Stored on the device as JSON, separately for each profile (see Prefs.profileKey).
+ *
+ * Most functions take an optional [profile] id ("p1", "p2", "p3"). null (the default) means the active
+ * profile. The web app passes its own profile, so it reads and writes that profile's lists without
+ * changing which profile the TV is using.
  */
 object Library {
+    /** Guards read-modify-write of the stored lists (TV UI, player and relay run on different threads). */
+    private val lock = Any()
+
+    /** The storage key for [key] in [profile], or in the active profile when [profile] is null or unknown. */
+    private fun keyFor(key: String, profile: String?): String =
+        if (profile != null && profile in Prefs.PROFILE_IDS) "$key@$profile" else Prefs.profileKey(key)
+
+    /** [p] if it is a known profile id, else null (the active profile). */
+    fun validProfile(p: String?): String? = p?.takeIf { it in Prefs.PROFILE_IDS }
+
     private fun Title.toJson() = JSONObject()
         .put("id", id).put("type", type).put("name", name).put("overview", overview)
         .put("poster", poster ?: "").put("backdrop", backdrop ?: "").put("rating", rating).put("year", year)
@@ -38,30 +52,39 @@ object Library {
         optDouble("rating", 0.0), optString("year"),
     )
 
-    private fun loadTitles(key: String): List<Title> = runCatching {
-        val a = JSONArray(Prefs.json(Prefs.profileKey(key)).ifBlank { "[]" })
+    private fun loadTitles(key: String, profile: String? = null): List<Title> = runCatching {
+        val a = JSONArray(Prefs.json(keyFor(key, profile)).ifBlank { "[]" })
         (0 until a.length()).map { a.getJSONObject(it).toTitle() }
     }.getOrDefault(emptyList())
 
-    private fun saveTitles(key: String, list: List<Title>) =
-        Prefs.putJson(Prefs.profileKey(key), JSONArray().apply { list.forEach { put(it.toJson()) } }.toString())
+    private fun saveTitles(key: String, list: List<Title>, profile: String? = null) =
+        Prefs.putJson(keyFor(key, profile), JSONArray().apply { list.forEach { put(it.toJson()) } }.toString())
 
-    private fun toggle(key: String, t: Title): Boolean {
-        val list = loadTitles(key)
+    private fun toggle(key: String, t: Title, profile: String? = null): Boolean = synchronized(lock) {
+        val list = loadTitles(key, profile)
         val has = list.any { it.id == t.id && it.type == t.type }
-        saveTitles(key, if (has) list.filterNot { it.id == t.id && it.type == t.type } else listOf(t) + list)
-        return !has
+        saveTitles(key, if (has) list.filterNot { it.id == t.id && it.type == t.type } else listOf(t) + list, profile)
+        !has
     }
 
-    private fun contains(key: String, t: Title) = loadTitles(key).any { it.id == t.id && it.type == t.type }
+    /** Adds or removes [t] so that its membership equals [on] (no-op when it already does). */
+    private fun setIn(key: String, t: Title, on: Boolean, profile: String?) {
+        synchronized(lock) {
+            if (contains(key, t, profile) != on) toggle(key, t, profile)
+        }
+    }
 
-    fun favorites() = loadTitles("lib_favorites")
+    private fun contains(key: String, t: Title, profile: String? = null) = loadTitles(key, profile).any { it.id == t.id && it.type == t.type }
+
+    fun favorites(profile: String? = null) = loadTitles("lib_favorites", profile)
     fun isFavorite(t: Title) = contains("lib_favorites", t)
     fun toggleFavorite(t: Title) = toggle("lib_favorites", t)
 
-    fun watchlist() = loadTitles("lib_watchlist")
-    fun inWatchlist(t: Title) = contains("lib_watchlist", t)
-    fun toggleWatchlist(t: Title) = toggle("lib_watchlist", t)
+    fun watchlist(profile: String? = null) = loadTitles("lib_watchlist", profile)
+    fun inWatchlist(t: Title, profile: String? = null) = contains("lib_watchlist", t, profile)
+    fun toggleWatchlist(t: Title, profile: String? = null) = toggle("lib_watchlist", t, profile)
+    /** Puts [t] in (or takes it out of) [profile]'s watchlist, atomically. */
+    fun setWatchlist(t: Title, on: Boolean, profile: String? = null) = setIn("lib_watchlist", t, on, profile)
 
     fun noiseShows() = loadTitles("lib_noise")
     fun inNoise(t: Title) = contains("lib_noise", t)
@@ -81,8 +104,8 @@ object Library {
         optInt("season"), optInt("episode"),
     )
 
-    fun history(): List<HistoryEntry> = runCatching {
-        val a = JSONArray(Prefs.json(Prefs.profileKey("lib_history")).ifBlank { "[]" })
+    fun history(profile: String? = null): List<HistoryEntry> = runCatching {
+        val a = JSONArray(Prefs.json(keyFor("lib_history", profile)).ifBlank { "[]" })
         (0 until a.length()).map {
             val o = a.getJSONObject(it)
             HistoryEntry(o.getJSONObject("meta").toMeta(), o.optLong("pos"), o.optLong("dur"), o.optLong("at"))
@@ -107,18 +130,18 @@ object Library {
         return id in set
     }
 
-    fun continueWatching() = history().filter { !it.finished && it.positionMs > 60_000 }
+    fun continueWatching(profile: String? = null) = history(profile).filter { !it.finished && it.positionMs > 60_000 }
 
     fun resumePosition(meta: PlayMeta): Long =
         history().firstOrNull { it.meta.historyKey == meta.historyKey && it.meta.season == meta.season && it.meta.episode == meta.episode }
             ?.takeIf { !it.finished }?.positionMs ?: 0L
 
-    fun record(meta: PlayMeta, positionMs: Long, durationMs: Long) {
-        if (meta.type == "tv" && meta.season > 0 && durationMs > 0) recordEpisode(meta, positionMs.toFloat() / durationMs)
-        val rest = history().filterNot { it.meta.historyKey == meta.historyKey }
+    fun record(meta: PlayMeta, positionMs: Long, durationMs: Long, profile: String? = null): Unit = synchronized(lock) {
+        if (meta.type == "tv" && meta.season > 0 && durationMs > 0) recordEpisode(meta, positionMs.toFloat() / durationMs, profile)
+        val rest = history(profile).filterNot { it.meta.historyKey == meta.historyKey }
         val list = listOf(HistoryEntry(meta, positionMs, durationMs, System.currentTimeMillis())) + rest
         Prefs.putJson(
-            Prefs.profileKey("lib_history"),
+            keyFor("lib_history", profile),
             JSONArray().apply {
                 list.take(200).forEach {
                     put(JSONObject().put("meta", it.meta.toJson()).put("pos", it.positionMs).put("dur", it.durationMs).put("at", it.updatedAt))
@@ -133,10 +156,11 @@ object Library {
     private const val EPISODES_KEY = "lib_episodes"
     private const val EPISODES_MAX = 3000
 
-    private fun loadEpisodes(): JSONObject = runCatching { JSONObject(Prefs.json(Prefs.profileKey(EPISODES_KEY)).ifBlank { "{}" }) }.getOrDefault(JSONObject())
+    private fun loadEpisodes(profile: String? = null): JSONObject =
+        runCatching { JSONObject(Prefs.json(keyFor(EPISODES_KEY, profile)).ifBlank { "{}" }) }.getOrDefault(JSONObject())
 
-    private fun recordEpisode(meta: PlayMeta, progress: Float) {
-        val o = loadEpisodes()
+    private fun recordEpisode(meta: PlayMeta, progress: Float, profile: String? = null) {
+        val o = loadEpisodes(profile)
         val k = "${meta.tmdbId}:${meta.season}:${meta.episode}"
         o.remove(k) // re-insert so the newest entries stay at the end
         o.put(k, progress.coerceIn(0f, 1f).toDouble())
@@ -146,7 +170,7 @@ object Library {
             while (keys.hasNext() && o.length() - drop.size > EPISODES_MAX) drop.add(keys.next())
             drop.forEach { k2 -> o.remove(k2) }
         }
-        Prefs.putJson(Prefs.profileKey(EPISODES_KEY), o.toString())
+        Prefs.putJson(keyFor(EPISODES_KEY, profile), o.toString())
     }
 
     /** Watched fraction (0..1) of one episode, or null if it was never played. */

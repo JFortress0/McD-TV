@@ -1,0 +1,16 @@
+{
+  "name": "Jarvis",
+  "short_name": "Jarvis",
+  "description": "Browse, search and play from your Jarvis home media setup.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#02060A",
+  "background_color": "#02060A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

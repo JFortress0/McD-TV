@@ -4,12 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta name="theme-color" content="#05070D">
-<title>McD TV</title>
+<meta name="theme-color" content="#02060A">
+<title>Jarvis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
 :root{
   --bg:#05070D;--nav1:#0A1430;--nav2:#070B18;--card:#111827;--raised:#1A2335;--accent:#3D7BFF;--bright:#6EA0FF;
@@ -193,7 +198,7 @@ main#view{min-height:60vh}
 .ep .t{font-weight:700}
 .ep .d{color:var(--muted);font-size:12px;margin:2px 0 4px}
 .ep .o{color:#c8d0dd;font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:0}
-.ep .btn{margin-top:8px}
+.ep .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .ep.resume{border-color:var(--accent)}
 @media (min-width:900px){.ep .still{width:220px}}
 @media (max-width:420px){.ep .still{width:116px}}
@@ -248,19 +253,261 @@ select:focus-visible,input:focus-visible{outline:2px solid var(--bright);outline
 #toast.on{opacity:1;transform:translate(-50%,0)}
 #toast.ok{border-color:rgba(43,212,110,.6)}#toast.warn{border-color:rgba(224,165,38,.7)}
 footer{padding:30px var(--gut) 40px;color:#59637a;font-size:12px}
+
+/* ---------- play here: sources ---------- */
+.srchead{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+.srchead .lbl{color:var(--muted);font-size:14px}
+.srcstatus{min-height:22px;margin:8px 0;font-weight:600;font-size:14px;color:var(--bright)}
+.srcstatus.bad{color:var(--bad)}
+.srcs{display:flex;flex-direction:column;gap:6px;max-width:980px}
+.src{display:flex;align-items:center;flex-wrap:wrap;gap:6px 9px;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:10px 12px;cursor:pointer;font-size:13px;min-height:46px}
+.src:hover,.src:focus-visible{background:var(--raised);border-color:#33415a}
+.src[disabled]{opacity:.55;cursor:progress}
+.src .st{letter-spacing:1px;color:var(--bright);white-space:nowrap}.src .st i{font-style:normal;color:rgba(255,255,255,.18)}
+.src .bdg{background:#2A3550;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:700;white-space:nowrap}
+.src .bdg.hi{background:#1d3f8f}
+.src .so{color:var(--muted);font-size:12px}
+.src .sz{font-weight:600;white-space:nowrap}
+.src .in{color:var(--bright);font-weight:700;white-space:nowrap}
+.src .dl{color:var(--muted);white-space:nowrap}
+.src .ad{margin-left:auto;color:var(--muted);opacity:.75;font-size:11px;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srcmore{border:0;background:transparent;color:var(--muted);text-align:left;padding:10px 12px;cursor:pointer;font-size:13px;border-radius:8px}
+.srcmore:hover{color:#fff;background:rgba(255,255,255,.05)}
+@media (min-width:900px){.src{flex-wrap:nowrap}}
+
+/* ---------- play here: player ---------- */
+body.playmode{padding-bottom:0;background:#000}
+body.playmode header.top,body.playmode nav.tabbar{display:none}
+.player{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:#000;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.pl-top{display:flex;align-items:center;gap:12px;padding:10px 16px}
+.pl-back{flex:0 0 auto;font-weight:700;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.1)}
+.pl-back:hover{background:rgba(255,255,255,.2)}
+.pl-title{min-width:0;display:flex;flex-direction:column}
+.pl-title b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:16px}
+.pl-title span{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-stage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;min-height:200px}
+.pl-stage video{width:100%;max-height:calc(100dvh - 150px);background:#000;aspect-ratio:16/9}
+.pl-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(90%,460px);text-align:center;background:rgba(17,24,39,.94);border:1px solid var(--line);border-radius:12px;padding:18px}
+.pl-msg p{margin:0 0 12px}
+.pl-bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:12px 16px 18px}
+.btn.big{font-size:17px;padding:14px 26px;min-height:52px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- Jarvis HUD skin ---------- */
+:root{--bg:#02060A;--nav1:#031018;--nav2:#02080D;--card:rgba(6,23,34,.85);--raised:#0A2230;--accent:#00E5FF;--bright:#7DF9FF;--muted:#8FB8C4;--line:#0E6A7A;--ok:#00E5FF;--warn:#FFB300;--bad:#FF4D6D;--ink:#02060A;--white:#EAFBFF;
+  --font:Rajdhani,"Arial Narrow",Arial,sans-serif;--disp:Orbitron,Rajdhani,Arial,sans-serif;
+  --cut:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);--cut-s:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+body{color:var(--white);font-size:16px;
+  background:linear-gradient(rgba(0,229,255,.04) 1px,transparent 1px) 0 0/40px 40px,linear-gradient(90deg,rgba(0,229,255,.04) 1px,transparent 1px) 0 0/40px 40px,
+  radial-gradient(ellipse at 50% 35%,transparent 55%,rgba(0,0,0,.55)) fixed,linear-gradient(180deg,var(--nav1) 0,var(--nav2) 280px,var(--bg) 680px) no-repeat,var(--bg)}
+:focus-visible{outline:2px solid var(--accent);border-radius:0}
+h1,h2,h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:1.5px}
+header.top{background:linear-gradient(180deg,rgba(2,6,10,.85),rgba(2,6,10,.55));border-bottom:1px solid rgba(14,106,122,.6)}
+.logo{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:3px;color:var(--white);text-shadow:0 0 12px rgba(0,229,255,.75)}
+.logo .ring{flex:0 0 auto;filter:drop-shadow(0 0 4px rgba(0,229,255,.6))}
+nav.links a{font-family:var(--disp);font-size:11px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;border-radius:0;position:relative}
+nav.links a:hover{color:var(--bright)}
+nav.links a.on{color:var(--accent);background:transparent}
+nav.links a.on::after{content:"";position:absolute;left:14px;right:14px;bottom:2px;height:1.5px;background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.tvpill{border-radius:0;clip-path:var(--cut-s);background:rgba(6,23,34,.85);border-color:var(--line);font-family:var(--disp);font-size:10px;letter-spacing:1px;text-transform:uppercase}
+.dot.online{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.iconbtn{color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.iconbtn:hover{color:var(--ink);background:var(--accent)}
+nav.tabbar{background:rgba(2,6,10,.94);border-top-color:var(--line)}
+nav.tabbar a{font-family:var(--disp);font-size:9px;letter-spacing:1px;text-transform:uppercase}
+nav.tabbar a.on{color:var(--accent)}nav.tabbar a.on svg{color:var(--accent);filter:drop-shadow(0 0 4px rgba(0,229,255,.7))}
+
+/* buttons: chamfered, uppercase */
+.btn{border-radius:0;clip-path:var(--cut-s);background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1px rgba(0,229,255,.75);
+  font-family:var(--font);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+.btn:hover,.btn:focus-visible{background:var(--accent);color:var(--ink);box-shadow:none;outline:none}
+.btn.primary{background:var(--accent);color:var(--ink);box-shadow:none}
+.btn.primary:hover,.btn.primary:focus-visible{background:var(--bright);color:var(--ink);box-shadow:none}
+.btn.blue{background:var(--accent);color:var(--ink)}.btn.blue:hover{background:var(--bright)}
+.btn[aria-pressed="true"]{background:rgba(0,229,255,.18);color:var(--bright)}
+.chip{border-radius:0;clip-path:var(--cut-s);font-family:var(--font);text-transform:uppercase;letter-spacing:.8px}
+.chip:hover{color:var(--bright);border-color:var(--accent)}
+.chip.on{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+.seg{border-radius:0;clip-path:var(--cut-s)}.seg button{border-radius:0;text-transform:uppercase;letter-spacing:.8px}
+.seg button.on{background:var(--accent);color:var(--ink)}
+.linkbtn{color:var(--accent)}
+
+/* headings */
+.page h1{font-size:22px;font-weight:700}
+@media (min-width:900px){.page h1{font-size:28px}}
+.section-h h2,.row-h h2,.panel h2{font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px}
+@media (min-width:900px){.row-h h2{font-size:14px}}
+.section-h h2::before,.row-h h2::before,.panel h2::before{content:"\25B8";color:var(--accent)}
+.row-h h2::after,.section-h h2::after{content:"";width:40px;height:1px;background:var(--accent)}
+.row-h a{font-family:var(--disp);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent)}
+
+/* hero and title page: duotone backdrop with scanlines */
+.hero .bd,.tp-bd{filter:saturate(.35)}
+.hero .bd::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(125,249,255,.04) 0 1px,transparent 1px 3px),rgba(0,229,255,.15)}
+.tp-bd::before{content:"";position:absolute;inset:0;z-index:1;background:repeating-linear-gradient(0deg,rgba(125,249,255,.04) 0 1px,transparent 1px 3px),rgba(0,229,255,.12)}
+.hero .kicker{font-family:var(--disp);font-weight:500;font-size:10px;letter-spacing:2px;color:var(--accent)}
+.hero .kicker::before{content:"\25B8  "}
+.hero h1{font-size:clamp(24px,4.4vw,44px);font-weight:700;letter-spacing:1px;line-height:1.08;text-shadow:0 0 20px rgba(0,229,255,.35)}
+.tp-info h1{font-size:clamp(22px,3.8vw,40px);font-weight:700;letter-spacing:1px;line-height:1.1}
+.hero .meta,.tp-meta{color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600}
+.hero p,.overview,.bio{color:#cfe9f0}
+.hero .dots button{border-radius:0;height:3px;background:var(--line)}.hero .dots button.on{background:var(--accent)}
+.tagline{color:var(--accent)}
+
+/* cards: chamfered with a hairline, corner brackets and a cyan glow on hover / focus */
+.poster,.wimg,.tile,.ep,.src,.panel,.trailer,.tp-poster,.pp .ph,.ep .still,.score,.badge,.pill,.sk,.pl-msg,#toast,.searchbox input{border-radius:0;clip-path:var(--cut)}
+.score,.badge,.pill,.ep .still{clip-path:var(--cut-s)}
+.poster,.wimg{box-shadow:none}
+.poster::after,.wimg::after,.tile::after,.panel::after{content:"";position:absolute;inset:0;pointer-events:none;border:1px solid rgba(14,106,122,.85);transition:border-color .15s}
+.panel{position:relative}
+.panel::after{background:linear-gradient(var(--bright),var(--bright)) left 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/2px 12px no-repeat;opacity:.55}
+.poster::after,.wimg::after,.tile::after{background:linear-gradient(var(--bright),var(--bright)) left 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/2px 12px no-repeat;background-size:0 0;}
+@media (hover:hover){
+  .card:hover .poster,.wcard:hover .wimg{transform:scale(1.05);box-shadow:none}
+  .card:hover,.wcard:hover,.tile:hover{filter:drop-shadow(0 0 8px rgba(0,229,255,.45))}
+  .card:hover .poster::after,.wcard:hover .wimg::after,.tile:hover::after{border:1.5px solid var(--accent);background-size:12px 2px,2px 12px,12px 2px,2px 12px,12px 2px,2px 12px,12px 2px,2px 12px}
+  .tile:hover{border-color:var(--accent);box-shadow:none}
+}
+.card:focus-visible{filter:drop-shadow(0 0 8px rgba(0,229,255,.45))}
+.card:focus-visible .poster{transform:scale(1.05);box-shadow:none}
+.wcard a:focus-visible .wimg{box-shadow:none}
+.card:focus-visible .poster::after,.wcard a:focus-visible .wimg::after{border:1.5px solid var(--accent);background-size:12px 2px,2px 12px,12px 2px,2px 12px,12px 2px,2px 12px,12px 2px,2px 12px}
+.cap{font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.badge{background:rgba(2,6,10,.8);border:1px solid var(--line)}
+.wlmark{background:rgba(2,6,10,.8);color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.prog{background:rgba(14,106,122,.5)}.prog i{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.miniplay{color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}.miniplay:hover{background:var(--accent);color:var(--ink)}
+.pcard .face{box-shadow:0 0 0 1px var(--line)}
+@media (hover:hover){.pcard:hover .face{box-shadow:0 0 0 2px var(--accent),0 0 14px rgba(0,229,255,.5)}}
+.pcard:focus-visible .face{box-shadow:0 0 0 2px var(--accent),0 0 14px rgba(0,229,255,.5)}
+.tile{background:linear-gradient(140deg,var(--raised),rgba(6,23,34,.85));border-color:var(--line);font-family:var(--disp);font-size:13px;letter-spacing:1px;text-transform:uppercase}
+.tile small{font-family:var(--font);text-transform:none;letter-spacing:0;font-size:13px}
+.tile::before{background:radial-gradient(var(--glow,rgba(0,229,255,.3)),transparent 70%)}
+.score{background:rgba(2,6,10,.7);border-color:var(--line);font-family:var(--disp);font-size:11px;letter-spacing:.5px}
+.score .k{color:var(--accent)}
+.ep{background:var(--card);border-color:var(--line)}
+.ep.resume{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ep .t{text-transform:uppercase;letter-spacing:.5px}
+.trailer .pb{background:var(--accent);color:var(--ink);box-shadow:0 0 18px rgba(0,229,255,.6)}
+.panel{background:var(--card);border-color:var(--line)}
+.pill{background:var(--raised)}.pill.ok{background:rgba(0,229,255,.18);color:var(--accent)}.pill.no{background:rgba(255,77,109,.15);color:#FF4D6D}
+select,input[type=text],input[type=search],input[type=password]{border-radius:0;clip-path:var(--cut-s);background:rgba(2,6,10,.7);color:var(--white);border-color:var(--line)}
+select:focus-visible,input:focus-visible{outline:none;border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.searchbox svg{color:var(--accent)}
+.sk{background:linear-gradient(90deg,#061722 0,#0A2230 45%,#061722 90%);background-size:220% 100%}
+
+/* loading: two arcs turning in opposite directions */
+.spinner{position:relative;border:2px solid transparent;border-top-color:var(--accent);border-bottom-color:rgba(0,229,255,.35)}
+.spinner::after{content:"";position:absolute;inset:5px;border:2px solid transparent;border-left-color:var(--bright);border-right-color:var(--bright);border-radius:50%;animation:spin 1.1s linear infinite reverse}
+
+#toast{background:rgba(6,23,34,.95);border-color:var(--accent);font-family:var(--font);letter-spacing:.5px}
+#toast.ok{border-color:var(--accent)}#toast.warn{border-color:var(--warn)}
+footer{color:var(--muted)}
+
+.src{background:var(--card);border-color:var(--line)}
+.src:hover,.src:focus-visible{background:var(--raised);border-color:var(--accent)}
+.src .st,.src .in{color:var(--accent)}.src .st i{color:rgba(234,251,255,.18)}
+.src .bdg{background:var(--raised);border-radius:0;box-shadow:inset 0 0 0 1px var(--line)}.src .bdg.hi{background:#0B5F6E}
+.srcstatus{color:var(--accent)}
+.pl-back{border-radius:0;clip-path:var(--cut-s);color:var(--accent);background:transparent;box-shadow:inset 0 0 0 1px var(--accent);text-transform:uppercase;letter-spacing:1px}
+.pl-back:hover{background:var(--accent);color:var(--ink)}
+.pl-msg{background:rgba(6,23,34,.95);border-color:var(--accent)}
+/* Ask Jarvis (Search page) */
+.search-h{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.search-h h1{margin-bottom:10px}
+.askp{max-width:none;margin-bottom:18px}
+.ask-h{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.ask-h h2{font-family:var(--font);text-transform:uppercase;letter-spacing:2px;font-size:18px;margin:0;color:var(--white)}
+.ask-h p{margin:2px 0 0;font-size:14px}
+.ask-h svg{flex:0 0 auto}
+.ask-row{display:flex;gap:10px}
+.ask-row input{flex:1 1 auto;min-width:0}
+.askex{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.askex .chip{white-space:normal;text-align:left;text-transform:none;letter-spacing:0}
+.ask-line{margin:14px 0 6px;font-size:16px}.ask-line b{color:var(--accent);font-family:var(--font);letter-spacing:1.5px;font-size:13px;margin-right:4px}
+.ask-think{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:16px 0}
+.ask-think .spinner{margin:0}
+.ask-lbl{font-family:var(--font);letter-spacing:2px;text-transform:uppercase;color:var(--accent);font-size:13px}
+.ask-scan{position:relative;width:min(360px,100%);height:3px;background:rgba(14,106,122,.5);overflow:hidden}
+.ask-scan i{position:absolute;top:0;bottom:0;width:22%;background:linear-gradient(90deg,transparent,var(--bright),transparent);animation:askscan 1.6s linear infinite}
+@keyframes askscan{from{left:-22%}to{left:100%}}
+@media (prefers-reduced-motion:reduce){.ask-scan i{animation:none;left:39%}}
+.ask-grid{margin-top:12px}
+.ask-why{display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px;color:var(--muted);line-height:1.3}
+.ask-conf{--c:0;position:relative;flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) calc(var(--c) * 1%),var(--line) 0)}
+.ask-conf.lo{background:conic-gradient(var(--warn) calc(var(--c) * 1%),var(--line) 0)}
+.ask-conf::before{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--bg)}
+.ask-conf b{position:relative;font-family:var(--font);font-size:11px;color:var(--white)}
+
+/* ---------- safe areas (installed app, notches) ---------- */
+body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+body.playmode{padding-left:0;padding-right:0}
+nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+.iconbtn{display:flex}
+@media (max-width:899px){.iconbtn{width:34px;height:34px}}
+.hdr-right{gap:8px}
+
+/* ---------- profiles ---------- */
+.profpill{display:flex;align-items:center;gap:7px;font-family:var(--disp);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--white);background:rgba(6,23,34,.85);border:1px solid var(--line);clip-path:var(--cut-s);padding:4px 10px 4px 5px;white-space:nowrap;max-width:140px}
+.profpill .lbl{overflow:hidden;text-overflow:ellipsis}
+.pav{flex:0 0 auto;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-family:var(--disp);font-size:10px;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.pav.kids{color:var(--warn);box-shadow:inset 0 0 0 1.5px var(--warn)}
+@media (max-width:420px){.profpill .lbl{display:none}.profpill{padding:4px}}
+.who{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin:26px 0}
+.who button{position:relative;width:min(40vw,210px);border:1px solid var(--line);background:linear-gradient(140deg,var(--raised),rgba(6,23,34,.85));clip-path:var(--cut);padding:22px 12px 18px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:12px;transition:border-color .15s,filter .15s}
+.who button:hover,.who button:focus-visible{border-color:var(--accent);filter:drop-shadow(0 0 8px rgba(0,229,255,.45));outline:none}
+.who button.cur{border-color:var(--accent)}
+.who .pav{width:84px;height:84px;font-size:30px;box-shadow:inset 0 0 0 3px var(--accent),0 0 18px rgba(0,229,255,.35)}
+.who .pav.kids{box-shadow:inset 0 0 0 3px var(--warn),0 0 18px rgba(255,179,0,.35)}
+.who b{font-family:var(--disp);font-size:14px;letter-spacing:1.5px;text-transform:uppercase}
+.who small{color:var(--muted);font-size:13px}
+.profrow{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- switches ---------- */
+.panel label.switch{display:flex;align-items:center;gap:12px;color:var(--white);font-size:15px;cursor:pointer;margin:12px 0}
+.switch input{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:44px;height:24px;border-radius:12px;background:var(--raised);box-shadow:inset 0 0 0 1px var(--line);position:relative;cursor:pointer;margin:0;transition:background .15s}
+.switch input::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
+.switch input:checked{background:rgba(0,229,255,.25);box-shadow:inset 0 0 0 1px var(--accent)}
+.switch input:checked::after{transform:translateX(20px);background:var(--accent)}
+
+/* ---------- websites ---------- */
+.site small{word-break:break-all}
+
+/* ---------- live tv ---------- */
+.lv-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.lv-tools input{flex:1 1 240px;min-width:0}
+.lv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px;margin-top:10px}
+@media (min-width:900px){.lv-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}}
+.lv-ch{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px 10px;border:1px solid var(--line);background:var(--card);clip-path:var(--cut);cursor:pointer;text-align:center;min-height:118px;color:var(--white);transition:border-color .15s,filter .15s}
+.lv-ch:hover,.lv-ch:focus-visible{border-color:var(--accent);filter:drop-shadow(0 0 8px rgba(0,229,255,.45));outline:none}
+.lv-logo{width:100%;height:58px;display:flex;align-items:center;justify-content:center}
+.lv-logo img{max-width:88%;max-height:58px;object-fit:contain}
+.lv-logo .ini{font-family:var(--disp);font-size:18px;color:var(--accent)}
+.lv-ch b{font-size:13px;font-weight:700;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.lv-ch .fav{position:absolute;right:7px;top:5px;color:var(--warn);font-size:12px}
+.lv-player{position:fixed;inset:0;z-index:100;background:#000;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.lv-player .pl-stage video{max-height:calc(100dvh - 90px)}
+
+/* ---------- install hint (iPhone Safari) ---------- */
+.ioshint{position:fixed;left:12px;right:12px;bottom:calc(var(--tab) + env(safe-area-inset-bottom) + 12px);z-index:80;display:flex;gap:12px;align-items:center;background:rgba(6,23,34,.97);border:1px solid var(--accent);clip-path:var(--cut);padding:12px 14px;font-size:15px;max-width:520px;margin:0 auto}
+.ioshint p{margin:0;flex:1}
+.ioshint button{flex:0 0 auto;border:0;background:transparent;color:var(--accent);font-size:22px;cursor:pointer;padding:4px 8px}
 </style>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2212%22%20fill%3D%22%2302060A%22/%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2218%22%20fill%3D%22none%22%20stroke%3D%22%2300E5FF%22%20stroke-width%3D%224%22/%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%227%22%20fill%3D%22%237DF9FF%22/%3E%3Cg%20stroke%3D%22%2300E5FF%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M32%204v6M32%2054v6M4%2032h6M54%2032h6%22/%3E%3C/g%3E%3C/svg%3E"><meta name="apple-mobile-web-app-title" content="Jarvis">
 </head>
 <body>
 <header class="top">
-  <a class="logo" href="#/" aria-label="McD TV home">McD <b>TV</b></a>
+  <a class="logo" href="#/" aria-label="Jarvis home"><svg class="ring" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-opacity=".25" stroke-width="4"/><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-width="1.4"/><path d="M28.80 16.00L31.60 16.00M27.60 22.70L29.51 23.80M22.70 27.60L23.80 29.51M16.00 28.80L16.00 31.60M9.30 27.60L8.20 29.51M4.40 22.70L2.49 23.80M3.20 16.00L0.40 16.00M4.40 9.30L2.49 8.20M9.30 4.40L8.20 2.49M16.00 3.20L16.00 0.40M22.70 4.40L23.80 2.49M27.60 9.30L29.51 8.20" stroke="#00E5FF" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="#00E5FF" fill-opacity=".25"/><circle cx="16" cy="16" r="2" fill="#7DF9FF"/></svg>JARVIS</a>
   <nav class="links" aria-label="Main">
     <a href="#/" data-nav="home">Home</a>
     <a href="#/browse" data-nav="browse">Browse</a>
-    <a href="#/search" data-nav="search">Search</a>
+    <a href="#/search" data-nav="search">Jarvis</a>
+    <a href="#/live" data-nav="live">Live TV</a>
+    <a href="#/websites" data-nav="websites">Websites</a>
     <a href="#/list" data-nav="list">My List</a>
   </nav>
   <div class="hdr-right">
+    <a class="profpill hidden" id="profpill" href="#/profiles" title="Switch profile"><span class="pav" id="profav"></span><span class="lbl" id="proflbl"></span></a>
     <a class="tvpill" id="tvpill" href="#/settings" title="TV connection"><span class="dot" id="tvdot"></span><span class="lbl" id="tvlbl">Not linked</span></a>
     <a class="iconbtn" href="#/settings" aria-label="Settings" data-nav="settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></a>
   </div>
@@ -271,9 +518,9 @@ footer{padding:30px var(--gut) 40px;color:#59637a;font-size:12px}
 <nav class="tabbar" aria-label="Tabs">
   <a href="#/" data-nav="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a>
   <a href="#/browse" data-nav="browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Browse</a>
-  <a href="#/search" data-nav="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search</a>
+  <a href="#/search" data-nav="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Jarvis</a>
+  <a href="#/live" data-nav="live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="13" rx="1.5"/><path d="m8 2.5 4 3.5 4-3.5"/></svg>Live TV</a>
   <a href="#/list" data-nav="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z"/></svg>My List</a>
-  <a href="#/settings" data-nav="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>Settings</a>
 </nav>
 
 <div id="toast" role="status" aria-live="polite"></div>
@@ -281,7 +528,7 @@ footer{padding:30px var(--gut) 40px;color:#59637a;font-size:12px}
 <script>
 "use strict";
 // =====================================================================================
-// McD TV web app. Talks to the TV through the same encrypted ntfy.sh relay as the
+// Jarvis web app. Talks to the TV through the same encrypted ntfy.sh relay as the
 // Control page (docs/index.html): link "#<relayId>.<base64urlKey>", topics
 // mcdtv-<id>-in / mcdtv-<id>-out, messages "v1:" + base64url(iv(12) || AES-256-GCM(deflate-raw(JSON))).
 // The key never leaves this browser.
@@ -301,6 +548,15 @@ function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LINK_KEY = "mcdtv_link"; // shared with the Control page (same origin)
 const INIT_KEY = "mcdtv_web_init";
+const RD_KEY = "mcdtv_web_rd"; // {t, exp}: Real-Debrid access token from your TV, for Play here (this browser only)
+const POS_KEY = "mcdtv_web_pos"; // Play here resume positions
+const PROFILE_KEY = "mcdtv_web_profile"; // the profile watching on this device: "p1", "p2" or "p3"
+const PLISTS_KEY = "mcdtv_web_plists"; // each profile's lists from the TV: {p1: {watchlist, favorites, continue, live_favorites, ts}, ...}
+const JKEY = "mcdtv_web_jarvis"; // Ask Jarvis key from the TV, saved on this device (only while "Use Jarvis on this device" is on)
+const JLOCAL = "mcdtv_web_jarvis_local"; // "0" = off; anything else = on (the default)
+const PIDS = ["p1", "p2", "p3"];
+const KIDS_PID = "p3";
+const DEFAULT_PROFILES = [{ id: "p1", name: "Dad" }, { id: "p2", name: "Mom" }, { id: "p3", name: "Kids" }];
 
 // ---------- pairing link ----------
 function parseLink(h) {
@@ -343,8 +599,15 @@ const S = {
   manualMdb: LS.get("mcdtv_web_mdb"),
   originPref: LS.get("mcdtv_web_origin"), // "" = same as the TV
   status: "none", lastInitAsk: 0, initTimer: 0,
+  rd: readJSON(RD_KEY), addonParts: null, listParts: {}, streamCache: new Map(), playing: null, cleanup: null,
+  profile: PIDS.includes(LS.get(PROFILE_KEY)) ? LS.get(PROFILE_KEY) : "",
+  plists: readJSON(PLISTS_KEY) || {},
 };
+// Lists used to be stored with the rest of web_init (one profile only): they now come per profile.
+if (S.init) { delete S.init.watchlist; delete S.init.favorites; delete S.init.continue; delete S.init.live_favorites; delete S.init.jarvis_key; }
+const rdWait = new Map(); // "rd_token" req id -> reply handler
 const pending = new Map(); // req id -> timeout
+const askWait = new Map(); // "ask" req id -> reply handler
 function keys() {
   const i = S.init || {};
   return { tmdb: i.tmdb_key || S.manualTmdb || "", mdb: i.mdblist_key || S.manualMdb || "", fromTv: !!i.tmdb_key };
@@ -354,7 +617,37 @@ function origin() {
   return o === "all" || o === "us" ? o : "no_asia";
 }
 const usOnly = () => !S.init || S.init.us_only !== false;
-function lists() { const i = S.init || {}; return { watchlist: i.watchlist || [], favorites: i.favorites || [], cont: i.continue || [] }; }
+function lists() {
+  const i = S.plists[S.profile || "p1"] || {};
+  return { watchlist: i.watchlist || [], favorites: i.favorites || [], cont: i.continue || [], live: i.live_favorites || [] };
+}
+function savePlists() { LS.set(PLISTS_KEY, JSON.stringify(S.plists)); }
+function profiles() {
+  const p = S.init && Array.isArray(S.init.profiles) ? S.init.profiles : [];
+  return DEFAULT_PROFILES.map((d) => { const x = p.find((o) => o && o.id === d.id); return { id: d.id, name: String((x && x.name) || d.name).slice(0, 20) }; });
+}
+const profileName = (id) => (profiles().find((p) => p.id === id) || { name: "Profile" }).name;
+const isKids = () => S.profile === KIDS_PID;
+const initial = (n) => (String(n || "?").trim()[0] || "?").toUpperCase();
+function updateProfileUI() {
+  const pill = $("#profpill"); if (!pill) return;
+  pill.classList.toggle("hidden", !S.profile);
+  if (!S.profile) return;
+  const n = profileName(S.profile);
+  $("#proflbl").textContent = n;
+  const av = $("#profav"); av.textContent = initial(n); av.classList.toggle("kids", isKids());
+  pill.setAttribute("aria-label", "Profile: " + n + ". Switch profile");
+}
+function setProfile(id) {
+  if (!PIDS.includes(id)) return;
+  const changed = S.profile !== id;
+  S.profile = id; LS.set(PROFILE_KEY, id);
+  updateProfileUI();
+  if (changed) { tcache.clear(); if (S.link) askInit(); }
+}
+// Ask Jarvis on this device (no TV needed): the key the TV shares, saved here while the setting is on.
+const jarvisLocalOn = () => LS.get(JLOCAL) !== "0";
+const jarvisKey = () => (jarvisLocalOn() ? LS.get(JKEY) : "");
 const inWL = (type, id) => lists().watchlist.some((r) => r.type === type && +r.id === +id);
 const contFor = (type, id) => lists().cont.find((r) => r.type === type && +r.id === +id);
 function saveInit() { if (S.init) LS.set(INIT_KEY, JSON.stringify(S.init)); }
@@ -380,6 +673,16 @@ async function onRelay(raw, live) {
   if (!m || typeof m !== "object") return;
   if (live) { setStatus("online"); clearTimeout(S.initTimer); }
   if (m.type === "web_init") applyInit(m);
+  else if (m.type === "addons") applyAddons(m);
+  else if (m.type === "web_list") applyWebList(m);
+  else if (m.type === "rd_token") {
+    const w = rdWait.get(m.req);
+    if (w) w(m); else if (m.rd_token) setRd(m.rd_token, +m.rd_expires_at || 0);
+  }
+  else if (m.type === "ask") {
+    const w = askWait.get(m.req);
+    if (w) w(m);
+  }
   else if (m.type === "ack" && live) {
     const t = pending.get(m.req);
     if (t) { clearTimeout(t); pending.delete(m.req); toast(m.note || "Done on the TV", "ok"); }
@@ -388,14 +691,79 @@ async function onRelay(raw, live) {
 
 function applyInit(m) {
   const prev = S.init || {};
-  if ((m.ts || 0) < (prev.ts || 0)) return;
+  // Real-Debrid access for Play here is kept apart from the rest (never shown, never logged).
+  if (m.rd_token) setRd(m.rd_token, +m.rd_expires_at || 0);
+  else if (m.rd_connected === false && (m.ts || 0) >= (prev.ts || 0)) clearRd();
+  delete m.rd_token; delete m.rd_expires_at;
+  // The Jarvis key is kept apart too: saved on this device only while "Use Jarvis on this device" is on.
+  const hasJk = Object.prototype.hasOwnProperty.call(m, "jarvis_key");
+  const jk = typeof m.jarvis_key === "string" ? m.jarvis_key.trim() : "";
+  delete m.jarvis_key;
+  // Lists belong to one profile (the reply says which; an older TV sends the active profile's without saying).
+  const pid = PIDS.includes(m.profile) ? m.profile : (S.profile || "p1");
+  const old = S.plists[pid];
+  let listsChanged = false;
+  if (!old || (m.ts || 0) >= (old.ts || 0)) {
+    const L = { watchlist: m.watchlist || [], favorites: m.favorites || [], continue: m.continue || [],
+      live_favorites: Array.isArray(m.live_favorites) ? m.live_favorites : (old && old.live_favorites) || [], ts: m.ts || 0 };
+    const sigL = (o) => JSON.stringify(o ? [o.watchlist, o.favorites, o.continue, o.live_favorites] : null);
+    listsChanged = pid === (S.profile || "p1") && sigL(old) !== sigL(L);
+    S.plists[pid] = L; savePlists();
+  }
+  delete m.watchlist; delete m.favorites; delete m.continue; delete m.live_favorites;
+  if ((m.ts || 0) < (prev.ts || 0)) { if (listsChanged) onListsChanged(); return; }
+  if (hasJk) { if (!jk) LS.del(JKEY); else if (jarvisLocalOn()) LS.set(JKEY, jk); }
+  // Long lists come in separate messages: keep the ones we have until they arrive.
+  if (!Array.isArray(m.addon_urls) && Array.isArray(prev.addon_urls)) m.addon_urls = prev.addon_urls;
+  if (!Array.isArray(m.websites) && Array.isArray(prev.websites)) m.websites = prev.websites;
   const hadKey = !!keys().tmdb;
-  const sig = (o) => JSON.stringify([o.watchlist || [], o.favorites || [], o.continue || [], o.origin_filter, o.us_only]);
-  const changed = sig(prev) !== sig(m);
+  const filtersChanged = prev.origin_filter !== m.origin_filter || prev.us_only !== m.us_only;
+  const m3uChanged = (prev.m3u_url || "") !== (m.m3u_url || "");
   if (S.link) m.relay_id = S.link.id;
   S.init = m; saveInit();
+  updateProfileUI();
+  if (m3uChanged) LV.reset();
   if (!hadKey && keys().tmdb) { route(); return; }
-  if (changed) onListsChanged();
+  if (listsChanged || filtersChanged) onListsChanged();
+  else { const n = parseRoute().path[0]; if (n === "websites" || n === "profiles" || (n === "live" && m3uChanged)) route(); }
+}
+/** "web_list" follow-up messages ({req, profile, field, part, parts, items}): lists that didn't fit in web_init. */
+function applyWebList(m) {
+  if (!Array.isArray(m.items) || (m.field !== "websites" && m.field !== "live_favorites")) return;
+  const pid = PIDS.includes(m.profile) ? m.profile : (S.profile || "p1");
+  const k = m.field === "live_favorites" ? m.field + "@" + pid : m.field;
+  let P = S.listParts[k];
+  if (!P || P.req !== m.req) {
+    if (P && (m.ts || 0) < P.ts) return;
+    P = S.listParts[k] = { req: m.req, ts: m.ts || 0, parts: new Array(Math.max(1, Math.min(50, +m.parts || 1))).fill(null) };
+  }
+  P.parts[Math.max(0, Math.min(P.parts.length - 1, +m.part || 0))] = m.items;
+  if (!P.parts.every(Boolean)) return;
+  const all = [].concat(...P.parts);
+  if (m.field === "websites") {
+    if (!S.init) S.init = {};
+    S.init.websites = all; saveInit();
+    if (parseRoute().path[0] === "websites") route();
+  } else {
+    const L = S.plists[pid] || (S.plists[pid] = { watchlist: [], favorites: [], continue: [], ts: 0 });
+    L.live_favorites = all; savePlists();
+  }
+}
+/** "addons" follow-up messages ({req, part, parts, addon_urls}): joined, then saved with the rest of web_init. */
+function applyAddons(m) {
+  if (!Array.isArray(m.addon_urls)) return;
+  let P = S.addonParts;
+  if (!P || P.req !== m.req) {
+    if (P && (m.ts || 0) < P.ts) return;
+    P = S.addonParts = { req: m.req, ts: m.ts || 0, parts: new Array(Math.max(1, Math.min(50, +m.parts || 1))).fill(null) };
+  }
+  const i = Math.max(0, Math.min(P.parts.length - 1, +m.part || 0));
+  P.parts[i] = m.addon_urls;
+  if (P.parts.every(Boolean)) {
+    if (!S.init) S.init = {};
+    S.init.addon_urls = [].concat(...P.parts);
+    saveInit();
+  }
 }
 
 async function askInit() {
@@ -403,7 +771,9 @@ async function askInit() {
   S.lastInitAsk = Date.now();
   clearTimeout(S.initTimer);
   S.initTimer = setTimeout(() => { if (S.status !== "online") setStatus("offline"); }, 8000);
-  try { await relaySend({ cmd: "web_init", req: newReq(), ts: Date.now() }); } catch { setStatus("offline"); }
+  const cmd = { cmd: "web_init", req: newReq(), ts: Date.now() };
+  if (S.profile) cmd.profile = S.profile; // that profile's lists; the TV's own profile is not changed
+  try { await relaySend(cmd); } catch { setStatus("offline"); }
 }
 
 async function connect() {
@@ -429,7 +799,7 @@ async function remote(cmd, sending) {
   if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return false; }
   const req = newReq();
   cmd.req = req; cmd.ts = Date.now();
-  pending.set(req, setTimeout(() => { pending.delete(req); toast("TV didn't answer (is McD TV open?)", "warn"); }, 8000));
+  pending.set(req, setTimeout(() => { pending.delete(req); toast("TV didn't answer (is Jarvis open?)", "warn"); }, 8000));
   if (sending) toast(sending);
   try { await relaySend(cmd); return true; }
   catch (e) { clearTimeout(pending.get(req)); pending.delete(req); toast("Couldn't reach the relay. Check your internet.", "warn"); return false; }
@@ -440,15 +810,16 @@ async function pair(l) {
   S.link = l;
   LS.set(LINK_KEY, l.id + "." + l.key);
   if (!changed && S.key) return;
-  if (S.init && S.init.relay_id && S.init.relay_id !== l.id) { S.init = null; LS.del(INIT_KEY); }
+  if (S.init && S.init.relay_id && S.init.relay_id !== l.id) { S.init = null; LS.del(INIT_KEY); clearRd(); S.plists = {}; LS.del(PLISTS_KEY); LS.del(JKEY); LV.reset(); }
   try { S.key = await importKey(l.key); } catch { S.link = null; S.key = null; toast("That link is not valid.", "warn"); return; }
   if (S.init) { S.init.relay_id = l.id; saveInit(); }
   connect();
 }
 function unpair() {
   if (S.es) S.es.close();
-  S.es = null; S.link = null; S.key = null; S.init = null;
-  LS.del(LINK_KEY); LS.del(INIT_KEY);
+  S.es = null; S.link = null; S.key = null; S.init = null; S.plists = {};
+  LS.del(LINK_KEY); LS.del(INIT_KEY); LS.del(PLISTS_KEY); LS.del(JKEY); clearRd(); LV.reset();
+  updateProfileUI();
   setStatus("none");
 }
 
@@ -505,8 +876,12 @@ function norm(o, forced) {
     id: o.id, type, name: o.title || o.name || "Untitled", overview: o.overview || "",
     poster: o.poster_path || null, backdrop: o.backdrop_path || null, rating: o.vote_average || 0,
     votes: o.vote_count || 0, year: date.slice(0, 4), date, oc, lang: o.original_language || "",
+    genres: Array.isArray(o.genre_ids) ? o.genre_ids : (o.genres || []).map((g) => g && g.id).filter(Boolean),
   };
 }
+/** Kids profile: grown-up genres (Horror, Thriller, Crime, War, War & Politics) are hidden from search and Ask Jarvis. */
+const KIDS_HIDE = new Set([27, 53, 80, 10752, 10768]);
+const kidsOk = (t) => !isKids() || !(t.genres || []).some((g) => KIDS_HIDE.has(+g));
 /** Mirrors Title.allowedByOrigin in Tmdb.kt. */
 function allowed(t) {
   const f = origin();
@@ -541,10 +916,16 @@ const api = {
     const d = await tmdb("/search/multi", { query: q, include_adult: "false" });
     const res = d.results || [];
     return {
-      titles: toList(res.filter((o) => o.media_type !== "person"), null),
+      titles: toList(res.filter((o) => o.media_type !== "person"), null).filter(kidsOk),
       people: res.filter((o) => o.media_type === "person" && !o.adult),
     };
   },
+  // Kids profile rows (Tmdb.kidsMovies / kidsShows on the TV).
+  kidsMovies: (genre = 10751, topRated = false, page = 1) => api.discover("movie", {
+    with_genres: genre, certification_country: "US", "certification.lte": "PG",
+    ...(topRated ? { sort_by: "vote_average.desc", "vote_count.gte": "500" } : { "vote_count.gte": "100" }),
+  }, page),
+  kidsShows: (page = 1) => api.discover("tv", { with_genres: "10762", "vote_count.gte": "20" }, page),
   details: (type, id) => tmdb(`/${type}/${id}`, { append_to_response: "credits,similar,external_ids,videos,watch/providers" }),
   lite: (type, id) => tmdb(`/${type}/${id}`),
   season: (id, n) => tmdb(`/tv/${id}/season/${n}`),
@@ -605,6 +986,12 @@ function playAttrs(t, season, episode) {
   if (t.type === "tv" && season > 0 && episode > 0) a += ` data-season="${season}" data-episode="${episode}"`;
   return a;
 }
+/** "Play here" (this phone or computer): opens the source list for the title or episode. */
+function hereAttrs(t, season, episode) {
+  let a = `data-act="playhere" data-type="${t.type}" data-id="${t.id}"`;
+  if (t.type === "tv" && season > 0 && episode > 0) a += ` data-season="${season}" data-episode="${episode}"`;
+  return a;
+}
 function wlButton(t) {
   const on = inWL(t.type, t.id);
   return `<button class="btn" data-act="wl" data-type="${t.type}" data-id="${t.id}" data-name="${esc(t.name)}" data-poster="${esc(t.poster || "")}" data-backdrop="${esc(t.backdrop || "")}" data-year="${esc(t.year || "")}" aria-pressed="${on}">${on ? "&#10003; In Watchlist" : "+ Watchlist"}</button>`;
@@ -630,10 +1017,10 @@ async function fillRow(id, promise, cardFn, tok, emptyText) {
 function gridSkeleton(n) { return `<div class="grid">${Array.from({ length: n }, () => `<div class="sk sk-poster"></div>`).join("")}</div>`; }
 function noKeyHTML() {
   if (S.link && S.status !== "offline") {
-    return `<div class="notice"><div class="spinner"></div><h2>Getting set up with your TV</h2><p class="muted">McD TV on the TV sends this app its TMDB key. Make sure McD TV is open on the TV.</p></div>`;
+    return `<div class="notice"><div class="spinner"></div><h2>Getting set up with your TV</h2><p class="muted">Jarvis on the TV sends this app its TMDB key. Make sure Jarvis is open on the TV.</p></div>`;
   }
   return `<div class="notice"><h2>Posters and info need a TMDB key</h2>
-    <p class="muted">${S.link ? "Your TV didn't answer. Open McD TV on the TV, or add a TMDB key in Settings." : "Link your TV, or add your own free TMDB key in Settings."}</p>
+    <p class="muted">${S.link ? "Your TV didn't answer. Open Jarvis on the TV, or add a TMDB key in Settings." : "Link your TV, or add your own free TMDB key in Settings."}</p>
     <div class="actions"><a class="btn primary" href="#/settings">Open Settings</a>${S.link ? `<button class="btn" data-act="retry">Try again</button>` : `<a class="btn" href="#/pair">Link your TV</a>`}</div></div>`;
 }
 
@@ -667,10 +1054,19 @@ async function route() {
   const v = $("#view");
   const { path, q } = parseRoute();
   const name = path[0] || "home";
+  // Leaving the player: save the position and stop the video before the page is replaced.
+  if (S.cleanup) { const c = S.cleanup; S.cleanup = null; try { c(); } catch {} }
+  LV.closePlayer();
+  document.body.classList.toggle("playmode", name === "play");
   setActive(name);
-  const needsKey = !["settings", "pair"].includes(name);
-  if (!S.link && !keys().tmdb && needsKey) { renderPair(v); setActive("settings"); return; }
+  const needsKey = !["settings", "pair", "profiles", "live", "websites"].includes(name);
+  if (!S.link && !keys().tmdb && !["settings", "pair"].includes(name)) { renderPair(v); setActive("settings"); return; }
   window.scrollTo(0, 0);
+  // "Who's watching?" on first open (and from the profile button in the header).
+  if (name === "profiles" || (!S.profile && !["settings", "pair"].includes(name))) {
+    renderProfiles(v, name === "profiles" ? q.get("next") || "" : curHash);
+    return;
+  }
   if (needsKey && !keys().tmdb) { v.innerHTML = noKeyHTML(); return; }
   switch (name) {
     case "home": renderHome(v, tok); break;
@@ -678,8 +1074,12 @@ async function route() {
     case "search": renderSearch(v, tok, q.get("q") || ""); break;
     case "title": renderTitle(v, tok, path[1] === "tv" ? "tv" : "movie", +path[2] || 0); break;
     case "person": renderPerson(v, tok, +path[1] || 0); break;
+    case "sources": renderSources(v, tok, path[1] === "tv" ? "tv" : "movie", +path[2] || 0, q); break;
+    case "play": renderPlayer(v, tok, path[1] === "tv" ? "tv" : "movie", +path[2] || 0, q); break;
     case "list": renderList(v, tok, q.get("tab") || "watchlist"); break;
     case "settings": renderSettings(v); break;
+    case "live": renderLive(v, tok, q); break;
+    case "websites": renderWebsites(v); break;
     case "pair": renderPair(v); break;
     default: renderHome(v, tok);
   }
@@ -690,6 +1090,7 @@ async function route() {
 // ---------- Home ----------
 function renderHome(v, tok) {
   const L = lists();
+  if (isKids()) { renderKidsHome(v, tok, L); return; }
   v.innerHTML = `<section class="hero" id="hero"><div class="sk" style="position:absolute;inset:0;border-radius:0"></div></section>
     ${rowShell("continue", "Continue Watching", "#/list?tab=continue", true)}
     ${rowShell("watchlist", "My Watchlist", "#/list")}
@@ -709,16 +1110,35 @@ function renderHome(v, tok) {
   fillRow("top", api.top("movie"), posterCard, tok);
   fillRow("new", api.nowPlaying(), posterCard, tok);
 }
+/** Kids profile Home: family and animation rows, like the TV (US rated G or PG movies, TMDB's Kids genre for shows). */
+function renderKidsHome(v, tok, L) {
+  v.innerHTML = `<section class="hero" id="hero"><div class="sk" style="position:absolute;inset:0;border-radius:0"></div></section>
+    ${rowShell("continue", "Continue Watching", "#/list?tab=continue", true)}
+    ${rowShell("watchlist", "My Watchlist", "#/list")}
+    ${rowShell("kfam", "Family Movies", "")}
+    ${rowShell("kanim", "Animated Movies", "")}
+    ${rowShell("kshows", "Kids Shows", "")}
+    ${rowShell("kbest", "Best Rated Animation", "")}
+    <footer>Posters and info from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>`;
+  homeListRows(tok, L);
+  const fam = api.kidsMovies(10751);
+  fam.then((items) => { if (tok === routeTok) renderHero(items.filter((t) => t.backdrop).slice(0, 6), tok, "Family pick"); })
+    .catch(() => { const h = $("#hero"); if (h && tok === routeTok) h.remove(); });
+  fillRow("kfam", fam, posterCard, tok);
+  fillRow("kanim", api.kidsMovies(16), posterCard, tok);
+  fillRow("kshows", api.kidsShows(), posterCard, tok);
+  fillRow("kbest", api.kidsMovies(16, true), posterCard, tok);
+}
 function homeListRows(tok, L) {
   const cr = $("#row-continue"), wr = $("#row-watchlist");
   if (cr) { if (!L.cont.length) cr.classList.add("hidden"); else { cr.classList.remove("hidden"); fillRow("continue", refsToTitles(L.cont, 20), contCard, tok); } }
   if (wr) { if (!L.watchlist.length) wr.classList.add("hidden"); else { wr.classList.remove("hidden"); fillRow("watchlist", refsToTitles(L.watchlist, 20), posterCard, tok); } }
 }
-function renderHero(items, tok) {
+function renderHero(items, tok, kicker) {
   const h = $("#hero"); if (!h || !items.length) { if (h) h.remove(); return; }
   h.innerHTML = items.map((t, i) => `<div class="slide${i ? "" : " on"}" aria-hidden="${i ? "true" : "false"}">
       <div class="bd" style="background-image:url('${IMG}w1280${t.backdrop}')"></div><div class="shade"></div>
-      <div class="content"><div class="kicker">${i === 0 ? "#1 Trending this week" : "Trending " + typeLabel(t.type)}</div>
+      <div class="content"><div class="kicker">${kicker ? esc(kicker) : i === 0 ? "#1 Trending this week" : "Trending " + typeLabel(t.type)}</div>
         <h1>${esc(t.name)}</h1>
         <div class="meta">${esc([typeLabel(t.type), t.year, t.rating ? "★ " + t.rating.toFixed(1) : ""].filter(Boolean).join("  ·  "))}</div>
         <p>${esc(t.overview)}</p>
@@ -781,6 +1201,8 @@ function renderBrowse(v) {
       ${tile("#/browse/lang?type=movie&v=en", "By Language", "Original language")}
       ${tile("#/browse/genre?type=movie&v=28", "Genres", "Action, Comedy, Drama and more")}
       ${tile("#/browse/service?type=movie&v=8", "Streaming Services", "What's on each service")}
+      ${tile("#/live", "Live TV", "Channels from your playlist")}
+      ${tile("#/websites", "Websites", "Your saved sites")}
     </div>
     <div class="section-h"><h2>Streaming services</h2></div>
     <div class="tiles">${SERVICES.map(([id, n, c]) => `<a class="tile svc" href="#/browse/service?type=movie&v=${id}" style="background:linear-gradient(140deg,${c},#0b1220)">${esc(n)}<small style="color:#dfe6f3">Movies and shows</small></a>`).join("")}</div>
@@ -858,35 +1280,268 @@ function renderGrid(v, tok, kind, q) {
 
 // ---------- Search ----------
 let searchTimer = 0;
+const DESCRIBE_WORDS = new Set(["movie","movies","film","show","series","where","about","with","that","who","plays","played","starring","like","guy","girl","man","woman","kid","kids","what","which","remember"]);
+function looksLikeDescription(q) {
+  const w = q.toLowerCase().split(/\s+/).filter(Boolean);
+  return q.trim().endsWith("?") || w.length >= 5 || (w.length >= 3 && w.some((x) => DESCRIBE_WORDS.has(x)));
+}
 function renderSearch(v, tok, q0) {
-  v.innerHTML = `<div class="page"><h1>Search</h1>
+  v.innerHTML = `<div class="page"><div class="search-h"><h1>Jarvis</h1></div>
     <div class="searchbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input id="q" type="search" placeholder="Movies, shows and people" autocomplete="off" enterkeyhint="search" value="${esc(q0)}" aria-label="Search"></div>
+    <input id="q" type="search" placeholder="Search or ask Jarvis&#8230;" autocomplete="off" enterkeyhint="search" maxlength="600" value="${esc(q0)}" aria-label="Search or ask Jarvis"></div>
+    <p class="muted" style="margin:6px 0 0">Type a title, or describe one ("the movie where&#8230;") and press Enter.</p>
+    <div class="askex" id="askEx">${ASK_EXAMPLES.map((e) => `<button class="chip" type="button" data-ex="${esc(e)}">${esc(e)}</button>`).join("")}</div>
+    <div id="askOut" aria-live="polite"></div>
     <div id="results"></div></div>`;
-  const input = $("#q", v), out = $("#results", v);
+  const input = $("#q", v), out = $("#results", v), askOut = $("#askOut", v), ex = $("#askEx", v);
   let qtok = 0;
-  async function run(q) {
+  function ask(q) { ex.classList.add("hidden"); runAsk(q, askOut, tok); }
+  async function run(q, entered) {
     const my = ++qtok;
     history.replaceState(null, "", "#/search" + (q ? "?q=" + encodeURIComponent(q) : ""));
     curHash = location.hash;
     if (!q.trim()) {
-      out.innerHTML = rowShell("sugg", "Trending searches", "#/browse/trending").replace('class="row"', 'class="row" style="margin:0 calc(-1*var(--gut))"');
+      askOut.innerHTML = ""; ex.classList.remove("hidden");
+      out.innerHTML = rowShell("sugg", "Trending", "#/browse/trending").replace('class="row"', 'class="row" style="margin:0 calc(-1*var(--gut))"');
       fillRow("sugg", api.trending("all"), posterCard, tok);
       return;
     }
+    ex.classList.add("hidden");
+    const describe = looksLikeDescription(q);
+    if (entered && describe) ask(q.trim()); else if (!entered) askOut.innerHTML = "";
     out.innerHTML = gridSkeleton(12);
     try {
       const r = await api.search(q.trim());
       if (my !== qtok || tok !== routeTok) return;
-      if (!r.titles.length && !r.people.length) { out.innerHTML = `<p class="muted">No results for "${esc(q)}".</p>`; return; }
+      if (!r.titles.length && !r.people.length) {
+        if (entered && !describe) { out.innerHTML = ""; ask(q.trim()); return; }
+        out.innerHTML = `<p class="muted">No titles match "${esc(q)}". Press Enter to ask Jarvis.</p>`;
+        return;
+      }
       out.innerHTML = (r.people.length ? `<div class="section-h" style="margin-top:4px"><h2>People</h2></div><div class="scroller" style="margin:0 calc(-1*var(--gut));padding-top:4px">${r.people.slice(0, 20).map(personCard).join("")}</div>` : "") +
-        (r.titles.length ? `<div class="section-h"><h2>Movies and shows</h2></div><div class="grid">${r.titles.map(posterCard).join("")}</div>` : "");
+        (r.titles.length ? `<div class="section-h"><h2>Titles</h2></div><div class="grid">${r.titles.map(posterCard).join("")}</div>` : "") +
+        (describe && entered ? "" : `<p class="muted" style="margin-top:14px">Not what you meant? <button class="btn small" type="button" id="tryAsk">&#10022; Ask Jarvis</button></p>`);
+      const ta = $("#tryAsk", out); if (ta) ta.addEventListener("click", () => { ask(q.trim()); askOut.scrollIntoView({ block: "nearest", behavior: "smooth" }); });
     } catch (e) { if (my === qtok) out.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   }
-  input.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => run(input.value), 350); });
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { clearTimeout(searchTimer); run(input.value); input.blur(); } });
-  run(q0);
+  input.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => run(input.value, false), 350); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { clearTimeout(searchTimer); run(input.value, true); input.blur(); } });
+  $$("#askEx .chip", v).forEach((b) => b.addEventListener("click", () => { input.value = b.dataset.ex; run(b.dataset.ex, true); }));
+  run(q0, !!q0);
   if (matchMedia("(min-width:900px)").matches || !q0) setTimeout(() => input.focus({ preventScroll: true }), 30);
+}
+
+// ---------- Ask Jarvis ----------
+const ASK_EXAMPLES = [
+  "Robert Downey Jr plays a genius inventor who builds a suit",
+  "Space movie where they travel through a wormhole to save humanity",
+  "Show about a chemistry teacher who starts making drugs",
+];
+const ASK_RING = `<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-opacity=".25" stroke-width="4"/><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="#00E5FF" fill-opacity=".25"/><circle cx="16" cy="16" r="2" fill="#7DF9FF"/></svg>`;
+const ASK_OFF = "Your TV needs to be on for Ask Jarvis, or turn on \"Use Jarvis on this device\" in Settings.";
+let askTok = 0;
+/** Sends {cmd:"ask"} to the TV and waits up to 20 s for its {type:"ask"} reply. */
+function askTv(q) {
+  return new Promise((resolve, reject) => {
+    if (!S.link) { reject(new Error("Link your TV first: open Settings in this app.")); return; }
+    const req = newReq();
+    const t = setTimeout(() => { askWait.delete(req); reject(new Error(ASK_OFF)); }, 40000);
+    askWait.set(req, (m) => { clearTimeout(t); askWait.delete(req); resolve(m); });
+    relaySend({ cmd: "ask", req, ts: Date.now(), q: q.slice(0, 600) })
+      .catch(() => { clearTimeout(t); askWait.delete(req); reject(new Error("Couldn't reach the relay. Check your internet.")); });
+  });
+}
+
+// ---------- Ask Jarvis on this device (mirrors data/Jarvis.kt) ----------
+const JV = (() => {
+  const API_URL = "https://api.anthropic.com/v1/messages";
+  const API_VERSION = "2023-06-01";
+  const DEFAULT_MODEL = "claude-sonnet-5-5";
+  const FALLBACK_MODEL = "claude-haiku-5-5";
+  const TIMEOUT_MS = 30000, MAX_GUESSES = 6, MAX_QUESTION = 600;
+  const BAD_KEY = "Your Jarvis key was rejected. Check it on the Control page.";
+  const BUSY = "Jarvis is busy. Try again in a moment.";
+  const OFFLINE = "Jarvis could not be reached. Check your internet connection.";
+  const SLOW = "Jarvis took too long to answer. Try again.";
+  const DOWN = "Jarvis is unavailable right now. Try again in a moment.";
+  const CONFUSED = "Jarvis could not read that answer. Try again, or describe it another way.";
+  const SYSTEM_PROMPT = [
+    "You are Jarvis, the user's home media assistant. You speak like a refined British butler who",
+    "happens to be an AI: calm, precise, impeccably polite, with dry understated wit. You address the",
+    "user as \"sir\". Never quote films or reuse famous movie lines; every line is your own.",
+    "Your task: identify films and TV series from vague descriptions (half-remembered plots, actors,",
+    "scenes, quotes, settings).",
+    "Return ONLY a JSON object, no prose and no code fences, exactly in this shape:",
+    '{"guesses":[{"title":"Iron Man","year":2008,"type":"movie","confidence":92,"why":"one short sentence"}],"clarify":"one short spoken line"}',
+    "Rules:",
+    "- Up to 6 guesses, ordered from most to least likely.",
+    "- \"title\" is the official English release title. \"year\" is the release year (first air year for TV).",
+    "- \"type\" is \"movie\" or \"tv\". \"confidence\" is an integer from 0 to 100.",
+    "- \"why\" is one short sentence, in your voice, saying how the title matches the description.",
+    "- Never invent titles. Only list real, released films and series.",
+    "- If the description names a person or asks for a genre or mood, return the most fitting titles.",
+    "- \"clarify\" is ALWAYS one short spoken line in your voice (under 25 words). If you are confident,",
+    "  present your top pick with a touch of wit. If the description is too vague, ask one polite",
+    "  follow-up question instead.",
+  ].join("\n");
+  let modelOverride = null;
+  const cache = new Map(); // last 20 questions -> answers (memory only)
+  const cacheKey = (q) => q.toLowerCase().replace(/\s+/g, " ").trim();
+  class JErr extends Error {}
+  class HttpErr extends Error { constructor(code, msg) { super(msg); this.code = code; } }
+  function friendly(code) {
+    if (code === 401 || code === 403) return BAD_KEY;
+    if (code === 429 || code === 529) return BUSY;
+    if (code >= 500 && code <= 599) return DOWN;
+    return `Jarvis could not answer that (error ${code}). Try describing it another way.`;
+  }
+  async function post(key, q, model, withTemperature) {
+    const body = { model, max_tokens: 800, system: SYSTEM_PROMPT, messages: [{ role: "user", content: q }] };
+    if (withTemperature) body.temperature = 0.2;
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    let r, txt;
+    try {
+      r = await fetch(API_URL, {
+        method: "POST", signal: ac.signal,
+        headers: { "x-api-key": key, "anthropic-version": API_VERSION, "content-type": "application/json", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify(body),
+      });
+      txt = await r.text();
+    } catch (e) {
+      const err = new JErr(e && e.name === "AbortError" ? SLOW : OFFLINE); err.network = e && e.name !== "AbortError"; throw err;
+    } finally { clearTimeout(t); }
+    let o = null; try { o = JSON.parse(txt); } catch {}
+    if (!r.ok) throw new HttpErr(r.status, String((o && o.error && o.error.message) || txt || "").slice(0, 400));
+    if (!o || !Array.isArray(o.content)) throw new JErr(CONFUSED);
+    return o.content.filter((b) => b && b.type === "text").map((b) => b.text || "").join("");
+  }
+  async function call(key, q) {
+    let model = modelOverride || DEFAULT_MODEL, withTemperature = true, triedFallback = false, triedNoTemp = false;
+    for (;;) {
+      try { return await post(key, q, model, withTemperature); } catch (e) {
+        if (!(e instanceof HttpErr)) throw e;
+        const msg = (e.message || "").toLowerCase();
+        // Unknown or retired model: fall back once to the smaller model.
+        if ((e.code === 404 || e.code === 400) && msg.includes("model") && !triedFallback && model !== FALLBACK_MODEL) {
+          triedFallback = true; model = FALLBACK_MODEL; modelOverride = FALLBACK_MODEL; continue;
+        }
+        // A model that does not take a temperature setting: retry once without it.
+        if (e.code === 400 && msg.includes("temperature") && !triedNoTemp) { triedNoTemp = true; withTemperature = false; continue; }
+        throw new JErr(friendly(e.code));
+      }
+    }
+  }
+  /** The first balanced {...} block (braces inside JSON strings are skipped), or null. */
+  function firstJsonObject(s) {
+    const start = s.indexOf("{"); if (start < 0) return null;
+    let depth = 0, inStr = false, esc2 = false;
+    for (let i = start; i < s.length; i++) {
+      const c = s[i];
+      if (inStr) { if (esc2) esc2 = false; else if (c === "\\") esc2 = true; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}") { depth--; if (depth === 0) return s.slice(start, i + 1); }
+    }
+    return null;
+  }
+  function parse(text) {
+    const json = firstJsonObject(text); if (!json) throw new JErr(CONFUSED);
+    let o; try { o = JSON.parse(json); } catch { throw new JErr(CONFUSED); }
+    if (!o || typeof o !== "object") throw new JErr(CONFUSED);
+    const arr = Array.isArray(o.guesses) ? o.guesses : [];
+    const guesses = arr.map((g) => {
+      if (!g || typeof g !== "object") return null;
+      const title = String(g.title == null ? "" : g.title).trim(); if (!title) return null;
+      let year = parseInt(String(g.year == null ? "" : g.year).trim().slice(0, 4), 10);
+      if (!(year >= 1870 && year <= 2100)) year = null;
+      const ty = String(g.type == null ? "" : g.type).trim().toLowerCase();
+      const type = ty === "movie" || ty === "film" ? "movie" : ["tv", "show", "series", "tv series", "tv show", "miniseries"].includes(ty) ? "tv" : null;
+      let raw = Number(g.confidence); if (g.confidence == null || isNaN(raw)) raw = 50;
+      const conf = Math.max(0, Math.min(100, Math.trunc(raw > 0 && raw <= 1 ? raw * 100 : raw)));
+      return { title, year, type, confidence: conf, why: String(g.why == null ? "" : g.why).trim().slice(0, 200) };
+    }).filter(Boolean).slice(0, MAX_GUESSES);
+    let clarify = String(o.clarify == null ? "" : o.clarify).trim().slice(0, 240);
+    if (clarify.toLowerCase() === "null") clarify = "";
+    return { guesses, clarify };
+  }
+  /** Tmdb.findTitle: search one type; same year first, else the closest year among the top 5. */
+  async function findTitle(type, name, year) {
+    const d = await tmdb(`/search/${type}`, { query: name, include_adult: "false" });
+    const found = (d.results || []).filter((o) => o && o.adult !== true).map((o) => norm(o, type)).filter(Boolean);
+    if (!found.length) return null;
+    if (!year) return found[0];
+    const same = found.find((t) => +t.year === year); if (same) return same;
+    const withYear = found.slice(0, 5).filter((t) => t.year);
+    return withYear.length ? withYear.reduce((a, t) => (Math.abs(+t.year - year) < Math.abs(+a.year - year) ? t : a)) : found[0];
+  }
+  async function resolve(guesses) {
+    if (!guesses.length) return [];
+    let firstError = null;
+    const found = await Promise.all(guesses.map(async (g) => {
+      try {
+        for (const type of g.type ? [g.type] : ["movie", "tv"]) {
+          const t = await findTitle(type, g.title, g.year);
+          if (t) return { type: t.type, id: t.id, why: g.why, confidence: g.confidence, t };
+        }
+        return null;
+      } catch (e) { if (!firstError) firstError = e; return null; }
+    }));
+    const seen = new Set();
+    const matches = found.filter(Boolean).filter((m) => { const k = m.type + ":" + m.id; if (seen.has(k)) return false; seen.add(k); return true; });
+    if (!matches.length && firstError) throw new JErr(firstError.message || OFFLINE);
+    return matches;
+  }
+  /** Same reply shape as the TV's relay "ask": {guesses:[{type, id, why, confidence, t}], clarify, error}. */
+  async function ask(question, key) {
+    const q = String(question || "").trim().slice(0, MAX_QUESTION);
+    if (!q) throw new JErr("Describe a movie or show first.");
+    const ck = cacheKey(q);
+    if (cache.has(ck)) return cache.get(ck);
+    const text = await call(key, q);
+    const p = parse(text);
+    const guesses = await resolve(p.guesses);
+    const answer = { guesses, clarify: p.clarify, error: "" };
+    if (guesses.length || answer.clarify) { cache.set(ck, answer); if (cache.size > 20) cache.delete(cache.keys().next().value); }
+    return answer;
+  }
+  return { ask };
+})();
+/** Ask Jarvis: on this device when its key is saved here, else through the TV. */
+async function askJarvis(q) {
+  const key = jarvisKey();
+  if (key && keys().tmdb) {
+    try { return await JV.ask(q, key); } catch (e) {
+      // This browser can't reach Jarvis at all: the TV may still answer.
+      if (e && e.network && S.link) return askTv(q);
+      throw e;
+    }
+  }
+  return askTv(q);
+}
+const askLine = (text) => `<p class="ask-line"><b>JARVIS:</b> ${esc(text)}</p>`;
+function askCard(t, g) {
+  const c = Math.max(0, Math.min(100, Math.round(+g.confidence || 0)));
+  return `<div class="askcard">${posterCard(t)}<div class="ask-why"><span class="ask-conf${c < 50 ? " lo" : ""}" style="--c:${c}" title="Match ${c}%"><b>${c}</b></span><span>${esc(g.why || "")}</span></div></div>`;
+}
+async function runAsk(q, out, tok) {
+  q = String(q || "").trim(); if (!q) return;
+  const my = ++askTok;
+  out.innerHTML = `<div class="ask-think"><div class="spinner"></div><div class="ask-lbl">Analyzing&#8230;</div><div class="ask-scan"><i></i></div></div>`;
+  try {
+    const m = await askJarvis(q);
+    if (my !== askTok || tok !== routeTok) return;
+    if (m.error) { out.innerHTML = askLine(m.error); return; }
+    const head = m.clarify ? askLine(m.clarify) : "";
+    const gs = (Array.isArray(m.guesses) ? m.guesses : []).filter((g) => g && (g.type === "movie" || g.type === "tv") && +g.id > 0).slice(0, 6);
+    if (!gs.length) { out.innerHTML = head || askLine("I'm afraid that one eludes me, sir. An actor, a year or a scene would help."); return; }
+    out.innerHTML = head + gridSkeleton(gs.length);
+    // Not origin-filtered: the user asked for these by description.
+    const got = await mapPool(gs, 6, async (g) => { const t = g.t || norm(await api.lite(g.type, g.id), g.type); return t ? { t, g } : null; });
+    if (my !== askTok || tok !== routeTok) return;
+    const ok = got.filter(Boolean).filter(({ t }) => kidsOk(t));
+    out.innerHTML = head + (ok.length ? `<div class="grid ask-grid">${ok.map(({ t, g }) => askCard(t, g)).join("")}</div>` : `<p class="muted">Couldn't load those titles. Try again.</p>`);
+  } catch (e) { if (my === askTok && tok === routeTok) out.innerHTML = askLine(e.message || ASK_OFF); }
 }
 
 // ---------- Title page ----------
@@ -907,7 +1562,7 @@ async function renderTitle(v, tok, type, id) {
   if (tok !== routeTok) return;
   const t = norm(d, type);
   if (!t) { v.innerHTML = `<div class="notice"><h2>Not available</h2></div>`; return; }
-  document.title = t.name + " | McD TV";
+  document.title = t.name + " | Jarvis";
   const genres = (d.genres || []).map((g) => g.name);
   const runtime = type === "movie" ? d.runtime : (d.episode_run_time || [])[0];
   const seasons = (d.seasons || []).filter((s) => s.season_number > 0);
@@ -916,7 +1571,6 @@ async function renderTitle(v, tok, type, id) {
   const directors = ((d.credits && d.credits.crew) || []).filter((c) => c.job === "Director").map((c) => c.name).slice(0, 2);
   const creators = (d.created_by || []).map((c) => c.name).slice(0, 2);
   const similar = toList(d.similar && d.similar.results, type);
-  const prov = (((d["watch/providers"] || {}).results || {}).US || {}).flatrate || [];
   const cont = contFor(type, id);
   const resumeLabel = cont && type === "tv" && cont.season > 0 ? `&#9654; Resume S${cont.season} E${cont.episode} on TV` : cont ? "&#9654; Resume on TV" : "&#9654; Play on TV";
   const meta = [t.year, type === "tv" ? (seasons.length ? seasons.length + (seasons.length === 1 ? " season" : " seasons") : "Series") : "Movie",
@@ -935,12 +1589,12 @@ async function renderTitle(v, tok, type, id) {
       ${d.tagline ? `<p class="tagline">${esc(d.tagline)}</p>` : ""}
       <p class="overview">${esc(t.overview || "No description yet.")}</p>
       <div class="actions">
-        <button class="btn primary" ${playAttrs(t, cont && cont.season, cont && cont.episode)}>${resumeLabel}</button>
+        <button class="btn primary" ${hereAttrs(t, cont && cont.season, cont && cont.episode)}>&#9654; Play here</button>
+        <button class="btn" ${playAttrs(t, cont && cont.season, cont && cont.episode)}>${resumeLabel}</button>
         <button class="btn" data-act="open" data-type="${type}" data-id="${id}" data-name="${esc(t.name)}">Open on TV</button>
         ${wlButton(t)}
         ${trailer ? `<button class="btn" data-act="trailer">Trailer</button>` : ""}
       </div>
-      ${prov.length ? `<div class="prov">Streaming on ${prov.slice(0, 6).map((p) => `<b>${esc(p.provider_name)}</b>`).join(", ")}</div>` : ""}
       ${directors.length ? `<div class="prov">Directed by <b>${esc(directors.join(", "))}</b></div>` : creators.length ? `<div class="prov">Created by <b>${esc(creators.join(", "))}</b></div>` : ""}
       ${trailer ? `<div class="section-h" id="trailerH"><h2>Trailer</h2></div><button class="trailer" id="trailerBox" data-yt="${esc(trailer)}" aria-label="Play trailer">
         <img loading="lazy" src="https://i.ytimg.com/vi/${encodeURIComponent(trailer)}/hqdefault.jpg" alt=""><span class="pb">&#9654;</span></button>` : ""}
@@ -975,7 +1629,8 @@ async function renderTitle(v, tok, type, id) {
             <div class="body"><div class="t">${e.episode_number}. ${esc(e.name || "Episode " + e.episode_number)}</div>
             <div class="d">${esc([fmtDate(e.air_date), e.runtime ? e.runtime + "m" : ""].filter(Boolean).join(" · "))}${isResume ? ` · <span style="color:var(--bright)">Up next for you</span>` : ""}</div>
             <p class="o">${esc(e.overview || "")}</p>
-            <button class="btn small${isResume ? " blue" : ""}" ${playAttrs(t, n, e.episode_number)}>&#9654; ${isResume ? "Resume" : "Play"} on TV</button></div></div>`;
+            <div class="btns"><button class="btn small primary" ${hereAttrs(t, n, e.episode_number)}>&#9654; Play here</button>
+            <button class="btn small${isResume ? " blue" : ""}" ${playAttrs(t, n, e.episode_number)}>&#9654; ${isResume ? "Resume" : "Play"} on TV</button></div></div></div>`;
         }).join("") : `<p class="muted">No episodes listed yet.</p>`;
       } catch (err) { if (tok === routeTok) eps.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
     }
@@ -990,6 +1645,640 @@ function playTrailer() {
   box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${k}?autoplay=1&rel=0&playsinline=1" title="Trailer" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
 }
 
+// =====================================================================================
+// Play here: plays on this phone or computer with your own addons and Real-Debrid account,
+// the same way the TV does (Addons.kt, StreamInfo.kt, RealDebrid.kt).
+// =====================================================================================
+
+// >>> StreamInfo port (mirrors Addons.parse and StreamInfo.kt; unit-tested in node)
+const SI = (() => {
+  const qualityRx = /(2160p|4k|1080p|720p|480p)/i;
+  const sizeRx = /([0-9]+(?:\.[0-9]+)?)\s?(GB|MB)/i;
+  const seedRx = /\u{1F464}\s?([0-9]+)/u; // the person emoji some addons put before the seeder count
+  const res4k = /(2160p|\b4k\b|\buhd\b)/i;
+  const res1080 = /1080[pi]/i;
+  const res720 = /720p/i;
+  const resSd = /(480p|576p|360p|\bsd\b|dvdrip)/i;
+  const remux = /remux/i;
+  const bluray = /(blu-?ray|bdrip|brrip|\bbd(25|50|66|100)?\b)/i;
+  const webdl = /(web-?dl|\bwebdl\b|\bweb\b|amzn|\bnf\b|dsnp|hmax)/i;
+  const webrip = /web-?rip/i;
+  const hdtv = /(hdtv|pdtv|\btvrip\b)/i;
+  const dvd = /\bdvd/i;
+  const camRx = /\b(cam|camrip|hdcam|ts|hdts|telesync|tc|hdtc|telecine|scr|screener|dvdscr|bdscr)\b/i;
+  const dv = /(\bdv\b|\bdovi\b|dolby[ ._-]?vision)/i;
+  const hdr10p = /hdr10(\+|plus)/i;
+  const hdr = /\bhdr(10)?\b/i;
+  const atmos = /atmos/i;
+  const truehd = /true-?hd/i;
+  const dts = /\bdts/i;
+  const ddp = /(ddp|dd\+|e-?ac-?3)/i;
+  // Kotlin: (?<![0-9.])([57])[ .]1(?![0-9])(?!\s?(gb|mb|gib|mib)). No lookbehind here (older Safari): the
+  // preceding character is matched instead, which finds the same first match.
+  const channels = /(?:^|[^0-9.])([57])[ .]1(?![0-9])(?!\s?(gb|mb|gib|mib))/i;
+  const nonAlnum = /[^a-z0-9]+/g;
+  /** JSONObject.s(): null when missing, null or blank. */
+  const str = (o, k) => { const v = o == null ? null : o[k]; if (v == null) return null; const s = String(v); return s.trim() ? s : null; };
+
+  /** Addons.parse: one stream object from an addon -> StreamSource. */
+  function parseStream(addon, o, season, episode) {
+    const name = str(o, "name") || addon;
+    const title = str(o, "title") || str(o, "description") || "";
+    const text = name + " " + title;
+    const qm = qualityRx.exec(text);
+    let q = qm ? qm[0].toLowerCase() : "Unknown";
+    if (q === "2160p" || q === "4k") q = "4K";
+    const sm = sizeRx.exec(title);
+    let sizeGb = 0;
+    if (sm) { const n = parseFloat(sm[1]) || 0; sizeGb = sm[2].toUpperCase() === "MB" ? n / 1024 : n; }
+    const url = str(o, "url");
+    const cached = name.includes("+]") || name.includes("RD+") || name.includes("⚡") ||
+      (url != null && name.includes("RD") && !/download/i.test(name));
+    const fi = o.fileIdx;
+    const fileIdx = fi == null || fi === "" || !isFinite(+fi) ? null : Math.trunc(+fi);
+    const seed = seedRx.exec(title);
+    const hdrs = (((o.behaviorHints || {}).proxyHeaders || {}).request) || {};
+    return {
+      addon, name: name.replace(/\n/g, " "), title, url, infoHash: str(o, "infoHash"), fileIdx,
+      quality: q, sizeText: sm ? sm[0] : "", sizeGb, seeders: seed ? parseInt(seed[1], 10) : null, cached,
+      headers: hdrs, season: season == null ? null : season, episode: episode == null ? null : episode,
+    };
+  }
+
+  /** StreamInfo.parse */
+  function info(s) {
+    const text = s.name + " " + s.title;
+    let resolution = "";
+    if (res4k.test(text)) resolution = "4K";
+    else if (res1080.test(text)) resolution = "1080p";
+    else if (res720.test(text)) resolution = "720p";
+    else if (resSd.test(text)) resolution = "SD";
+    else if (s.quality === "4K" || s.quality === "1080p" || s.quality === "720p") resolution = s.quality;
+    else if (s.quality === "480p") resolution = "SD";
+    const cam = camRx.test(text);
+    let source = "";
+    if (remux.test(text)) source = "REMUX";
+    else if (webrip.test(text)) source = "WEBRip";
+    else if (bluray.test(text)) source = "BluRay";
+    else if (webdl.test(text)) source = "WEB-DL";
+    else if (hdtv.test(text)) source = "HDTV";
+    else if (cam) source = "CAM";
+    else if (dvd.test(text)) source = "DVD";
+    const hi = resolution === "4K" || resolution === "1080p";
+    let stars;
+    if (cam) stars = 1;
+    else if (source === "REMUX") stars = 5;
+    else if (source === "BluRay" && resolution === "4K") stars = 5;
+    else if ((source === "BluRay" || source === "WEB-DL") && hi) stars = 4;
+    else if ((source === "WEBRip" || source === "HDTV") && resolution === "SD") stars = 2;
+    else if (source === "WEBRip" || source === "HDTV") stars = 3;
+    else if (source === "BluRay" || source === "WEB-DL") stars = 3;
+    else if (hi) stars = 3;
+    else if (resolution === "720p" || source === "DVD") stars = 2;
+    else stars = 1;
+    const hdrList = [];
+    if (dv.test(text)) hdrList.push("DV");
+    if (hdr10p.test(text)) hdrList.push("HDR10+"); else if (hdr.test(text)) hdrList.push("HDR");
+    let codec = null;
+    if (atmos.test(text)) codec = "Atmos";
+    else if (truehd.test(text)) codec = "TrueHD";
+    else if (dts.test(text)) codec = "DTS";
+    else if (ddp.test(text)) codec = "DD+";
+    const cm = channels.exec(text);
+    const ch = cm ? cm[1] + ".1" : null;
+    const audio = codec === "Atmos" ? codec : [codec, ch].filter(Boolean).join(" ");
+    let sizeLabel;
+    if (s.sizeGb >= 1) sizeLabel = s.sizeGb.toFixed(1) + " GB";
+    else if (s.sizeGb > 0) sizeLabel = Math.trunc(s.sizeGb * 1024) + " MB";
+    else sizeLabel = s.sizeText;
+    const notCachedLink = s.url != null && /download/i.test(s.name);
+    const hash = s.infoHash ? s.infoHash.toLowerCase() : null;
+    const firstLine = s.title.split(/\r\n|\r|\n/).find((l) => l.trim()) || "";
+    const fileName = firstLine.toLowerCase().replace(nonAlnum, "");
+    let dedupeKey;
+    if (hash != null) dedupeKey = "h:" + hash + ":" + (s.fileIdx == null ? -1 : s.fileIdx);
+    else if (fileName.length >= 8 && s.sizeGb > 0) dedupeKey = "f:" + fileName + ":" + s.sizeGb.toFixed(1);
+    else dedupeKey = "u:" + (s.url != null ? s.url : s.addon + s.name + s.title);
+    const resolutionRank = { "4K": 4, "1080p": 3, "720p": 2, SD: 1 }[resolution] || 0;
+    return {
+      stars, resolution, source, hdr: hdrList, audio, sizeGb: s.sizeGb, sizeLabel, instant: s.cached,
+      download: !s.cached && (hash != null || notCachedLink), cam, dedupeKey, resolutionRank,
+    };
+  }
+
+  /** StreamInfo.comparator: cached first, then stars, resolution and size (slow connection: 720p/1080p, smaller first). */
+  function compare(slow) {
+    const b = (x) => (x ? 1 : 0);
+    if (slow) {
+      const r = (i) => ({ "720p": 3, "1080p": 2 }[i.resolution] || 0);
+      const sz = (i) => (i.sizeGb > 0 ? i.sizeGb : Number.MAX_VALUE);
+      return (x, y) => (b(y.info.instant) - b(x.info.instant)) || (r(y.info) - r(x.info)) ||
+        (sz(x.info) - sz(y.info)) || (y.info.stars - x.info.stars);
+    }
+    return (x, y) => (b(y.info.instant) - b(x.info.instant)) || (y.info.stars - x.info.stars) ||
+      (y.info.resolutionRank - x.info.resolutionRank) || (y.info.sizeGb - x.info.sizeGb);
+  }
+
+  /** StreamInfo.ranked: parsed, sorted (stable), de-duplicated (the best copy wins). */
+  function ranked(list, slow) {
+    const seen = new Set();
+    return list.map((s) => ({ source: s, info: info(s) })).sort(compare(!!slow)).filter((r) => {
+      if (seen.has(r.info.dedupeKey)) return false;
+      seen.add(r.info.dedupeKey); return true;
+    });
+  }
+
+  /** StreamInfo.arrange: what the list shows, and what it hides (CAM / TS, files over the size limit). */
+  function arrange(list, episode, opts) {
+    const o = opts || {};
+    const limit = episode ? (o.maxEpisodeGb == null ? 12 : o.maxEpisodeGb) : (o.maxMovieGb == null ? 40 : o.maxMovieGb);
+    const visible = [], hidden = [];
+    for (const r of ranked(list, o.slow)) (r.info.cam || (limit > 0 && r.info.sizeGb > limit) ? hidden : visible).push(r);
+    return { visible, hidden };
+  }
+
+  /** StreamInfo.playOrder: the shown sources, or (if every one is hidden) the hidden ones. */
+  function playOrder(list, episode, opts) {
+    const a = arrange(list, episode, opts);
+    return (a.visible.length ? a.visible : a.hidden).map((r) => r.source);
+  }
+
+  /** RealDebrid.chooseFile: fileIdx (Stremio counts from 0, RD from 1), then SxxEyy / 1x05, then the largest video. */
+  const videoExt = /\.(mkv|mp4|avi|m4v|mov|webm|ts)$/i;
+  function chooseFile(files, fileIdx, season, episode) {
+    const isVideo = (f) => videoExt.test(String(f.path || ""));
+    const bytes = (f) => +f.bytes || 0;
+    const biggest = (arr) => arr.reduce((a, f) => (a == null || bytes(f) > bytes(a) ? f : a), null);
+    if (fileIdx != null) {
+      const byId = files.find((f) => +f.id === fileIdx + 1);
+      if (byId && isVideo(byId)) return byId;
+      const byPos = files[fileIdx];
+      if (byPos && isVideo(byPos)) return byPos;
+    }
+    const videos = files.filter(isVideo);
+    if (season > 0 && episode > 0) {
+      // Kotlin: (s0*S[ ._-]?e0*E(?!\d))|((?<!\d)0*Sx0*E(?!\d)), without the lookbehind.
+      const rx = new RegExp(`(s0*${season}[ ._-]?e0*${episode}(?!\\d))|((?:^|\\D)0*${season}x0*${episode}(?!\\d))`, "i");
+      const base = (f) => String(f.path || "").split("/").pop();
+      const a = biggest(videos.filter((f) => rx.test(base(f))));
+      if (a) return a;
+      const b = biggest(videos.filter((f) => rx.test(String(f.path || ""))));
+      if (b) return b;
+    }
+    return biggest(videos);
+  }
+
+  /** RealDebrid.linkFor: RD gives one link per selected file, in file order. */
+  function linkFor(info, chosen) {
+    const links = info.links || [];
+    if (!links.length) return null;
+    const selected = (info.files || []).filter((f) => +f.selected === 1).sort((a, b) => a.id - b.id);
+    const i = chosen == null ? 0 : selected.findIndex((f) => +f.id === +chosen.id);
+    if (i < 0 || i >= links.length) return null;
+    return links[i];
+  }
+
+  return { parseStream, info, ranked, arrange, playOrder, chooseFile, linkFor };
+})();
+// <<< StreamInfo port
+
+const siOpts = () => {
+  const i = S.init || {};
+  return { slow: !!i.slow_connection, maxMovieGb: i.max_movie_gb == null ? 40 : +i.max_movie_gb, maxEpisodeGb: i.max_episode_gb == null ? 12 : +i.max_episode_gb };
+};
+const addonUrls = () => ((S.init && S.init.addon_urls) || []).filter((u) => typeof u === "string" && /^https?:\/\//i.test(u));
+const addonBase = (m) => m.replace(/\/manifest\.json$/, "");
+
+/** fetch with a time limit; the body is read inside the limit too. */
+async function fetchJSON(url, ms, opts) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(url, { ...(opts || {}), signal: ac.signal });
+    if (!r.ok) { const e = new Error("HTTP " + r.status); e.status = r.status; throw e; }
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+// ---------- addons ----------
+const addonNames = new Map(Object.entries(readJSON("mcdtv_web_addon_names") || {}));
+async function addonName(m) {
+  if (addonNames.has(m)) return addonNames.get(m);
+  let n = "";
+  try { n = String((await fetchJSON(m, 10000)).name || "").trim(); } catch {}
+  if (!n) { try { n = new URL(m).hostname.replace(/^www\./, ""); } catch { n = "Addon"; } }
+  addonNames.set(m, n);
+  LS.set("mcdtv_web_addon_names", JSON.stringify(Object.fromEntries(Array.from(addonNames).slice(-40))));
+  return n;
+}
+/** Addons.streams: every addon at once, 10 s each; failures are skipped. */
+async function fetchStreams(type, imdb, season, episode) {
+  const stremioType = type === "tv" ? "series" : "movie";
+  const id = type === "tv" ? `${imdb}:${season}:${episode}` : imdb;
+  const ck = stremioType + "/" + id + "|" + addonUrls().join("|");
+  const c = S.streamCache.get(ck);
+  if (c && Date.now() - c.at < 5 * 60000) return c.list;
+  const per = await Promise.all(addonUrls().map(async (m) => {
+    const [name, data] = await Promise.all([addonName(m), fetchJSON(`${addonBase(m)}/stream/${stremioType}/${id}.json`, 10000).catch(() => null)]);
+    const arr = data && Array.isArray(data.streams) ? data.streams : [];
+    return arr.filter((o) => o && typeof o === "object")
+      .map((o) => SI.parseStream(name, o, type === "tv" ? season : null, type === "tv" ? episode : null));
+  }));
+  const list = [].concat(...per);
+  S.streamCache.set(ck, { at: Date.now(), list });
+  if (S.streamCache.size > 20) S.streamCache.delete(S.streamCache.keys().next().value);
+  return list;
+}
+
+// ---------- Real-Debrid (your own account, through the token your TV shares) ----------
+const RD_API = "https://api.real-debrid.com/rest/1.0";
+const NEED_TV = "Your TV needs to be on once to refresh Real-Debrid access.";
+const NO_RD = "Connect Real-Debrid on the TV first (Settings > Real-Debrid).";
+function fatal(msg) { const e = new Error(msg); e.fatal = true; return e; }
+function setRd(t, exp) {
+  if (!t) return;
+  if (S.rd && S.rd.t && S.rd.t !== t && (S.rd.exp || 0) > exp) return; // an older message: keep the newer token
+  S.rd = { t, exp: exp || 0 };
+  LS.set(RD_KEY, JSON.stringify(S.rd));
+}
+function clearRd() { S.rd = null; LS.del(RD_KEY); }
+const rdAvailable = () => !!(S.rd && S.rd.t) || !!(S.init && S.init.rd_connected && S.link);
+/** Asks the TV for a fresh access token (force: the old one got a 401). 8 s, then NEED_TV. */
+function askRdToken(force) {
+  if (!S.link || !S.key) return Promise.reject(fatal(NEED_TV));
+  const req = newReq();
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => { rdWait.delete(req); reject(fatal(NEED_TV)); }, 8000);
+    rdWait.set(req, (m) => {
+      clearTimeout(t); rdWait.delete(req);
+      if (m.rd_token) { S.rd = null; setRd(m.rd_token, +m.rd_expires_at || 0); resolve(m.rd_token); }
+      else { if (m.error) clearRd(); reject(fatal(NO_RD)); }
+    });
+    relaySend({ cmd: "rd_token", req, ts: Date.now(), force: !!force })
+      .catch(() => { clearTimeout(t); rdWait.delete(req); reject(fatal("Couldn't reach the relay. Check your internet.")); });
+  });
+}
+async function rdToken() {
+  if (S.rd && S.rd.t && (S.rd.exp || 0) - Date.now() > 60000) return S.rd.t;
+  if (!S.link && !(S.rd && S.rd.t)) throw fatal(NO_RD);
+  return askRdToken(false);
+}
+/** One RD API call; on 401 asks the TV for a new token and retries once (RealDebrid.authed). */
+async function rdCall(method, path, fields, retried) {
+  const tok = await rdToken();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 20000);
+  let r, txt = "";
+  try {
+    r = await fetch(RD_API + path, {
+      method, signal: ac.signal, headers: { Authorization: "Bearer " + tok },
+      body: fields ? new URLSearchParams(fields) : undefined,
+    });
+    txt = await r.text();
+  } catch {
+    throw fatal("Couldn't reach Real-Debrid from this browser. Check your internet, or Play on TV.");
+  } finally { clearTimeout(timer); }
+  if (r.status === 401) {
+    if (retried) throw fatal("Real-Debrid needs reconnecting. Go to Settings > Real-Debrid on the TV.");
+    await askRdToken(true);
+    return rdCall(method, path, fields, true);
+  }
+  let o = null; try { o = txt ? JSON.parse(txt) : null; } catch {}
+  if (!r.ok) {
+    const e = new Error("Real-Debrid: " + String((o && o.error) || "error " + r.status).replace(/_/g, " "));
+    e.status = r.status;
+    throw e;
+  }
+  return o; // null for 204 (no content)
+}
+const rdInfo = (id) => rdCall("GET", "/torrents/info/" + encodeURIComponent(id));
+async function rdUnrestrict(link) {
+  const o = await rdCall("POST", "/unrestrict/link", { link });
+  if (!o || !o.download) throw new Error("Real-Debrid gave no link for this source.");
+  return { direct: o.download, rdId: o.id || null, mime: o.mimeType || "", filename: o.filename || "" };
+}
+const notCached = (p) => new Error(`Not cached on Real-Debrid yet (${Math.round(+p || 0)}%). Pick a ⚡ Instant source.`);
+/** RealDebrid.resolveHash: reuse the torrent if it is in your account, else add it, pick the file, unrestrict. */
+async function rdResolveHash(infoHash, fileIdx, season, episode) {
+  const hash = String(infoHash).trim().toLowerCase();
+  const FAILED = ["magnet_error", "error", "virus", "dead"], BUSY = ["queued", "downloading", "compressing", "uploading"];
+  let reuseId = null, existing = null;
+  try {
+    const list = await rdCall("GET", "/torrents?limit=100&page=1");
+    existing = (Array.isArray(list) ? list : []).find((x) => String(x.hash || "").toLowerCase() === hash) || null;
+  } catch (e) { if (e.fatal) throw e; } // listing failed: just add the magnet
+  if (existing) {
+    const st = existing.status;
+    if (st === "downloaded") {
+      const info = await rdInfo(existing.id);
+      const link = SI.linkFor(info, SI.chooseFile(info.files || [], fileIdx, season, episode));
+      if (link) return link; // else the file we want was not selected in that copy: add a fresh one
+    } else if (BUSY.includes(st)) throw notCached(existing.progress);
+    else if (st === "waiting_files_selection" || st === "magnet_conversion") reuseId = existing.id;
+  }
+  const owned = reuseId == null;
+  const id = reuseId || (await rdCall("POST", "/torrents/addMagnet", { magnet: "magnet:?xt=urn:btih:" + hash })).id;
+  try {
+    let info = await rdInfo(id);
+    for (let waited = 0; info.status === "magnet_conversion" && waited < 10000; waited += 1000) { await sleep(1000); info = await rdInfo(id); }
+    let status = info.status;
+    if (status === "magnet_conversion") throw new Error("Real-Debrid is still reading this torrent. Pick another source.");
+    if (FAILED.includes(status)) throw new Error("Real-Debrid: " + status.replace(/_/g, " "));
+    const chosen = SI.chooseFile(info.files || [], fileIdx, season, episode);
+    if (status === "waiting_files_selection") {
+      await rdCall("POST", "/torrents/selectFiles/" + encodeURIComponent(id), { files: chosen ? String(chosen.id) : "all" });
+    }
+    for (let i = 0; i < 8; i++) {
+      info = await rdInfo(id);
+      status = info.status;
+      if (status === "downloaded") {
+        const link = SI.linkFor(info, chosen) || (info.links || [])[0];
+        if (link) return link;
+      }
+      if (FAILED.includes(status)) throw new Error("Real-Debrid: " + status.replace(/_/g, " "));
+      await sleep(1500);
+    }
+    throw notCached(info.progress);
+  } catch (e) {
+    // Not playable here: remove what we added so your RD cloud stays clean.
+    if (owned) rdCall("DELETE", "/torrents/delete/" + encodeURIComponent(id)).catch(() => {});
+    throw e;
+  }
+}
+
+/** Resolver.resolve for the browser: {direct, rdId, mime, filename}. */
+async function resolveHere(s, meta) {
+  const tv = meta.type === "tv" && meta.season > 0 && meta.episode > 0;
+  if (s.url) {
+    if (!rdAvailable()) return { direct: s.url };
+    // Debrid addons often answer with a resolve URL that redirects to an RD download: RD unrestricts many
+    // hoster and RD links directly, which also gives an id for browser-friendly transcodes.
+    try { return await rdUnrestrict(s.url); } catch (e) { if (e.fatal) return { direct: s.url }; } // no RD access right now: play as is
+    try {
+      const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 8000);
+      const r = await fetch(s.url, { method: "HEAD", signal: ac.signal }).finally(() => clearTimeout(t));
+      if (r.url && r.url !== s.url && /(^|\.)real-debrid\.com$/i.test(new URL(r.url).hostname)) return await rdUnrestrict(r.url);
+    } catch {}
+    return { direct: s.url };
+  }
+  if (s.infoHash) {
+    if (!rdAvailable()) throw fatal(NO_RD);
+    const link = await rdResolveHash(s.infoHash, s.fileIdx, s.season != null ? s.season : tv ? meta.season : null,
+      s.episode != null ? s.episode : tv ? meta.episode : null);
+    return rdUnrestrict(link);
+  }
+  throw new Error("This source has no playable link");
+}
+
+function hlsCapable() {
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  let can = "";
+  try { can = document.createElement("video").canPlayType("application/vnd.apple.mpegurl"); } catch {}
+  return ios || !!can;
+}
+/**
+ * What the player tries, in order. iPhone, iPad and Safari: RD's HLS transcode. Others: RD's MP4 transcode
+ * (an .mp4 file plays as is first, so it can seek), then WebM. The direct file is always the last resort.
+ */
+async function playCandidates(res) {
+  let tc = null;
+  if (res.rdId) { try { tc = await rdCall("GET", "/streaming/transcode/" + encodeURIComponent(res.rdId)); } catch {} }
+  const full = (k) => { const x = tc && tc[k]; if (!x) return ""; if (typeof x === "string") return x; return x.full || Object.values(x).find((u) => typeof u === "string") || ""; };
+  const hls = hlsCapable();
+  const isMp4 = /mp4|quicktime/i.test(res.mime || "") || /\.(mp4|m4v|mov)$/i.test(res.filename || "");
+  const out = [];
+  const add = (url, kind) => { if (url && !out.some((c) => c.url === url)) out.push({ url, kind }); };
+  if (hls && full("apple")) add(full("apple"), "hls");
+  if (!hls && isMp4) add(res.direct, "direct");
+  add(full("liveMP4"), "mp4");
+  if (!hls) add(full("h264WebM"), "webm");
+  add(res.direct, "direct");
+  return out;
+}
+
+// ---------- resume positions (this browser) ----------
+const posBase = (m) => m.type + ":" + m.id + (m.type === "tv" ? ":" + m.season + ":" + m.episode : "");
+const posKey = (m) => (S.profile || "p1") + "|" + posBase(m);
+function getPos(m) { const all = readJSON(POS_KEY) || {}; return all[posKey(m)] || ((S.profile || "p1") === "p1" ? all[posBase(m)] : null) || null; }
+function setPos(m, p, d) {
+  const all = readJSON(POS_KEY) || {};
+  all[posKey(m)] = { p: Math.round(p), d: Math.round(d), at: Date.now() };
+  const keys = Object.keys(all);
+  if (keys.length > 300) keys.sort((a, b) => all[a].at - all[b].at).slice(0, keys.length - 300).forEach((k) => delete all[k]);
+  LS.set(POS_KEY, JSON.stringify(all));
+}
+
+// ---------- Sources page (#/sources/type/id?s=&e=) ----------
+function srcRow(r, i) {
+  const f = r.info;
+  const st = `<span class="st" aria-label="${f.stars} of 5 stars">${"&#9733;".repeat(f.stars)}<i>${"&#9733;".repeat(5 - f.stars)}</i></span>`;
+  const parts = [st];
+  if (f.resolution) parts.push(`<span class="bdg${f.resolution === "4K" || f.resolution === "1080p" ? " hi" : ""}">${esc(f.resolution)}</span>`);
+  f.hdr.forEach((h) => parts.push(`<span class="bdg">${esc(h)}</span>`));
+  if (f.audio) parts.push(`<span class="bdg">${esc(f.audio)}</span>`);
+  if (f.source) parts.push(`<span class="so">${esc(f.source)}</span>`);
+  if (f.sizeLabel) parts.push(`<span class="sz">${esc(f.sizeLabel)}</span>`);
+  if (f.instant) parts.push(`<span class="in">&#9889; Instant</span>`);
+  else if (f.download) parts.push(`<span class="dl">&#9203; Download</span>`);
+  parts.push(`<span class="ad">${esc(r.source.addon)}</span>`);
+  const tip = (r.source.name + "\n" + r.source.title).trim();
+  return `<button class="src" data-src="${i}" title="${esc(tip)}">${parts.join("")}</button>`;
+}
+async function renderSources(v, tok, type, id, q) {
+  let season = type === "tv" ? +q.get("s") || 0 : 0, episode = type === "tv" ? +q.get("e") || 0 : 0;
+  v.innerHTML = `<div class="page"><div class="sk sk-line" style="width:40%;height:30px"></div><div class="sk sk-line" style="width:25%"></div>${Array.from({ length: 6 }, () => `<div class="sk" style="height:46px;margin:8px 0;max-width:980px"></div>`).join("")}</div>`;
+  let d;
+  try { d = await api.details(type, id); } catch (e) {
+    if (tok === routeTok) v.innerHTML = `<div class="notice"><h2>Couldn't load this title</h2><p class="muted">${esc(e.message)}</p><button class="btn" data-act="reload">Try again</button></div>`;
+    return;
+  }
+  if (tok !== routeTok) return;
+  const t = norm(d, type);
+  if (!t) { v.innerHTML = `<div class="notice"><h2>Not available</h2></div>`; return; }
+  const imdb = d.imdb_id || (d.external_ids && d.external_ids.imdb_id) || "";
+  if (type === "tv" && (season <= 0 || episode <= 0)) {
+    const c = contFor(type, id);
+    if (c && c.season > 0 && c.episode > 0) { season = c.season; episode = c.episode; }
+    else { const s1 = (d.seasons || []).find((s) => s.season_number > 0); season = s1 ? s1.season_number : 1; episode = 1; }
+  }
+  const runtimeMin = type === "movie" ? d.runtime || 0 : (d.episode_run_time || [])[0] || 0;
+  const meta = { type, id, name: t.name, poster: t.poster, backdrop: t.backdrop, season, episode, runtimeMin,
+    label: type === "tv" ? `${t.name}  S${season} E${episode}` : t.name };
+  document.title = meta.label + " | Jarvis";
+  const back = `#/title/${type}/${id}`;
+  const head = `<a class="muted" href="${back}" style="font-size:13px;font-weight:600">&#8249; ${esc(t.name)}</a>
+    <div class="srchead"><h1 style="margin-bottom:0">Play here</h1><div class="lbl">${esc(meta.label)}${siOpts().slow ? " · Slow connection: smaller files first" : ""}</div></div>`;
+  const tvBtn = `<button class="btn" ${playAttrs(t, season, episode)}>&#9654; Play on TV</button>`;
+  if (!imdb) { v.innerHTML = `<div class="page">${head}<p class="muted">This title has no IMDb id yet, so your addons can't look it up.</p><div class="actions">${tvBtn}</div></div>`; return; }
+  if (!addonUrls().length) {
+    v.innerHTML = `<div class="page">${head}<div class="panel" style="margin-top:14px"><h2>No addons yet</h2>
+      <p class="muted">${S.link ? "Play here uses the addons installed on your TV. Add one on the TV or the Control page, then tap Refresh from TV." : "Link your TV first. Play here uses the addons installed on it."}</p>
+      <div class="rowf" style="margin-top:10px">${S.link ? `<button class="btn small primary" data-act="retry">Refresh from TV</button>` : `<a class="btn small primary" href="#/pair">Link your TV</a>`}</div></div></div>`;
+    return;
+  }
+  v.innerHTML = `<div class="page">${head}
+    <div class="actions"><button class="btn primary" id="bestBtn" disabled>&#9889; Best source</button>${tvBtn}</div>
+    <div class="srcstatus" id="srcStatus" role="status" aria-live="polite">Asking your addons…</div>
+    <div class="srcs" id="srcList">${Array.from({ length: 6 }, () => `<div class="sk" style="height:46px"></div>`).join("")}</div></div>`;
+  const status = $("#srcStatus", v), listEl = $("#srcList", v), bestBtn = $("#bestBtn", v);
+  const say = (msg, bad) => { status.textContent = msg; status.classList.toggle("bad", !!bad); };
+  let list;
+  try { list = await fetchStreams(type, imdb, season, episode); } catch (e) { list = []; }
+  if (tok !== routeTok) return;
+  const opts = siOpts();
+  const a = SI.arrange(list, type === "tv", opts);
+  let rows = a.visible, showHidden = false;
+  if (!list.length) { say("Your addons found no sources for this title.", true); listEl.innerHTML = ""; return; }
+  say(`${a.visible.length + a.hidden.length} sources. Tap one, or let Best source pick.`);
+  bestBtn.disabled = false;
+  const draw = () => {
+    const all = showHidden ? a.visible.concat(a.hidden) : a.visible;
+    rows = all;
+    listEl.innerHTML = all.map(srcRow).join("") + (a.hidden.length && !showHidden
+      ? `<button class="srcmore" id="showHidden">Show ${a.hidden.length} hidden source${a.hidden.length === 1 ? "" : "s"} (CAM releases, files over the size limit)</button>` : "");
+  };
+  draw();
+  let busy = false;
+  const lock = (on) => { busy = on; bestBtn.disabled = on; $$(".src", listEl).forEach((b) => { b.disabled = on; }); };
+  async function go(s) {
+    const res = await resolveHere(s, meta);
+    if (tok !== routeTok) return true;
+    say("Getting the stream ready…");
+    const cands = await playCandidates(res);
+    if (tok !== routeTok) return true;
+    if (!cands.length) throw new Error("This source has no playable link");
+    const f = SI.info(s);
+    S.playing = { key: posKey(meta), meta, cands, back: location.hash,
+      line: [f.resolution, f.source, f.sizeLabel, s.addon].filter(Boolean).join(" · ") };
+    location.hash = `#/play/${type}/${id}` + (type === "tv" ? `?s=${season}&e=${episode}` : "");
+    return true;
+  }
+  listEl.addEventListener("click", async (e) => {
+    if (e.target.closest("#showHidden")) {
+      const first = a.visible.length; showHidden = true; draw();
+      const b = listEl.querySelectorAll(".src")[first]; if (b) b.focus();
+      return;
+    }
+    const b = e.target.closest("[data-src]"); if (!b || busy) return;
+    const s = rows[+b.dataset.src].source;
+    lock(true); say(`Getting stream from ${s.addon}…`);
+    try { await go(s); } catch (err) { if (tok === routeTok) { say(err.message || "Could not open this source", true); lock(false); } }
+  });
+  bestBtn.addEventListener("click", async () => {
+    if (busy) return;
+    lock(true);
+    // Resolver.best: the top 5 in list order (CAM and oversized only if nothing else), first that resolves wins.
+    const order = SI.playOrder(list, type === "tv", opts).slice(0, 5);
+    let last = null;
+    for (let i = 0; i < order.length; i++) {
+      if (tok !== routeTok) return;
+      say(`Finding the best source (${i + 1} of ${order.length})…`);
+      try { await go(order[i]); return; } catch (err) { last = err; if (err.fatal) break; }
+    }
+    if (tok === routeTok) { say(((last && last.message) || "No sources found.") + " Pick one below.", true); lock(false); }
+  });
+}
+
+// ---------- Player page (#/play/type/id?s=&e=) ----------
+function fmtTime(sec) { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); }
+function renderPlayer(v, tok, type, id, q) {
+  const P = S.playing;
+  const want = posKey({ type, id, season: +q.get("s") || 0, episode: +q.get("e") || 0 });
+  if (!P || P.key !== want) {
+    document.body.classList.remove("playmode");
+    v.innerHTML = `<div class="notice"><h2>Pick a source</h2><p class="muted">Choose a source to play this here.</p>
+      <div class="actions"><a class="btn primary" href="#/sources/${type}/${id}${type === "tv" && q.get("s") ? `?s=${+q.get("s")}&e=${+q.get("e")}` : ""}">Show sources</a></div></div>`;
+    return;
+  }
+  const m = P.meta;
+  document.title = m.label + " | Jarvis";
+  const bd = m.backdrop ? ` poster="${IMG}w1280${esc(m.backdrop)}"` : "";
+  v.innerHTML = `<div class="player">
+    <div class="pl-top"><a class="pl-back" href="${esc(P.back)}" aria-label="Back to sources">&#8249; Back</a>
+      <div class="pl-title"><b>${esc(m.label)}</b><span class="muted" id="plLine">${esc(P.line)}</span></div></div>
+    <div class="pl-stage"><video id="vid" controls playsinline webkit-playsinline preload="auto"${bd}></video>
+      <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><a class="btn small primary" href="${esc(P.back)}">Pick another source</a></div></div>
+    <div class="pl-bar"><button class="btn primary big" id="fsBtn">&#9974; Full screen</button>
+      <a class="btn" href="${esc(P.back)}">Other sources</a>
+      <button class="btn" ${playAttrs({ type, id, name: m.name }, m.season, m.episode)}>&#9654; Play on TV instead</button></div></div>`;
+  const vid = $("#vid", v), msg = $("#plMsg", v);
+  let i = 0, resumed = false, lastSave = 0, lastRelay = 0, gone = false;
+  const BAD_FORMAT = "This file's format can't play in a browser. Try another source.";
+  const showMsg = (text) => { $("#plMsgText", v).textContent = text; msg.classList.remove("hidden"); };
+  const kindLabel = { hls: "Real-Debrid stream", mp4: "Real-Debrid stream (MP4)", webm: "Real-Debrid stream (WebM)", direct: "Original file" };
+  function load() {
+    const c = P.cands[i];
+    msg.classList.add("hidden");
+    $("#plLine", v).textContent = [P.line, kindLabel[c.kind]].filter(Boolean).join(" · ");
+    vid.src = c.url;
+    vid.load();
+    const p = vid.play(); if (p && p.catch) p.catch(() => {}); // blocked autoplay: the controls are there
+  }
+  function next() {
+    if (gone) return;
+    if (i < P.cands.length - 1) { i++; resumed = false; load(); } else showMsg(BAD_FORMAT);
+  }
+  const durMs = () => (isFinite(vid.duration) && vid.duration > 0 ? vid.duration * 1000 : (m.runtimeMin || 0) * 60000);
+  function save(sendTv) {
+    const pos = vid.currentTime * 1000, dur = durMs();
+    if (!(pos > 5000) || !(dur > 0)) return;
+    setPos(m, pos, dur);
+    lastSave = Date.now();
+    if (sendTv && S.link && S.key) {
+      lastRelay = Date.now();
+      relaySend({ cmd: "progress", type: m.type, id: m.id, season: m.season, episode: m.episode,
+        position_ms: Math.round(Math.min(pos, dur)), duration_ms: Math.round(dur), name: m.name,
+        poster: m.poster || "", backdrop: m.backdrop || "", ts: Date.now(), ...(S.profile ? { profile: S.profile } : {}) }).catch(() => {});
+    }
+  }
+  vid.addEventListener("error", next);
+  vid.addEventListener("loadeddata", () => {
+    // Sound but no picture: the browser can't decode this video (HEVC in some browsers). Try the next way.
+    if (P.cands[i].kind !== "hls" && vid.videoWidth === 0 && vid.videoHeight === 0) { if (i < P.cands.length - 1) next(); else showMsg(BAD_FORMAT); }
+  });
+  vid.addEventListener("loadedmetadata", () => {
+    if (resumed) return;
+    resumed = true;
+    const dur = durMs();
+    const saved = getPos(m);
+    let at = 0;
+    if (saved && saved.p > 30000 && (!dur || saved.p < dur * 0.95)) at = saved.p / 1000;
+    else {
+      // Nothing saved here: pick up where the TV left off (Continue Watching).
+      const c = contFor(m.type, m.id);
+      if (c && dur && (m.type !== "tv" || (c.season === m.season && c.episode === m.episode)) && c.progress > 0.02 && c.progress < 0.92) at = (c.progress * dur) / 1000;
+    }
+    if (at > 0) { try { vid.currentTime = at; toast("Resumed at " + fmtTime(at)); } catch {} }
+  });
+  vid.addEventListener("timeupdate", () => {
+    const now = Date.now();
+    // Every 10 s here; the TV gets one every 2 minutes (the relay has a daily message limit).
+    if (now - lastSave >= 10000) save(now - lastRelay >= 120000);
+  });
+  vid.addEventListener("pause", () => { if (!gone && !vid.ended) save(true); });
+  vid.addEventListener("ended", () => save(true));
+  const onHide = () => save(true);
+  window.addEventListener("pagehide", onHide);
+  $("#fsBtn", v).addEventListener("click", async () => {
+    try {
+      if (vid.requestFullscreen) await vid.requestFullscreen();
+      else if (vid.webkitRequestFullscreen) vid.webkitRequestFullscreen();
+      else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();
+      try { await screen.orientation.lock("landscape"); } catch {}
+    } catch {
+      try { if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen(); } catch {}
+    }
+  });
+  S.cleanup = () => {
+    gone = true;
+    save(true);
+    window.removeEventListener("pagehide", onHide);
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+    vid.pause(); vid.removeAttribute("src"); vid.load();
+  };
+  load();
+}
+
 // ---------- Person page ----------
 async function renderPerson(v, tok, id) {
   v.innerHTML = `<div class="page"><div class="pp"><div class="ph sk"></div><div class="info"><div class="sk sk-line" style="width:50%;height:32px"></div><div class="sk sk-line" style="width:30%"></div><div class="sk sk-line"></div><div class="sk sk-line" style="width:85%"></div></div></div></div>`;
@@ -1000,7 +2289,7 @@ async function renderPerson(v, tok, id) {
   }
   if (tok !== routeTok) return;
   if (o.adult) { v.innerHTML = `<div class="notice"><h2>Not available</h2></div>`; return; }
-  document.title = (o.name || "Person") + " | McD TV";
+  document.title = (o.name || "Person") + " | Jarvis";
   const cr = o.combined_credits || {};
   // Their whole catalogue, like the TV's person page (not origin-filtered; adult titles still removed).
   const acting = [];
@@ -1072,6 +2361,412 @@ async function renderList(v, tok, tab) {
     : `<div class="grid">${items.map(posterCard).join("")}</div>`;
 }
 
+// =====================================================================================
+// Live TV (direct only): your playlist from the TV (m3u_url), loaded by this browser straight from
+// your provider. Xtream Codes links (.../get.php?username=..&password=..) use the provider's app API
+// first, like data/Live.kt; anything else is read as an M3U playlist. A simplified LiveOrganizer
+// (data/LiveCatalog.kt) sorts channels into sections. Playlist links and stream URLs carry your
+// account details: they are never shown on screen and never logged.
+// =====================================================================================
+const LIVE_NO = "Your provider's channels can't play in a web browser. Live TV works in the Jarvis TV app.";
+const HLS_JS = "https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js";
+const LIVE_SECTIONS = ["Favorites", "Sports", "News", "Kids", "Movies", "Entertainment", "24/7", "Local", "International", "All"];
+const mixedBlocked = (u) => { try { return location.protocol === "https:" && new URL(u).protocol === "http:"; } catch { return true; } };
+
+const LO = (() => {
+  // Section bits.
+  const H24 = 1, EVENTS = 2, SPORTS = 4, NEWS = 8, KIDS = 16, MOVIES = 32, MUSIC = 64, LOCAL = 128, ENT = 256;
+  /** Upper-case words; '&', '+' and '!' stay inside words ("A&E", "ESPN+", "E!"). */
+  const tokens = (upper) => upper.split(/[^\p{L}\p{N}&+!]+/u).filter(Boolean);
+  const KW = new Map();
+  const add = (bits, ...kws) => kws.forEach((k) => { const key = tokens(k.toUpperCase()).join(" "); KW.set(key, (KW.get(key) || 0) | bits); });
+  add(H24, "24/7", "24-7", "247", "24X7");
+  add(EVENTS, "PPV", "PAY PER VIEW", "PAY-PER-VIEW", "EVENTS", "LIVE EVENT", "LIVE EVENTS");
+  add(SPORTS, "SPORT", "SPORTS", "DEPORTES", "ESPORTES", "SPORTSCENTER", "ESPNEWS", "STADIUM", "OUTDOOR CHANNEL", "CRICKET", "RUGBY", "OLYMPICS", "OLYMPIC",
+    "ESPN", "ESPN+", "FS1", "FS2", "FOX SPORTS", "CBS SPORTS", "TNT SPORTS", "NBC SPORTS", "SKY SPORTS", "BT SPORT", "BEIN", "DAZN", "SPORTSNET", "TSN",
+    "SUPERSPORT", "EUROSPORT", "BALLY", "BALLY SPORTS", "FANDUEL SPORTS", "MSG", "NESN", "YES NETWORK", "ALTITUDE", "MARQUEE", "ROOT SPORTS",
+    "FOX DEPORTES", "ESPN DEPORTES", "MONUMENTAL", "PREMIER SPORTS", "VIAPLAY",
+    "NFL", "NCAAF", "REDZONE", "RED ZONE", "SUNDAY TICKET", "COLLEGE FOOTBALL", "CFL", "NFL NETWORK", "GAMEPASS", "XFL", "UFL", "FOOTBALL",
+    "SEC", "SEC NETWORK", "BIG TEN", "BIG 10", "BTN", "ACC", "ACC NETWORK", "ACCN", "PAC-12", "PAC 12", "BIG 12", "LONGHORN NETWORK",
+    "NBA", "NBA TV", "NCAAB", "WNBA", "BASKETBALL", "MARCH MADNESS", "MLB", "MLB NETWORK", "BASEBALL", "MILB", "NHL", "HOCKEY", "AHL",
+    "SOCCER", "PREMIER LEAGUE", "EPL", "LALIGA", "LA LIGA", "SERIE A", "BUNDESLIGA", "LIGUE 1", "MLS", "UEFA", "FIFA", "LIGA MX", "FUTBOL", "FÚTBOL",
+    "FUTEBOL", "CHAMPIONS LEAGUE", "EUROPA LEAGUE", "TUDN", "EFL", "SPFL", "EREDIVISIE", "COPA",
+    "UFC", "BOXING", "WWE", "MMA", "PFL", "AEW", "BELLATOR", "TOP RANK", "FITE", "WRESTLING", "BKFC",
+    "F1", "FORMULA 1", "FORMULA1", "FORMULA ONE", "NASCAR", "INDYCAR", "MOTOGP", "MOTORSPORT", "MOTORSPORTS", "MAVTV", "SPEED",
+    "GOLF", "PGA", "LPGA", "LIV GOLF", "GOLF CHANNEL", "TENNIS", "ATP", "WTA", "WIMBLEDON", "TENNIS CHANNEL", "NCAA", "COLLEGE", "ESPNU");
+  add(NEWS, "NEWS", "CNN", "HLN", "MSNBC", "FOX NEWS", "FOX BUSINESS", "CNBC", "BLOOMBERG", "NEWSMAX", "NEWSNATION", "WEATHER", "WEATHER CHANNEL",
+    "C-SPAN", "CSPAN", "CBSN", "SKY NEWS", "BBC NEWS", "AL JAZEERA", "EURONEWS", "CHEDDAR", "OAN", "LIVENOW", "NOTICIAS", "FRANCE 24", "DW",
+    "NBC NEWS NOW", "ABC NEWS LIVE");
+  add(KIDS, "KIDS", "KID", "CARTOON", "CARTOONS", "CARTOONITO", "CARTOON NETWORK", "NICK", "NICKELODEON", "NICK JR", "NICKTOONS", "TEENNICK",
+    "DISNEY JR", "DISNEY JUNIOR", "DISNEY CHANNEL", "DISNEY XD", "BOOMERANG", "PBS KIDS", "BABY", "BABYTV", "BABY TV", "CBEEBIES", "CBBC",
+    "UNIVERSAL KIDS", "INFANTIL", "JUNIOR", "KIDZ", "TOONS");
+  add(MOVIES, "MOVIE", "MOVIES", "CINEMA", "CINE", "HBO", "SHOWTIME", "STARZ", "CINEMAX", "MGM+", "MGM", "EPIX", "TCM", "HALLMARK MOVIES", "FLIX",
+    "FILM", "FILMS", "MOVIEPLEX", "ENCORE", "FXM", "SONY MOVIES", "THRILLER", "ACTION MAX");
+  add(MUSIC, "MUSIC", "MTV", "MTV2", "MTV LIVE", "VH1", "BET JAMS", "BET SOUL", "CMT", "MUSIC CHOICE", "REVOLT", "STINGRAY", "VEVO", "RADIO", "AXS TV", "HITS");
+  add(LOCAL, "LOCAL", "LOCALS", "ABC", "NBC", "CBS", "FOX", "PBS", "CW", "THE CW", "MY NETWORK", "MYNETWORKTV", "AFFILIATE", "AFFILIATES", "TELEMUNDO", "UNIVISION", "ION");
+  add(ENT, "AMC", "FX", "FXX", "TBS", "TNT", "USA", "USA NETWORK", "BRAVO", "A&E", "HGTV", "FOOD", "FOOD NETWORK", "TLC", "DISCOVERY", "HISTORY", "SYFY",
+    "E!", "LIFETIME", "OWN", "OXYGEN", "PARAMOUNT", "PARAMOUNT NETWORK", "COMEDY CENTRAL", "FREEFORM", "NAT GEO", "NATIONAL GEOGRAPHIC", "ANIMAL PLANET",
+    "TRAVEL", "TRAVEL CHANNEL", "INVESTIGATION DISCOVERY", "BET", "VICE", "IFC", "SUNDANCE", "REELZ", "TV LAND", "WE TV", "GSN", "POP", "OVATION",
+    "COOKING CHANNEL", "DIY", "SCIENCE", "AHC", "DESTINATION AMERICA", "GAME SHOW", "COMEDY", "REALITY", "DRAMA", "ENTERTAINMENT", "CLASSIC TV", "SITCOM", "SITCOMS");
+
+  function keywordBits(text) {
+    const w = tokens(text.toUpperCase());
+    let bits = 0;
+    for (let i = 0; i < w.length; i++) {
+      const t = w[i];
+      bits |= KW.get(t) || 0;
+      // Variants: trailing digits or +/! dropped ("ESPN2", "ABC7", "ESPN+") when letters remain.
+      const trimmed = t.replace(/[+!]+$/, "").replace(/\d+$/, "");
+      if (trimmed && trimmed !== t && /\p{L}/u.test(trimmed)) bits |= KW.get(trimmed) || 0;
+      if (i + 1 < w.length) {
+        const two = t + " " + w[i + 1];
+        bits |= KW.get(two) || 0;
+        if (i + 2 < w.length) bits |= KW.get(two + " " + w[i + 2]) || 0;
+      }
+    }
+    return bits;
+  }
+
+  // Country prefixes ("US| …", "[UK] …", "CA: …"): anything not US is International.
+  const COUNTRY = {};
+  const reg = (name, ...codes) => codes.forEach((c) => { COUNTRY[c] = name; });
+  reg("US", "US", "USA"); reg("UK", "UK", "GB", "EN", "ENGLAND"); reg("Canada", "CA", "CAN", "CANADA");
+  reg("Latino", "LATINO", "LATIN", "LATAM", "LAT", "MX", "MEX", "MEXICO", "ES", "ESP", "SPAIN", "SPANISH", "ESPAÑOL", "ESPANOL");
+  reg("France", "FR", "FRA", "FRANCE", "FRENCH"); reg("Germany", "DE", "GER", "GERMANY", "GERMAN", "DEU"); reg("Italy", "IT", "ITA", "ITALY", "ITALIA");
+  reg("India", "IN", "IND", "INDIA", "HINDI", "PUNJABI", "DESI"); reg("Arabic", "AR", "ARA", "ARAB", "ARABIC");
+  reg("Portuguese", "PT", "POR", "PORTUGAL", "BR", "BRA", "BRAZIL", "BRASIL"); reg("Netherlands", "NL", "NED", "DUTCH"); reg("Poland", "PL", "POL", "POLAND");
+  reg("Turkey", "TR", "TUR", "TURKEY", "TURKISH"); reg("Russia", "RU", "RUS", "RUSSIA"); reg("Greece", "GR", "GRE", "GREECE");
+  reg("Australia", "AU", "AUS", "AUSTRALIA"); reg("Ireland", "IE", "IRE", "IRELAND", "IRISH"); reg("Philippines", "PH", "PHI", "FILIPINO", "PINOY");
+  reg("Pakistan", "PK", "PAK", "PAKISTAN"); reg("Africa", "AF", "AFR", "AFRICA", "AFRICAN"); reg("Caribbean", "CARIB", "CARIBBEAN");
+  reg("Balkans", "EX-YU", "EXYU", "YU", "BALKAN", "BALKANS"); reg("Nordic", "SE", "SWE", "NO", "NOR", "DK", "DEN", "FI", "FIN", "NORDIC", "SCANDINAVIA");
+  reg("Korea", "KR", "KOR", "KOREA", "KOREAN"); reg("Japan", "JP", "JPN", "JAPAN"); reg("China", "CN", "CHN", "CHINA", "CHINESE"); reg("Asia", "ASIA", "ASIAN");
+  reg("Albania", "AL", "ALB", "ALBANIA"); reg("Romania", "RO", "ROM", "ROMANIA"); reg("Iran", "IR", "IRAN", "PERSIAN", "FARSI"); reg("Vietnam", "VN", "VIET");
+  const PROVIDERS = new Set(["AT&T", "ATT", "PRIME", "AMAZON", "TUBI", "PLUTO", "PLUTO TV", "PLUTOTV", "SLING", "DIRECTV", "DTV", "ROKU", "SAMSUNG",
+    "SAMSUNG TV PLUS", "XUMO", "PEACOCK", "FUBO", "FUBOTV", "HULU", "PHILO", "DISH", "SPECTRUM", "VERIZON", "FIOS", "XFINITY", "YOUTUBE TV", "YTTV",
+    "VIZIO", "PLEX", "STIRR", "DISTRO", "FREEVEE", "LG", "TVE", "VIP", "FAST"]);
+  const PREFIX = /^\s*[|[(]?\s*([\p{L}&][\p{L}&+\- ]{0,15}?)\s*(?:[|:\])]|-\s)\s*/u;
+  function prefixToken(s) { const m = PREFIX.exec(s); return m ? { tok: m[1].trim().toUpperCase(), end: m[0].length } : null; }
+  function country(group, name) {
+    const g = prefixToken(group); if (g && COUNTRY[g.tok]) return COUNTRY[g.tok];
+    for (const t of tokens(group.toUpperCase())) if ((t.length >= 5 || t === "UK") && COUNTRY[t]) return COUNTRY[t];
+    const n = prefixToken(name); if (n && COUNTRY[n.tok]) return COUNTRY[n.tok];
+    return "";
+  }
+  const CALL_SIGN = /(?:^|[^A-Z0-9])(?:[KW][A-Z]{2,3}(?:-(?:TV|DT|CD|LD)\d?|\s?\d{1,2})(?![A-Z0-9])|\([KW][A-Z]{2,3}\))/;
+  const domestic = (c) => c === "US" || c === "";
+  function section(group, name) {
+    const c = country(group, name);
+    const bits = keywordBits(group + " " + name);
+    if (bits & H24) return "24/7";
+    if (bits & (EVENTS | SPORTS)) return "Sports";
+    if (bits & NEWS) return "News";
+    if (bits & KIDS) return "Kids";
+    if (bits & MOVIES) return "Movies";
+    if (bits & MUSIC) return "Entertainment";
+    if (domestic(c) && ((bits & LOCAL) || CALL_SIGN.test(name.toUpperCase()))) return "Local";
+    if (!domestic(c)) return "International";
+    if ((bits & ENT) || c === "US") return "Entertainment";
+    return "";
+  }
+  function stripPrefixes(s) {
+    let t = s.trim();
+    for (let i = 0; i < 3; i++) {
+      const p = prefixToken(t); if (!p) return t;
+      if (COUNTRY[p.tok] || PROVIDERS.has(p.tok)) t = t.slice(p.end).trim(); else return t;
+    }
+    return t;
+  }
+  const FANCY = /[ɐ-˿ᴀ-ᶿ⁰-₟ⱼⱽꟸꟹ]+/g;
+  const QUALITY = /(^|[^\p{L}\p{N}])(?:RAW|\d{2,3}\s?FPS|FHD|UHD|HD|SD|HQ|4K|8K|2160P|1080P|1080I|720P|480P|HEVC|H\.?26[45]|X26[45]|HDR10\+?|HDR|BACKUP|MULTI-?AUDIO)(?![\p{L}\p{N}])/giu;
+  /** Display name: "US| ESPN FHD" -> "ESPN". Never empty. */
+  function cleanName(raw) {
+    const original = String(raw || "").trim();
+    let t = stripPrefixes(original).replace(FANCY, " ").replace(QUALITY, "$1 ").replace(/\(\s*\)|\[\s*\]|\{\s*\}/g, " ").replace(/\s{2,}/g, " ");
+    t = t.replace(/^[\s|:;,./\\\-–•·*#=_~★☆●◉►▶>]+/, "").replace(/[\s|:;,./\\\-–•·*#=_~★☆●◉◄<([]+$/, "").trim();
+    return t || original || "Channel";
+  }
+  const DECO = "#=-*★☆_~▬═━─•●";
+  function looksLikeSeparator(t) {
+    if (!t) return true;
+    if (t.length >= 3 && ((DECO.includes(t[0]) && t[1] === t[0] && t[2] === t[0]) || (DECO.includes(t[t.length - 1]) && t[t.length - 2] === t[t.length - 1] && t[t.length - 3] === t[t.length - 1]))) return true;
+    const alnum = (t.match(/[\p{L}\p{N}]/gu) || []).length;
+    return alnum === 0 || alnum * 10 < t.length * 4;
+  }
+  const isSeparator = (name) => { const t = String(name || "").trim(); return looksLikeSeparator(t) || looksLikeSeparator(stripPrefixes(t)); };
+  return { section, cleanName, isSeparator };
+})();
+
+const LV = (() => {
+  // In memory only (this session): the playlist is not stored on the device.
+  let st = { status: "idle", list: null, msg: "", key: "" };
+  let view = { sec: "", q: "", shown: 0 };
+  let loading = null;
+  const PAGE = 240;
+
+  function xtreamOf(url) {
+    try {
+      const u = new URL(url.trim());
+      if (!u.pathname.endsWith("get.php")) return null;
+      const user = u.searchParams.get("username"), pass = u.searchParams.get("password");
+      if (!user || !pass) return null;
+      return { base: u.origin + u.pathname.replace(/get\.php$/, "").replace(/\/+$/, ""), user, pass };
+    } catch { return null; }
+  }
+  async function getText(url, ms) {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), ms || 45000);
+    try {
+      const r = await fetch(url, { signal: ac.signal, credentials: "omit", referrerPolicy: "no-referrer" });
+      if (!r.ok) { const e = new Error(LIVE_NO); e.code = r.status; throw e; }
+      return await r.text();
+    } catch (e) {
+      if (e && e.message === LIVE_NO) throw e;
+      throw new Error(LIVE_NO); // CORS, blocked or unreachable: the browser can't read this provider
+    } finally { clearTimeout(t); }
+  }
+  async function loadXtream(x) {
+    const api = `${x.base}/player_api.php?username=${encodeURIComponent(x.user)}&password=${encodeURIComponent(x.pass)}`;
+    let info;
+    try { info = JSON.parse(await getText(api)).user_info; } catch (e) { return null; } // not an app API: try the M3U download
+    if (!info) return null;
+    if (+info.auth === 0) throw new Error("The provider rejected the username or password in your playlist link.");
+    if (info.status && String(info.status).toLowerCase() !== "active") throw new Error("Your IPTV account is not active. Check with your provider.");
+    const formats = Array.isArray(info.allowed_output_formats) ? info.allowed_output_formats.map(String) : [];
+    if (formats.length && !formats.includes("m3u8")) throw new Error(LIVE_NO); // .ts only: browsers can't play it
+    const cats = {};
+    try { (JSON.parse(await getText(`${api}&action=get_live_categories`)) || []).forEach((c) => { if (c) cats[String(c.category_id)] = String(c.category_name || ""); }); } catch {}
+    let streams;
+    try { streams = JSON.parse(await getText(`${api}&action=get_live_streams`, 90000)); } catch { return null; }
+    if (!Array.isArray(streams)) return null;
+    const out = [];
+    for (const o of streams) {
+      if (!o || o.stream_id == null || o.stream_id === "") continue;
+      const id = String(o.stream_id);
+      const icon = typeof o.stream_icon === "string" && /^https?:/i.test(o.stream_icon) ? o.stream_icon : "";
+      out.push({ name: String(o.name || "").trim() || "Channel " + id, logo: icon, group: cats[String(o.category_id)] || "Other",
+        url: `${x.base}/live/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.m3u8` });
+      if (out.length >= 25000) break;
+    }
+    return out.length ? out : null;
+  }
+  /** M3u.parseLines: #EXTINF attributes and the URL line after them; /movie/ and /series/ entries are skipped. */
+  function parseM3u(text) {
+    const out = [];
+    const attr = /([a-zA-Z-]+)="([^"]*)"/g;
+    let pending = null, logo = "", group = "Other";
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (/^#EXTINF/i.test(line)) {
+        const a = {}; let m; attr.lastIndex = 0;
+        while ((m = attr.exec(line))) a[m[1].toLowerCase()] = m[2];
+        logo = (a["tvg-logo"] || "").trim(); group = (a["group-title"] || "").trim() || "Other";
+        const i = line.lastIndexOf(",");
+        pending = (i >= 0 ? line.slice(i + 1).trim() : "") || a["tvg-name"] || "Channel";
+      } else if (line && !line.startsWith("#") && pending != null) {
+        if (!line.includes("/movie/") && !line.includes("/series/")) out.push({ name: pending, logo, group, url: line });
+        pending = null;
+        if (out.length >= 25000) break;
+      }
+    }
+    return out;
+  }
+  async function load() {
+    const url = String((S.init && S.init.m3u_url) || "").trim();
+    if (!url) { st = { status: "none", list: null, msg: "", key: "" }; return; }
+    if (st.key === url && (st.status === "ok" || st.status === "error")) return;
+    st = { status: "loading", list: null, msg: "", key: url };
+    try {
+      if (mixedBlocked(url)) throw new Error(LIVE_NO); // an http link can't be read from this https page
+      const x = xtreamOf(url);
+      let raw = x ? await loadXtream(x) : null;
+      if (!raw) raw = parseM3u(await getText(url, 90000));
+      // Organize: drop separators and repeated URLs, clean the names, pick a section.
+      const seen = new Set(), list = [];
+      for (const ch of raw) {
+        if (LO.isSeparator(ch.name) || seen.has(ch.url)) continue;
+        seen.add(ch.url);
+        list.push({ name: LO.cleanName(ch.name), raw: ch.name, logo: ch.logo, group: ch.group, url: ch.url, sec: LO.section(ch.group, ch.name) });
+      }
+      if (!list.length) throw new Error("The playlist loaded but had no live channels in it.");
+      if (list.every((c) => mixedBlocked(c.url))) throw new Error(LIVE_NO);
+      if (st.key === url) st = { status: "ok", list, msg: "", key: url };
+    } catch (e) {
+      if (st.key === url) st = { status: "error", list: null, msg: (e && e.message) || LIVE_NO, key: url };
+    }
+  }
+  function favs() { const f = new Set(lists().live); return f; }
+  function filtered() {
+    const list = st.list || [];
+    const q = view.q.trim().toLowerCase();
+    if (q) return list.map((c, i) => i).filter((i) => list[i].name.toLowerCase().includes(q) || list[i].raw.toLowerCase().includes(q));
+    if (view.sec === "Favorites") { const f = favs(); return list.map((c, i) => i).filter((i) => f.has(list[i].url)); }
+    if (view.sec === "All") return list.map((c, i) => i);
+    return list.map((c, i) => i).filter((i) => list[i].sec === view.sec);
+  }
+  function counts() {
+    const c = { Favorites: 0, All: (st.list || []).length }; const f = favs();
+    for (const ch of st.list || []) { c[ch.sec] = (c[ch.sec] || 0) + 1; if (f.has(ch.url)) c.Favorites++; }
+    return c;
+  }
+  function tile(i, f) {
+    const ch = st.list[i];
+    const ini = esc(initial(ch.name));
+    const logo = ch.logo && !mixedBlocked(ch.logo)
+      ? `<img loading="lazy" decoding="async" src="${esc(ch.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.nextElementSibling.hidden=false;this.remove()"><span class="ini" hidden>${ini}</span>`
+      : `<span class="ini">${ini}</span>`;
+    return `<button class="lv-ch" type="button" data-act="live" data-idx="${i}" title="${esc(ch.name)}">${f.has(ch.url) ? `<span class="fav" aria-label="Favorite">&#9733;</span>` : ""}<span class="lv-logo">${logo}</span><b>${esc(ch.name)}</b></button>`;
+  }
+  function drawGrid() {
+    const g = $("#lvGrid"), more = $("#lvMore"); if (!g) return;
+    const idx = filtered(), f = favs();
+    const end = Math.min(idx.length, view.shown || PAGE);
+    view.shown = end;
+    g.innerHTML = idx.length ? `<div class="lv-grid">${idx.slice(0, end).map((i) => tile(i, f)).join("")}</div>`
+      : `<p class="muted">${view.q ? "No channels match." : view.sec === "Favorites" ? "No favorite channels yet. Mark favorites in Live TV on the TV." : "No channels here."}</p>`;
+    more.classList.toggle("hidden", end >= idx.length);
+    $$("#lvChips .chip").forEach((b) => b.classList.toggle("on", !view.q && b.dataset.sec === view.sec));
+  }
+  function render(v) {
+    if (st.status === "none") {
+      v.innerHTML = `<div class="page"><h1>Live TV</h1><p class="muted">${S.link || S.init ? "No playlist yet. Add your M3U playlist link on the TV or the Control page, then tap Refresh from TV." : "Link your TV to use its Live TV playlist here."}</p>
+        <div class="actions">${S.link ? `<button class="btn small" data-act="retry">Refresh from TV</button>` : `<a class="btn small" href="#/pair">Link your TV</a>`}</div></div>`;
+      return;
+    }
+    if (st.status === "loading") {
+      v.innerHTML = `<div class="page"><h1>Live TV</h1><div class="notice"><div class="spinner"></div><p class="muted">Loading your channels&#8230;</p></div></div>`;
+      return;
+    }
+    if (st.status === "error") {
+      v.innerHTML = `<div class="page"><h1>Live TV</h1><div class="panel"><h2>Live TV</h2><p>${esc(st.msg)}</p>
+        <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="liveretry">Try again</button></div></div></div>`;
+      return;
+    }
+    const c = counts();
+    if (!view.sec || (!c[view.sec] && view.sec !== "All")) view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : "All";
+    v.innerHTML = `<div class="page"><h1>Live TV</h1>
+      <div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
+      <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => s === "All" || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}">${esc(s)} (${c[s] || 0})</button>`).join("")}</div>
+      <div id="lvGrid"></div><div class="more"><button class="btn hidden" id="lvMore" data-act="livemore">Show more</button></div></div>`;
+    let t = 0;
+    $("#lvQ", v).addEventListener("input", (e) => { clearTimeout(t); t = setTimeout(() => { view.q = e.target.value; view.shown = 0; drawGrid(); }, 200); });
+    drawGrid();
+  }
+  async function show(v, tok) {
+    if (st.status === "idle" || st.status === "loading" || st.key !== String((S.init && S.init.m3u_url) || "").trim()) {
+      if (!(S.init && S.init.m3u_url)) st = { status: "none", list: null, msg: "", key: "" };
+      else {
+        st.status = "loading"; render(v);
+        if (!loading) loading = load().finally(() => { loading = null; });
+        await loading;
+        if (tok !== routeTok) return;
+      }
+    }
+    render(v);
+  }
+
+  // ---------- player ----------
+  let hlsPromise = null;
+  function loadHls() {
+    if (window.Hls) return Promise.resolve(window.Hls);
+    if (!hlsPromise) {
+      hlsPromise = new Promise((resolve, reject) => {
+        const sc = document.createElement("script");
+        sc.src = HLS_JS; sc.async = true; sc.crossOrigin = "anonymous";
+        sc.onload = () => (window.Hls ? resolve(window.Hls) : reject(new Error("hls")));
+        sc.onerror = () => { hlsPromise = null; reject(new Error("hls")); };
+        document.head.appendChild(sc);
+      });
+    }
+    return hlsPromise;
+  }
+  const nativeHls = () => { try { return !!document.createElement("video").canPlayType("application/vnd.apple.mpegurl"); } catch { return false; } };
+  async function play(i) {
+    const ch = st.list && st.list[i]; if (!ch) return;
+    closePlayer();
+    const box = document.createElement("div");
+    box.className = "lv-player"; box.id = "lvPlayer";
+    box.innerHTML = `<div class="pl-top"><button class="pl-back" type="button" id="lvBack">&#8249; Back</button>
+      <div class="pl-title"><b>${esc(ch.name)}</b><span class="muted">Live TV</span></div></div>
+      <div class="pl-stage"><video id="lvVid" controls playsinline webkit-playsinline autoplay></video>
+      <div class="pl-msg hidden" id="lvMsg"><p id="lvMsgText"></p><button class="btn small primary" type="button" id="lvClose">Back to channels</button></div></div>`;
+    document.body.appendChild(box);
+    document.body.style.overflow = "hidden";
+    const vid = $("#lvVid", box), msg = $("#lvMsg", box);
+    let hls = null, done = false, timer = 0;
+    const fail = (text) => {
+      if (done) return; done = true; clearTimeout(timer);
+      try { if (hls) hls.destroy(); } catch {} hls = null;
+      try { vid.pause(); vid.removeAttribute("src"); vid.load(); } catch {}
+      $("#lvMsgText", box).textContent = text || LIVE_NO; msg.classList.remove("hidden");
+    };
+    PLAYER.stop = () => { done = true; clearTimeout(timer); try { if (hls) hls.destroy(); } catch {} try { vid.pause(); vid.removeAttribute("src"); vid.load(); } catch {} };
+    $("#lvBack", box).addEventListener("click", closePlayer);
+    $("#lvClose", box).addEventListener("click", closePlayer);
+    vid.addEventListener("playing", () => clearTimeout(timer));
+    timer = setTimeout(() => { if (vid.readyState < 2) fail(LIVE_NO); }, 25000);
+    let url = ch.url;
+    // Xtream style .ts links usually have an HLS copy at the same address.
+    if (/\/live\/[^/]+\/[^/]+\/[^/]+\.ts(\?.*)?$/i.test(url)) url = url.replace(/\.ts(\?.*)?$/i, ".m3u8$1");
+    if (mixedBlocked(url) || /\.ts(\?.*)?$/i.test(url)) { fail(LIVE_NO); return; }
+    const start = () => { const p = vid.play(); if (p && p.catch) p.catch(() => {}); };
+    if (nativeHls()) {
+      vid.addEventListener("error", () => fail(LIVE_NO));
+      vid.src = url; start();
+      return;
+    }
+    let Hls;
+    try { Hls = await loadHls(); } catch { fail("The video player could not load. Check your internet connection."); return; }
+    if (done) return;
+    if (!Hls.isSupported()) { fail(LIVE_NO); return; }
+    hls = new Hls({ debug: false, enableWorker: true, lowLatencyMode: false });
+    hls.on(Hls.Events.ERROR, (_e, d) => { if (d && d.fatal) fail(LIVE_NO); });
+    hls.on(Hls.Events.MANIFEST_PARSED, start);
+    hls.loadSource(url);
+    hls.attachMedia(vid);
+  }
+  const PLAYER = { stop: null };
+  function closePlayer() {
+    const b = $("#lvPlayer");
+    if (PLAYER.stop) { const s = PLAYER.stop; PLAYER.stop = null; try { s(); } catch {} }
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+    if (b) b.remove();
+    document.body.style.overflow = "";
+  }
+  return {
+    show, play, closePlayer,
+    reset() { st = { status: "idle", list: null, msg: "", key: "" }; view = { sec: "", q: "", shown: 0 }; },
+    section(sec) { view.sec = sec; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
+    more() { view.shown += PAGE; drawGrid(); },
+  };
+})();
+function renderLive(v, tok) { LV.show(v, tok); }
+
+// ---------- Who's watching? ----------
+function renderProfiles(v, next) {
+  setActive("");
+  v.innerHTML = `<div class="page" style="text-align:center"><h1 style="margin-top:20px">Who's watching?</h1>
+    <p class="muted">Each profile has its own watchlist, favorites and Continue Watching, the same as on your TV.</p>
+    <div class="who">${profiles().map((p) => `<button type="button" class="${p.id === S.profile ? "cur" : ""}" data-act="pickprofile" data-pid="${p.id}" data-next="${esc(next || "")}">
+      <span class="pav${p.id === KIDS_PID ? " kids" : ""}">${esc(initial(p.name))}</span><b>${esc(p.name)}</b><small>${p.id === KIDS_PID ? "Family picks" : p.id === S.profile ? "Watching now" : "&nbsp;"}</small></button>`).join("")}</div>
+    ${S.link ? "" : `<p class="muted">Link your TV to see your profile names and lists. <a href="#/pair" style="color:var(--bright)">How to link</a></p>`}</div>`;
+  const first = $(".who button.cur", v) || $(".who button", v);
+  if (first && matchMedia("(min-width:900px)").matches) first.focus({ preventScroll: true });
+}
+
+// ---------- Websites ----------
+function renderWebsites(v) {
+  const raw = (S.init && Array.isArray(S.init.websites)) ? S.init.websites : [];
+  const sites = raw.map((x) => (Array.isArray(x) ? { name: String(x[0] || ""), url: String(x[1] || "").trim() } : null))
+    .filter((x) => x && /^https?:\/\//i.test(x.url));
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+  v.innerHTML = `<div class="page"><h1>Websites</h1>
+    ${sites.length ? `<div class="tiles">${sites.map((s) => `<a class="tile site" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.name || host(s.url))}<small>${esc(host(s.url))}</small></a>`).join("")}</div>
+      <p class="muted" style="margin-top:14px">Sites open in a new tab. Add or change them on the TV or the Control page.</p>`
+    : `<p class="muted">${S.link || S.init ? "No websites yet. Add them on the TV or the Control page, then tap Refresh from TV." : "Link your TV to see the websites you saved on it."}</p>
+      ${S.link ? `<div class="actions"><button class="btn small" data-act="retry">Refresh from TV</button></div>` : `<div class="actions"><a class="btn small" href="#/pair">Link your TV</a></div>`}`}
+  </div>`;
+}
+
 // ---------- Settings ----------
 function statusHTML() {
   if (!S.link) return `<span class="pill no">Not linked</span>`;
@@ -1085,11 +2780,26 @@ function renderSettings(v) {
   v.innerHTML = `<div class="page"><h1>Settings</h1>
     <div class="panel"><h2>Your TV</h2>
       <p><span id="setStatus">${statusHTML()}</span></p>
-      ${S.link ? `<p class="muted">This browser is linked to your McD TV. Play on TV, Open on TV and Watchlist are sent to the TV encrypted, through the same relay as the Control page.</p>
+      ${S.link ? `<p class="muted">This browser is linked to your Jarvis TV. Play on TV, Open on TV and Watchlist are sent to the TV encrypted, through the same relay as the Control page.</p>
         <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="retry">Refresh from TV</button><a class="btn small" href="../#${S.link.id}.${S.link.key}">Control page</a><button class="btn small" data-act="copylink">Copy link</button><button class="btn small" data-act="unpair">Unlink this browser</button></div>`
       : `<p class="muted">Not linked. <a href="#/pair" style="color:var(--bright)">How to link your TV</a></p>`}
-      <label for="pasteLink">${S.link ? "Link a different TV: paste its link" : "Paste a McD TV link"}</label>
+      <label for="pasteLink">${S.link ? "Link a different TV: paste its link" : "Paste a Jarvis link"}</label>
       <div class="rowf"><input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off"><button class="btn small primary" data-act="paste">Link</button></div>
+    </div>
+    <div class="panel"><h2>Profile</h2>
+      <p class="muted">Watchlist, favorites and Continue Watching here are ${S.profile ? `<b style="color:var(--white)">${esc(profileName(S.profile))}</b>'s` : "the chosen profile's"}, the same as on the TV. Switching here doesn't change the TV.</p>
+      <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small${p.id === S.profile ? " primary" : ""}" data-act="setprofile" data-pid="${p.id}"${p.id === S.profile ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</div>
+    </div>
+    <div class="panel"><h2>Ask Jarvis</h2>
+      <label class="switch"><input type="checkbox" id="jvLocal" ${jarvisLocalOn() ? "checked" : ""}> Use Jarvis on this device without the TV</label>
+      <p>${jarvisKey() ? `<span class="pill ok">Key saved on this device</span>` : `<span class="pill no">No key on this device</span>`}</p>
+      <p class="muted">${jarvisLocalOn()
+        ? (jarvisKey() ? "Your TV's Jarvis key is saved on this device, so Ask Jarvis works even when the TV is off." : S.link ? "The TV's Jarvis key will be saved on this device next time the TV answers. Add the key on the Control page if the TV has none." : "Link your TV to get its Jarvis key.")
+        : "Off: Ask Jarvis goes through your TV, which needs to be on. No key is kept on this device."}</p>
+      ${jarvisKey() ? `<div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rmjarvis">Remove key from this device</button></div>` : ""}
+    </div>
+    <div class="panel"><h2>Install as an app</h2>
+      <p class="muted">${isStandalone() ? "Jarvis is installed on this device." : "iPhone and iPad: in Safari, tap Share, then Add to Home Screen. Android and computers: use the browser menu and choose Install app (or Add to Home screen)."}</p>
     </div>
     <div class="panel"><h2>TMDB key</h2>
       <p>${k.fromTv ? `<span class="pill ok">Using the TV's key</span>` : S.manualTmdb ? `<span class="pill ok">Using the key saved here</span>` : `<span class="pill no">No key</span>`}</p>
@@ -1107,15 +2817,20 @@ function renderSettings(v) {
       </select>
       <p class="muted" style="margin-top:10px">Adult titles are never shown.</p>
     </div>
-    <div class="panel"><h2>About</h2><p class="muted">McD TV web app. Browse on your phone or computer and send titles to your TV. Posters and info from TMDB.</p></div>
+    <div class="panel"><h2>About</h2><p class="muted">Jarvis web app. Browse on your phone or computer and send titles to your TV. Posters and info from TMDB.</p></div>
   </div>`;
   $("#originSel", v).value = S.originPref || "";
+  $("#jvLocal", v).addEventListener("change", (e) => {
+    if (e.target.checked) { LS.del(JLOCAL); if (S.link) askInit(); toast("Jarvis key will be saved on this device", "ok"); }
+    else { LS.set(JLOCAL, "0"); LS.del(JKEY); toast("Jarvis key removed from this device"); }
+    renderSettings(v);
+  });
   $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
   $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
 }
 async function doPaste() {
   const inp = $("#pasteLink"); const l = parseLink(inp && inp.value);
-  if (!l) { toast("That doesn't look like a McD TV link.", "warn"); return; }
+  if (!l) { toast("That doesn't look like a Jarvis link.", "warn"); return; }
   await pair(l); toast("Linked to your TV", "ok"); location.hash = "#/";
   route();
 }
@@ -1125,12 +2840,12 @@ function renderPair(v) {
   v.innerHTML = `<div class="page"><h1>Link your TV</h1>
     <div class="panel"><h2>Three steps</h2>
       <ol class="steps">
-        <li>On the TV, open McD TV and go to <b>Settings &gt; Phone &amp; Computer Setup</b>.</li>
-        <li>Scan the QR code with your phone's camera. The McD TV Control page opens.</li>
-        <li>On the Control page, tap <b>Open McD TV web app</b>. This app opens linked to your TV, and remembers it next time.</li>
+        <li>On the TV, open Jarvis and go to <b>Settings &gt; Phone &amp; Computer Setup</b>.</li>
+        <li>Scan the QR code with your phone's camera. The Jarvis Control page opens.</li>
+        <li>On the Control page, tap <b>Open Jarvis web app</b>. This app opens linked to your TV, and remembers it next time.</li>
       </ol>
       <p class="muted">On a computer: on the Control page tap <b>Copy link</b>, then paste it here.</p>
-      <label for="pasteLink">McD TV link</label>
+      <label for="pasteLink">Jarvis link</label>
       <div class="rowf"><input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off"><button class="btn small primary" data-act="paste">Link</button></div>
     </div>
     <div class="panel"><h2>No TV nearby?</h2><p class="muted">You can browse with your own free TMDB key. Play on TV needs a linked TV.</p>
@@ -1154,14 +2869,22 @@ document.addEventListener("click", async (e) => {
       break;
     }
     case "open": remote({ cmd: "open", type, id, name: d.name || "" }, "Opening on your TV…"); break;
+    case "playhere": {
+      const qs = d.season ? `?s=${+d.season}&e=${+d.episode}` : "";
+      location.hash = `#/sources/${type}/${id}${qs}`;
+      break;
+    }
     case "wl": {
       if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return; }
       const on = !inWL(type, id);
-      if (!S.init) S.init = {};
-      const wl = (S.init.watchlist || []).filter((r) => !(r.type === type && +r.id === id));
+      const pid = S.profile || "p1";
+      const L = S.plists[pid] || (S.plists[pid] = { watchlist: [], favorites: [], continue: [], ts: 0 });
+      const wl = (L.watchlist || []).filter((r) => !(r.type === type && +r.id === id));
       if (on) wl.unshift({ type, id });
-      S.init.watchlist = wl; saveInit(); syncWL(); // optimistic
-      remote({ cmd: "watchlist", type, id, on, name: d.name || "", poster: d.poster || "", backdrop: d.backdrop || "", year: d.year || "" });
+      L.watchlist = wl; savePlists(); syncWL(); // optimistic
+      const cmd = { cmd: "watchlist", type, id, on, name: d.name || "", poster: d.poster || "", backdrop: d.backdrop || "", year: d.year || "" };
+      if (S.profile) cmd.profile = S.profile; // this profile's watchlist on the TV
+      remote(cmd);
       break;
     }
     case "trailer": playTrailer(); break;
@@ -1178,6 +2901,19 @@ document.addEventListener("click", async (e) => {
       const val = $("#tmdbIn").value.trim(); if (!val) return;
       S.manualTmdb = val; LS.set("mcdtv_web_tmdb", val); tcache.clear(); toast("TMDB key saved", "ok"); renderSettings($("#view")); break;
     }
+    case "setprofile": setProfile(d.pid); toast("Watching as " + profileName(d.pid), "ok"); renderSettings($("#view")); break;
+    case "pickprofile": {
+      setProfile(d.pid);
+      const next = d.next && d.next.startsWith("#/") && !d.next.startsWith("#/profiles") ? d.next : "#/";
+      if (location.hash === next) route(); else location.hash = next;
+      break;
+    }
+    case "rmjarvis": LS.set(JLOCAL, "0"); LS.del(JKEY); toast("Jarvis key removed from this device", "ok"); renderSettings($("#view")); break;
+    case "live": LV.play(+d.idx); break;
+    case "livesec": LV.section(d.sec); break;
+    case "livemore": LV.more(); break;
+    case "liveretry": LV.reset(); route(); break;
+    case "dismisshint": { const h = $("#iosHint"); if (h) h.remove(); break; }
     case "cleartmdb": S.manualTmdb = ""; LS.del("mcdtv_web_tmdb"); tcache.clear(); renderSettings($("#view")); break;
     case "savemdb": {
       const val = $("#mdbIn").value.trim(); if (!val) return;
@@ -1188,16 +2924,36 @@ document.addEventListener("click", async (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && S.link && Date.now() - S.lastInitAsk > 60000) askInit();
 });
-window.addEventListener("hashchange", () => { document.title = "McD TV"; route(); });
+window.addEventListener("hashchange", () => { document.title = "Jarvis"; route(); });
+
+// ---------- install (PWA) ----------
+const isStandalone = () => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch { return false; } };
+function iosInstallHint() {
+  const ua = navigator.userAgent;
+  const ios = /iP(hone|od|ad)/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const safari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA\//.test(ua);
+  if (!ios || !safari || isStandalone() || LS.get("mcdtv_web_ios_hint")) return;
+  LS.set("mcdtv_web_ios_hint", "1"); // shown once
+  const d = document.createElement("div");
+  d.className = "ioshint"; d.id = "iosHint"; d.setAttribute("role", "note");
+  d.innerHTML = `<p>Tap Share, then Add to Home Screen to install Jarvis.</p><button type="button" data-act="dismisshint" aria-label="Dismiss">&#215;</button>`;
+  document.body.appendChild(d);
+  setTimeout(() => { if (d.isConnected) d.remove(); }, 20000);
+}
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+}
 
 // ---------- start ----------
 (async function start() {
+  updateProfileUI();
   const fromHash = parseLink(location.hash);
   const stored = parseLink(LS.get(LINK_KEY));
   if (fromHash) { history.replaceState(null, "", location.pathname + location.search + "#/"); await pair(fromHash); }
   else if (stored) await pair(stored);
   else setStatus("none");
   route();
+  setTimeout(iosInstallHint, 2500);
 })();
 </script>
 </body>
