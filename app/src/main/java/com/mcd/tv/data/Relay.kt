@@ -97,13 +97,19 @@ object Relay {
         ensureLink()
         scope.launch { listen(generation) }
         scope.launch { runCatching { publishState("TV started") } }
+        HouseSync.start()
     }
 
     // ---------------- crypto: deflate, then AES-256-GCM; "v1:" + base64url(iv || ciphertext+tag) ----------------
 
-    private fun key() = SecretKeySpec(Base64.decode(Prefs.relayKey, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), "AES")
+    private fun keyOf(b64: String) = SecretKeySpec(Base64.decode(b64, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), "AES")
 
-    fun encrypt(json: String): String {
+    fun encrypt(json: String): String = encryptWith(Prefs.relayKey, json)
+
+    fun decrypt(msg: String): JSONObject? = decryptWith(Prefs.relayKey, msg)
+
+    /** Same format as the Control page, with any 256-bit key (base64url). Also used by [HouseSync]. */
+    fun encryptWith(keyB64: String, json: String): String {
         val deflater = Deflater(Deflater.BEST_COMPRESSION, true)
         deflater.setInput(json.toByteArray())
         deflater.finish()
@@ -114,16 +120,16 @@ object Relay {
         deflater.end()
         val iv = ByteArray(12).also { rng.nextBytes(it) }
         val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.ENCRYPT_MODE, key(), GCMParameterSpec(128, iv))
+        c.init(Cipher.ENCRYPT_MODE, keyOf(keyB64), GCMParameterSpec(128, iv))
         val sealed = iv + c.doFinal(zipped)
         return "v1:" + Base64.encodeToString(sealed, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     }
 
-    fun decrypt(msg: String): JSONObject? = runCatching {
+    fun decryptWith(keyB64: String, msg: String): JSONObject? = runCatching {
         if (!msg.startsWith("v1:")) return null
         val sealed = Base64.decode(msg.removePrefix("v1:"), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, sealed.copyOfRange(0, 12)))
+        c.init(Cipher.DECRYPT_MODE, keyOf(keyB64), GCMParameterSpec(128, sealed.copyOfRange(0, 12)))
         val zipped = c.doFinal(sealed.copyOfRange(12, sealed.size))
         val inflater = Inflater(true)
         inflater.setInput(zipped)
@@ -182,6 +188,18 @@ object Relay {
                 status = "Saved changes from the Control page"
                 LocalWeb.lastMessage = "Saved changes from the Control page"
                 publishState("Saved on the TV")
+            }
+            // Control page: share settings with another TV (its shared-settings link is "id"."key").
+            "house_join" -> {
+                val id = cmd.optString("id")
+                val k = cmd.optString("key")
+                if (!Regex("[a-z0-9]{10,40}").matches(id) || !Regex("[A-Za-z0-9_-]{40,50}").matches(k)) return
+                HouseSync.join(id, k)
+                publishState("Linked. Copying settings from your other TV…")
+            }
+            "house_leave" -> {
+                HouseSync.leave()
+                publishState("This TV no longer shares settings")
             }
             "magnet" -> {
                 val note = runCatching { "Added to Real-Debrid: " + RdCloud.addMagnet(cmd.optString("magnet")) }
@@ -493,6 +511,9 @@ object Relay {
             .put("play_intro", Prefs.playIntro)
             .put("rd_connected", RealDebrid.connected)
             .put("version", com.mcd.tv.BuildConfig.VERSION_NAME)
+            .put("device_name", HouseSync.deviceName())
+            .put("house", HouseSync.houseLink())
+            .put("house_joining", HouseSync.joining())
         Http.postText(BASE + outTopic, encrypt(state.toString()))
     }
 }

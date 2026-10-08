@@ -63,7 +63,7 @@ object Prefs {
         set(v) = put("mdblist_key", v)
 
     // ---- Ask Jarvis ----
-    /** API key for Ask Jarvis (Anthropic Messages API). This TV only: never synced, never sent to the web pages. */
+    /** API key for Ask Jarvis. Never sent to the web pages; shared (encrypted) only with TVs linked by [HouseSync]. */
     var jarvisKey: String
         get() = str("jarvis_key")
         set(v) = put("jarvis_key", v)
@@ -199,7 +199,8 @@ object Prefs {
         set(v) = sp.edit().putLong("last_sync_at", v).apply()
 
     /** Keys that belong to this TV only and never sync to the account. */
-    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key")
+    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key",
+        "house_id", "house_key", "house_since", "house_stamp", "device_id")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String
@@ -211,6 +212,59 @@ object Prefs {
     var relaySince: String
         get() = str("relay_since")
         set(v) = put("relay_since", v)
+
+    // ---- Shared settings between TVs (HouseSync). This TV only. ----
+    var houseId: String
+        get() = str("house_id")
+        set(v) = put("house_id", v)
+    var houseKey: String
+        get() = str("house_key")
+        set(v) = put("house_key", v)
+    var houseSince: String
+        get() = str("house_since")
+        set(v) = put("house_since", v)
+    /** Version (time) of the shared settings this TV has. Newer copies from other TVs replace them. */
+    var houseStamp: Long
+        get() = sp.getLong("house_stamp", 0L)
+        set(v) = sp.edit().putLong("house_stamp", v).apply()
+    /** Random id for this TV, so it can ignore its own shared-settings messages. */
+    var deviceId: String
+        get() = str("device_id")
+        set(v) = put("device_id", v)
+
+    private fun typed(v: Any): org.json.JSONObject {
+        val t = when (v) { is Boolean -> "b"; is Long -> "l"; is Int -> "i"; is Float -> "f"; else -> "s" }
+        return org.json.JSONObject().put("t", t).put("v", v.toString())
+    }
+
+    private fun putTyped(e: SharedPreferences.Editor, k: String, item: org.json.JSONObject) {
+        val v = item.optString("v")
+        when (item.optString("t")) {
+            "b" -> e.putBoolean(k, v.toBoolean())
+            "l" -> e.putLong(k, v.toLongOrNull() ?: 0L)
+            "i" -> e.putInt(k, v.toIntOrNull() ?: 0)
+            "f" -> e.putFloat(k, v.toFloatOrNull() ?: 0f)
+            else -> e.putString(k, v)
+        }
+    }
+
+    /** The given settings, in the given order (so equal settings give equal text). Missing keys are left out. */
+    fun exportKeys(keys: List<String>): org.json.JSONObject = synchronized(listLock) {
+        val all = sp.all
+        val o = org.json.JSONObject()
+        keys.forEach { k -> all[k]?.let { o.put(k, typed(it)) } }
+        o
+    }
+
+    /** Sets the given settings to [o]'s copy: keys in [o] are written, the other [keys] are removed. */
+    fun importKeys(keys: List<String>, o: org.json.JSONObject) = synchronized(listLock) {
+        val e = sp.edit()
+        keys.forEach { k ->
+            val item = o.optJSONObject(k)
+            if (item == null) e.remove(k) else putTyped(e, k, item)
+        }
+        e.apply()
+    }
 
     /** Every synced setting and list, as JSON, for the account server. */
     fun exportAll(): org.json.JSONObject {

@@ -161,6 +161,15 @@ a{color:var(--accent)}
     <button onclick="copyLink()">Copy link (open on another device)</button>
     <span class="hint">Anyone with this link can change your TV's setup. Make a new link on the TV to cut off old devices.</span>
   </div>
+
+  <h2>Your other TVs</h2>
+  <div class="card">
+    <p class="hint">TVs that share settings stay the same: change a key, an addon or the playlist on one, and the others update within seconds. Watch history and Continue Watching stay separate on each TV.</p>
+    <ul id="tvList"></ul>
+    <label>Add another TV: open this page once from that TV's QR code, or paste its link here</label>
+    <div class="row"><input id="otherLink" placeholder="https://jfortress0.github.io/McD-TV/#…"><button onclick="addOther()">Add</button></div>
+    <div class="msg" id="shareMsg"></div>
+  </div>
 </main>
 
 <div class="bar hidden" id="bar">
@@ -193,19 +202,19 @@ const b64u = {
   dec: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)),
 };
 async function pipe(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
-async function encrypt(obj) {
+async function encrypt(obj, k = key) {
   const zipped = await pipe(new TextEncoder().encode(JSON.stringify(obj)), new CompressionStream("deflate-raw"));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, zipped));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k, zipped));
   const all = new Uint8Array(12 + ct.length); all.set(iv); all.set(ct, 12);
   let s = ""; for (let i = 0; i < all.length; i += 8192) s += String.fromCharCode(...all.subarray(i, i + 8192));
   return "v1:" + btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-async function decrypt(msg) {
+async function decrypt(msg, k = key) {
   if (!msg || !msg.startsWith("v1:")) return null;
   try {
     const all = b64u.dec(msg.slice(3));
-    const pt = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, key, all.slice(12)));
+    const pt = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, k, all.slice(12)));
     return JSON.parse(new TextDecoder().decode(await pipe(pt, new DecompressionStream("deflate-raw"))));
   } catch { return null; }
 }
@@ -224,7 +233,9 @@ async function onMessage(m) {
   state = s;
   $("dot").classList.add("on");
   $("tvStatus").lastChild.textContent = "TV " + (s.version ? "v" + s.version + " " : "") + "• " + (s.note || "online") + " • " + new Date(lastNoteTs).toLocaleTimeString();
+  tvUpsert({ id: link.id, key: link.key, name: s.device_name || "", house: s.house || "" });
   if (fresh || !dirtyFlag) render();
+  renderShare();
   if (/Saved/.test(s.note || "")) { $("saveMsg").className = "good"; $("saveMsg").textContent = "Saved on the TV ✓"; }
   else if (/Real-Debrid/.test(s.note || "")) { $("saveMsg").className = /failed/.test(s.note) ? "err" : "good"; $("saveMsg").textContent = s.note; }
 }
@@ -317,6 +328,80 @@ async function sendMagnet() {
   try { await send({ cmd: "magnet", magnet: m }); $("magnet").value = ""; $("saveMsg").className = "msg"; $("saveMsg").textContent = "Sent to the TV. Waiting for Real-Debrid…"; }
   catch (e) { alert(e.message); }
 }
+// ---------- other TVs: shared settings ----------
+const LINK_RX = /^([a-z0-9]{10,40})\.([A-Za-z0-9_-]{40,50})$/;
+function tvsGet() { try { return JSON.parse(localStorageGet("mcdtv_tvs") || "[]").filter((t) => t && t.id && t.key); } catch { return []; } }
+function tvsSet(a) { localStorageSet("mcdtv_tvs", JSON.stringify(a.slice(-10))); }
+function tvUpsert(t) {
+  const a = tvsGet(); const i = a.findIndex((x) => x.id === t.id);
+  if (i >= 0) a[i] = { ...a[i], ...Object.fromEntries(Object.entries(t).filter(([, v]) => v !== "")) }; else a.push(t);
+  tvsSet(a);
+}
+function tvLabel(t) { return (t.name || "TV") + " (" + t.id.slice(0, 4).toUpperCase() + ")"; }
+function renderShare() {
+  const others = tvsGet().filter((t) => t.id !== link.id);
+  const mine = state && state.house;
+  $("tvList").innerHTML = others.length ? others.map((t) => {
+    const shared = mine && t.house && t.house === mine;
+    return `<li><div class="grow"><div class="name">${esc(tvLabel(t))}</div><div class="url">${shared ? "Shares settings with this TV" : "Separate settings"}</div></div>` +
+      (shared ? `<button class="small" onclick="leaveHouse()">Stop sharing</button>` : `<button class="small primary" onclick="joinOther('${t.id}')">Use its settings here</button>`) +
+      `<button class="small" onclick="forgetOther('${t.id}')">Forget</button></li>`;
+  }).join("") : '<li class="hint">No other TVs yet. Open this page from each TV\'s QR code once, and they show up here.</li>';
+  if (state && state.house_joining) { $("shareMsg").className = "msg"; $("shareMsg").textContent = "Waiting for the settings from your other TV. Open Jarvis on that TV."; }
+}
+async function fetchHouse(t) {
+  const k = await crypto.subtle.importKey("raw", b64u.dec(t.key), "AES-GCM", false, ["encrypt", "decrypt"]);
+  const look = async () => {
+    try {
+      const txt = await (await fetch(RELAY + "mcdtv-" + t.id + "-out/json?poll=1&since=12h")).text();
+      let best = null;
+      for (const line of txt.trim().split("\n").filter(Boolean)) {
+        const e = JSON.parse(line); if (e.event !== "message") continue;
+        const s = await decrypt(e.message, k);
+        if (s && s.type === "state" && s.house && (!best || (s.ts || 0) >= (best.ts || 0))) best = s;
+      }
+      return best;
+    } catch { return null; }
+  };
+  // Ask the TV to report in, so its newest link is there even if it changed.
+  await fetch(RELAY + "mcdtv-" + t.id + "-in", { method: "POST", body: await encrypt({ cmd: "hello" }, k) }).catch(() => {});
+  let s = null;
+  for (let i = 0; i < 6 && !s; i++) { await new Promise((r) => setTimeout(r, i ? 2500 : 1500)); s = await look(); }
+  if (!s) return "";
+  tvUpsert({ id: t.id, name: s.device_name || "", house: s.house });
+  return s.house;
+}
+async function joinOther(id) {
+  const t = tvsGet().find((x) => x.id === id); if (!t) return;
+  const m = $("shareMsg");
+  if (!state) { m.className = "err"; m.textContent = "Waiting for this TV first. Open Jarvis on it."; return; }
+  m.className = "msg"; m.textContent = "Checking " + tvLabel(t) + ". Make sure Jarvis is open on it…";
+  const house = await fetchHouse(t); const p = LINK_RX.exec(house || "");
+  if (!p) { m.className = "err"; m.textContent = "Couldn't reach " + tvLabel(t) + ". Open Jarvis on that TV (newest version) and try again."; renderShare(); return; }
+  if (p[0] === state.house) { m.className = "good"; m.textContent = "These TVs already share settings."; renderShare(); return; }
+  if (!confirm("Replace this TV's settings with the ones from " + tvLabel(t) + "? After this, both TVs stay in sync.")) { m.textContent = ""; return; }
+  try {
+    await send({ cmd: "house_join", id: p[1], key: p[2] });
+    m.className = "good"; m.textContent = "Linked. This TV is copying the settings now (a few seconds).";
+  } catch (e) { m.className = "err"; m.textContent = e.message; }
+  renderShare();
+}
+async function leaveHouse() {
+  if (!confirm("Stop sharing? This TV keeps its current settings, but changes no longer reach the other TVs.")) return;
+  try { await send({ cmd: "house_leave" }); $("shareMsg").className = "msg"; $("shareMsg").textContent = "Sent. This TV now has its own settings."; }
+  catch (e) { $("shareMsg").className = "err"; $("shareMsg").textContent = e.message; }
+}
+async function addOther() {
+  const l = parseLink($("otherLink").value); const m = $("shareMsg");
+  if (!l) { m.className = "err"; m.textContent = "That doesn't look like a Jarvis link."; return; }
+  if (l.id === link.id) { m.className = "err"; m.textContent = "That's this TV's own link."; return; }
+  tvUpsert({ id: l.id, key: l.key }); $("otherLink").value = ""; renderShare();
+  m.className = "msg"; m.textContent = "Added. Checking that TV…";
+  const h = await fetchHouse(l); renderShare();
+  m.className = h ? "good" : "msg"; m.textContent = h ? "Added. Tap Use its settings here to copy them to this TV." : "Added. That TV didn't answer yet; open Jarvis on it.";
+}
+function forgetOther(id) { tvsSet(tvsGet().filter((t) => t.id !== id)); renderShare(); }
+
 async function copyLink() {
   const url = location.origin + location.pathname + "#" + link.id + "." + link.key;
   try { await navigator.clipboard.writeText(url); alert("Link copied. Open it on your other device."); }
@@ -326,7 +411,11 @@ async function copyLink() {
 (async function start() {
   if (!link) { $("noLink").classList.remove("hidden"); $("tvStatus").lastChild.textContent = "Not linked"; return; }
   if (!location.hash) history.replaceState(null, "", "#" + link.id + "." + link.key);
+  const prev = parseLink(localStorageGet("mcdtv_link"));
+  if (prev && prev.id !== link.id) tvUpsert({ id: prev.id, key: prev.key }); // the TV this phone used before
+  tvUpsert({ id: link.id, key: link.key });
   localStorageSet("mcdtv_link", link.id + "." + link.key);
+  renderShare();
   key = await crypto.subtle.importKey("raw", b64u.dec(link.key), "AES-GCM", false, ["encrypt", "decrypt"]);
   $("webAppLink").href = "app/#" + link.id + "." + link.key; // same link: the web app pairs itself
   $("app").classList.remove("hidden"); $("bar").classList.remove("hidden");
