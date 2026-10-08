@@ -42,6 +42,16 @@ object Prefs {
         get() = sp.getBoolean("slow_connection", false)
         set(v) = sp.edit().putBoolean("slow_connection", v).apply()
 
+    /** Source list: movie files bigger than this many GB are hidden (0 = no limit). Synced with the account. */
+    var maxMovieGb: Int
+        get() = sp.getInt("max_movie_gb", 40)
+        set(v) = sp.edit().putInt("max_movie_gb", v).apply()
+
+    /** Source list: episode files bigger than this many GB are hidden (0 = no limit). Synced with the account. */
+    var maxEpisodeGb: Int
+        get() = sp.getInt("max_episode_gb", 12)
+        set(v) = sp.edit().putInt("max_episode_gb", v).apply()
+
     // ---- Metadata ----
     var tmdbKey: String
         get() = str("tmdb_key").ifBlank { com.mcd.tv.BuildConfig.TMDB_KEY }

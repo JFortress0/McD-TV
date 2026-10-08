@@ -104,6 +104,30 @@ fun TileCard(
     }
 }
 
+/** Small tile for the "More" row on Home (Browse, Sports scores, Background Noise). */
+@Composable
+fun CompactTile(title: String, subtitle: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.width(220.dp).height(84.dp),
+        shape = CardDefaults.shape(shape = RoundedCornerShape(6.dp)),
+        colors = CardDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight),
+        border = CardDefaults.border(
+            border = Border(border = BorderStroke(1.dp, McdColors.Line), shape = RoundedCornerShape(6.dp)),
+            focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(6.dp)),
+        ),
+        glow = CardDefaults.glow(
+            focusedGlow = Glow(elevationColor = McdColors.RedBright.copy(alpha = 0.45f), elevation = 10.dp),
+        ),
+        scale = CardDefaults.scale(focusedScale = 1.05f),
+    ) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.Center) {
+            Text(title, style = broadcastStyle(17.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 /** Section header: bold white title-case text, no decoration. */
 @Composable
 fun RailHeader(text: String, modifier: Modifier = Modifier) {

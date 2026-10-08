@@ -21,6 +21,8 @@ import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
 import com.mcd.tv.ui.AccountScreen
+import com.mcd.tv.ui.BrowseGridScreen
+import com.mcd.tv.ui.BrowseScreen
 import com.mcd.tv.ui.GenresScreen
 import com.mcd.tv.ui.DetailScreen
 import com.mcd.tv.ui.HomeScreen
@@ -49,6 +51,13 @@ sealed interface Screen {
     data object Home : Screen
     data object Search : Screen
     data object Library : Screen
+    /** Catalog menu: Trending, Top Rated, New Releases, By Year, By Language, Genres, Collections, services, Sports, Noise. */
+    data object Browse : Screen
+    /**
+     * A full poster grid with "See more" paging. kind: trending, popular, top, new, year, lang, collections, collection.
+     * param: kind-specific (type "movie"/"tv" for popular/top, a language code, a collection id…). title: page heading.
+     */
+    data class BrowseGrid(val kind: String, val param: String = "", val title: String = "") : Screen
     data object Sports : Screen
     data object Live : Screen
     data object Services : Screen
@@ -112,6 +121,9 @@ class MainActivity : ComponentActivity() {
         val startScreen: Screen? = if (screenExtra.startsWith("detail:")) {
             // "detail:movie:603"
             screenExtra.split(":").let { p -> p.getOrNull(2)?.toIntOrNull()?.let { Screen.Detail(p[1], it) } }
+        } else if (screenExtra.startsWith("grid:")) {
+            // "grid:top:movie", "grid:lang:ko", "grid:collection:2344"
+            screenExtra.split(":").let { p -> Screen.BrowseGrid(p.getOrElse(1) { "trending" }, p.getOrElse(2) { "" }) }
         } else if (screenExtra.startsWith("person:")) {
             screenExtra.substringAfter(":").toIntOrNull()?.let { Screen.Person(it) }
         } else when (screenExtra) {
@@ -121,6 +133,7 @@ class MainActivity : ComponentActivity() {
             "sports" -> Screen.Sports
             "noise" -> Screen.Noise
             "library" -> Screen.Library
+            "browse" -> Screen.Browse
             "live" -> Screen.Live
             "services" -> Screen.Services
             "search" -> Screen.Search
@@ -158,6 +171,7 @@ private fun App(startScreen: Screen? = null) {
                 val s = when (t) {
                     NavTab.Home -> null
                     NavTab.Search -> Screen.Search
+                    NavTab.Browse -> Screen.Browse
                     NavTab.Library -> Screen.Library
                     NavTab.Sports -> Screen.Sports
                     NavTab.Live -> Screen.Live
@@ -201,6 +215,8 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.Home -> HomeScreen(nav)
         Screen.Search -> SearchScreen(nav)
         Screen.Library -> LibraryScreen(nav)
+        Screen.Browse -> BrowseScreen(nav)
+        is Screen.BrowseGrid -> BrowseGridScreen(nav, s.kind, s.param, s.title)
         Screen.Sports -> SportsScreen(nav)
         Screen.Live -> LiveTvScreen(nav)
         Screen.Services -> ServicesScreen(nav)

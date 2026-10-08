@@ -55,6 +55,12 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.Glow
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import com.mcd.tv.data.Library
+import com.mcd.tv.data.Ratings
+import com.mcd.tv.data.RatingsSource
 import com.mcd.tv.data.Title
 import com.mcd.tv.data.Tmdb
 import kotlinx.coroutines.CancellationException
@@ -98,12 +104,34 @@ private val cardGlow @Composable get() = CardDefaults.glow(
     focusedGlow = Glow(elevationColor = McdColors.RedBright.copy(alpha = 0.45f), elevation = 10.dp),
 )
 
-/** Portrait poster with rating badge. Focus: white ring, slight lift and a soft blue glow. */
+private val ImdbYellow = Color(0xFFF5C518)
+private val TmdbTeal = Color(0xFF01B4E4)
+
+/** True if [date] ("yyyy-MM-dd") is between [days] days ago and today. */
+private fun releasedWithinDays(date: String, days: Int): Boolean {
+    if (date.length < 10) return false
+    val d = runCatching { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(date.take(10)) }.getOrNull() ?: return false
+    val age = System.currentTimeMillis() - d.time
+    return age >= 0 && age <= days * 86_400_000L
+}
+
+/**
+ * Portrait poster. Scores sit in a small dark pill along the bottom (TMDB always; IMDb and Rotten Tomatoes
+ * when an MDBList key is set, loaded lazily per visible card). "IN CINEMA" on movies released in the last
+ * 45 days, a check mark on watched movies. The title shows only while focused.
+ * Focus: white ring, slight lift and a soft blue glow. [badges] = false hides all of that (e.g. collection tiles).
+ */
 @Composable
-fun PosterCard(t: Title, onClick: () -> Unit, modifier: Modifier = Modifier, width: Dp = 140.dp) {
+fun PosterCard(t: Title, onClick: () -> Unit, modifier: Modifier = Modifier, width: Dp = 140.dp, badges: Boolean = true) {
+    var focused by remember { mutableStateOf(false) }
+    val ratings by produceState<Ratings?>(if (badges) RatingsSource.cachedTmdb(t.type, t.id) else null, t.type, t.id, badges) {
+        if (badges && value == null && RatingsSource.configured) value = RatingsSource.forTmdb(t.type, t.id)
+    }
+    val watched = remember(t.type, t.id, badges) { badges && Library.isWatched(t.type, t.id) }
+    val inCinema = remember(t.type, t.releaseDate, badges) { badges && t.type == "movie" && releasedWithinDays(t.releaseDate, 45) }
     Card(
         onClick = onClick,
-        modifier = modifier.width(width).height(width * 1.5f),
+        modifier = modifier.onFocusChanged { focused = it.isFocused }.width(width).height(width * 1.5f),
         shape = cardShape,
         colors = cardColors,
         border = cardBorder,
@@ -120,18 +148,95 @@ fun PosterCard(t: Title, onClick: () -> Unit, modifier: Modifier = Modifier, wid
             if (t.poster == null) {
                 Text(t.name, style = broadcastStyle(15.sp), modifier = Modifier.align(Alignment.Center).padding(8.dp))
             }
-            if (t.rating > 0) {
+            if (inCinema) {
                 Text(
-                    text = "★ %.1f".format(t.rating),
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                    "IN CINEMA",
+                    color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp,
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
+                        .background(McdColors.Red, RoundedCornerShape(4.dp))
                         .padding(horizontal = 5.dp, vertical = 1.dp),
                 )
+            }
+            if (watched) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).clip(CircleShape).background(McdColors.Red),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("✓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            val r = ratings
+            val imdb = if (badges) r?.imdb else null
+            val rt = if (badges) r?.rtCritics else null
+            val scores = buildAnnotatedString {
+                var first = true
+                fun sep() {
+                    if (!first) withStyle(SpanStyle(color = Color.White.copy(alpha = 0.5f))) { append(" · ") }
+                    first = false
+                }
+                if (imdb != null) {
+                    sep()
+                    withStyle(SpanStyle(color = ImdbYellow, fontWeight = FontWeight.Bold)) { append("IMDb") }
+                    append(" %.1f".format(imdb))
+                }
+                if (rt != null) {
+                    sep()
+                    append("🍅 $rt%")
+                }
+                if (badges && imdb == null && t.rating > 0) {
+                    sep()
+                    withStyle(SpanStyle(color = TmdbTeal, fontWeight = FontWeight.Bold)) { append("TMDB") }
+                    append(" %.1f".format(t.rating))
+                }
+            }
+            Column(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                    .then(
+                        if (focused) Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
+                        else Modifier,
+                    )
+                    .padding(start = 6.dp, end = 6.dp, bottom = 6.dp, top = if (focused) 18.dp else 0.dp),
+            ) {
+                if (focused) {
+                    Text(
+                        t.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+                if (scores.isNotEmpty()) {
+                    Text(
+                        scores,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.68f), RoundedCornerShape(50))
+                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Poster-sized "See all" tile at the end of a row: opens the full grid for that row. */
+@Composable
+fun SeeAllCard(onClick: () -> Unit, modifier: Modifier = Modifier, height: Dp = 210.dp) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.width(100.dp).height(height),
+        shape = cardShape,
+        colors = cardColors,
+        border = cardBorder,
+        glow = cardGlow,
+        scale = CardDefaults.scale(focusedScale = 1.06f),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("See all", style = broadcastStyle(15.sp))
+                Text("›", color = McdColors.RedBright, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -174,32 +279,37 @@ fun WideCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            title,
-            color = if (focused) Color.White else McdColors.Muted,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (subtitle.isNotBlank()) {
-            Text(subtitle, color = McdColors.Muted.copy(alpha = if (focused) 1f else 0.75f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Title and subtitle only while focused (the space stays reserved so the row never jumps).
+        Box(Modifier.padding(top = 8.dp).height(36.dp)) {
+            if (focused) {
+                Column {
+                    Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (subtitle.isNotBlank()) {
+                        Text(subtitle, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
         }
     }
 }
 
 /** A titled horizontal row of posters. */
 @Composable
-fun TitleRow(label: String, items: List<Title>, onOpen: (Title) -> Unit) {
+fun TitleRow(label: String, items: List<Title>, onOpen: (Title) -> Unit) = TitleRail(label, items, null, onOpen)
+
+/** A titled horizontal row of posters; [onSeeAll] adds a "See all" tile at the end that opens the full grid. */
+@Composable
+fun TitleRail(label: String, items: List<Title>, onSeeAll: (() -> Unit)?, onOpen: (Title) -> Unit) {
     if (items.isEmpty()) return
+    val unique = remember(items) { items.distinctBy { "${it.type}-${it.id}" } }
     Column(Modifier.padding(top = 20.dp)) {
         RailHeader(label, Modifier.padding(start = 48.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            items(items, key = { "${it.type}-${it.id}" }) { t -> PosterCard(t, onClick = { onOpen(t) }) }
+            items(unique, key = { "${it.type}-${it.id}" }) { t -> PosterCard(t, onClick = { onOpen(t) }) }
+            if (onSeeAll != null) item(key = "see-all") { SeeAllCard(onSeeAll) }
         }
     }
 }
@@ -272,7 +382,16 @@ fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)
 }
 
 /** Top navigation: plain text tabs (current one white with a blue underline) and a profile/settings circle. */
-enum class NavTab(val label: String) { Home("Home"), Search("Search"), Library("My List"), Genres("Genres"), Sports("Sports"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
+enum class NavTab(val label: String) { Home("Home"), Search("Search"), Browse("Browse"), Library("My List"), Genres("Genres"), Sports("Sports"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
+
+/** Tabs shown in the bar, in order. Genres, Sports, Services and Background Noise live under Browse. */
+private val BarTabs = listOf(NavTab.Home, NavTab.Search, NavTab.Browse, NavTab.Live, NavTab.Library)
+
+/** The bar tab to highlight for a page: pages reached from Browse highlight Browse. */
+private fun NavTab.barTab(): NavTab = when (this) {
+    NavTab.Genres, NavTab.Sports, NavTab.Services, NavTab.Noise -> NavTab.Browse
+    else -> this
+}
 
 @Composable
 private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -342,15 +461,16 @@ fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Mod
         // Give the remote somewhere to start: focus the current tab once the page is laid out.
         LaunchedEffect(Unit) { withFrameNanos { }; runCatching { currentFocus.requestFocus() } }
     }
+    val shown = current.barTab()
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         McdLogo(scale = 0.7f)
         Spacer(Modifier.width(24.dp))
-        NavTab.entries.filter { it != NavTab.Settings }.forEach { tab ->
-            NavItem(tab.label, tab == current, { onSelect(tab) }, if (tab == current) Modifier.focusRequester(currentFocus) else Modifier)
+        BarTabs.forEach { tab ->
+            NavItem(tab.label, tab == shown, { onSelect(tab) }, if (tab == shown) Modifier.focusRequester(currentFocus) else Modifier)
         }
         Spacer(Modifier.weight(1f))
         ProfileCircle(current == NavTab.Settings, { onSelect(NavTab.Settings) }, if (current == NavTab.Settings) Modifier.focusRequester(currentFocus) else Modifier)

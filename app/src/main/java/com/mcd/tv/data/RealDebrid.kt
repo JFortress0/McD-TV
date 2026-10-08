@@ -351,10 +351,12 @@ object Resolver {
         else -> throw IllegalStateException("This source has no playable link")
     }
 
-    /** Tries the top sources in order until one resolves. Used by Play and Background Noise. */
+    /** Tries the top sources (filtered and sorted like the source list) until one resolves. Used by Play and Background Noise. */
     suspend fun best(list: List<StreamSource>, meta: PlayMeta? = null): Pair<StreamSource, String> {
         var last: Exception? = null
-        for (s in list.take(5)) {
+        // Same order as the source list: CAM and oversized files skipped unless nothing else is left.
+        val episode = meta?.type == "tv" || list.any { it.episode != null }
+        for (s in StreamInfo.playOrder(list, episode).take(5)) {
             try {
                 return s to resolve(s, meta)
             } catch (e: Exception) {

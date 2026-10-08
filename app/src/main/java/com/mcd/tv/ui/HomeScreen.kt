@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -23,7 +22,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -44,62 +42,63 @@ import com.mcd.tv.Nav
 import com.mcd.tv.Screen
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.SERVICES
 import com.mcd.tv.data.Title
 import com.mcd.tv.data.Tmdb
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 
 /** Everything the home screen shows, loaded in parallel. */
 private data class HomeData(
     val trending: List<Title>,
-    val popularMovies: List<Title>,
-    val popularTv: List<Title>,
+    /** Popular movies on the first streaming service (Netflix), or plain popular movies if that fails. */
+    val popular: List<Title>,
+    val popularFromService: Boolean,
     val nowPlaying: List<Title>,
     val topMovies: List<Title>,
-    val topTv: List<Title>,
 )
 
+/**
+ * Home: at most 8 rows. Continue Watching, Suggested for You, Trending This Week, Popular on <service>,
+ * Top Rated, New Releases, then a small "More" row (Browse, Sports scores, Background Noise).
+ * Everything else lives under Browse. Each catalog row ends in a "See all" tile that opens its full grid.
+ */
 @Composable
 fun HomeScreen(nav: Nav) {
     val hidden = remember { Library.hidden().map { "${it.type}-${it.id}" }.toSet() }
     fun List<Title>.visible() = filterNot { "${it.type}-${it.id}" in hidden }
+    val service = SERVICES.first()
 
     var retry by remember { mutableIntStateOf(0) }
     val data by rememberLoad(retry) {
         coroutineScope {
             val tr = async { Tmdb.trending() }
-            val pm = async { Tmdb.popular("movie") }
-            val pt = async { Tmdb.popular("tv") }
+            val ps = async { runCatching { Tmdb.byService("movie", service.id) }.getOrNull()?.takeIf { it.isNotEmpty() } }
             val np = async { Tmdb.nowPlaying() }
             val tm = async { Tmdb.topRated("movie") }
-            val tt = async { Tmdb.topRated("tv") }
-            HomeData(tr.await(), pm.await(), pt.await(), np.await(), tm.await(), tt.await())
+            val svc = ps.await()
+            HomeData(tr.await(), svc ?: Tmdb.popular("movie"), svc != null, np.await(), tm.await())
         }
     }
     val history = remember { Library.history().sortedByDescending { it.updatedAt } }
     val continueWatching = remember { Library.continueWatching().sortedByDescending { it.updatedAt } }
-    val recent = remember { history.filter { h -> continueWatching.none { it.meta.historyKey == h.meta.historyKey } }.take(20) }
     val firstFocus = remember { FocusRequester() }
     val favorites = remember { Library.favorites() }
     // Suggestions: titles like the last few things you watched or favorited.
     val suggestions by rememberLoad {
-        val seeds = (history.map { it.meta.type to it.meta.tmdbId } + Library.favorites().map { it.type to it.id }).distinct().take(4)
+        val seeds = (history.map { it.meta.type to it.meta.tmdbId } + favorites.map { it.type to it.id }).distinct().take(4)
         val seen = history.map { "${it.meta.type}-${it.meta.tmdbId}" }.toSet()
         coroutineScope { seeds.map { (t, id) -> async { runCatching { Tmdb.recommendations(t, id) }.getOrDefault(emptyList()) } }.map { it.await() } }
             .flatMap { it.take(8) }.distinctBy { "${it.type}-${it.id}" }.filterNot { "${it.type}-${it.id}" in seen }.take(24)
     }
     LaunchedEffect(Unit) {
-        if (history.isNotEmpty()) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
+        if (continueWatching.isNotEmpty()) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
     }
-    val watchlist = remember { Library.watchlist() }
-    val scope = rememberCoroutineScope()
-    var familyMsg by remember { mutableStateOf("") }
     val openTitle: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
     val heroes = (data as? Load.Ok<HomeData>)?.value?.trending?.visible()?.filter { it.backdrop != null }?.take(6) ?: emptyList()
-    // With no history and no favorites there are no rows above the hero (suggestions need seeds), so the
-    // hero goes full-bleed at the very top of the page, behind the transparent TopNav (Max-style).
-    val heroOnTop = history.isEmpty() && favorites.isEmpty()
+    // Nothing to resume: the hero goes full-bleed at the very top of the page, behind the transparent
+    // TopNav (Max-style), and takes focus. With Continue Watching, that row comes first and has focus.
+    val heroOnTop = continueWatching.isEmpty()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(ScreenBackground),
@@ -107,19 +106,16 @@ fun HomeScreen(nav: Nav) {
     ) {
         item(key = "top") {
             Box(Modifier.fillMaxWidth()) {
-                if (heroOnTop && heroes.isNotEmpty()) Hero(heroes, nav, takeFocus = history.isEmpty(), underNav = true)
+                if (heroOnTop && heroes.isNotEmpty()) Hero(heroes, nav, takeFocus = true, underNav = true)
                 TopNav(NavTab.Home, nav.tab)
             }
         }
 
-        // 1) Resume, 2) recently watched, 3) suggestions, then everything else.
-        if (continueWatching.isNotEmpty()) item {
+        if (continueWatching.isNotEmpty()) item(key = "continue") {
             HistoryRow("Continue Watching", continueWatching, nav, firstFocus)
         }
-        if (recent.isNotEmpty()) item {
-            HistoryRow("Recently Watched", recent, nav, if (continueWatching.isEmpty()) firstFocus else null)
-        }
-        item {
+        if (!heroOnTop && heroes.isNotEmpty()) item(key = "hero") { Hero(heroes, nav, takeFocus = false) }
+        item(key = "suggested") {
             val sg = suggestions
             if (sg is Load.Ok && sg.value.isNotEmpty()) TitleRow("Suggested for You", sg.value.visible(), openTitle)
         }
@@ -136,39 +132,41 @@ fun HomeScreen(nav: Nav) {
                 }
             }
             is Load.Ok -> {
-                if (heroes.isNotEmpty() && !heroOnTop) item { Hero(heroes, nav, takeFocus = history.isEmpty()) }
-
-                item { TitleRow("My Watchlist", watchlist, openTitle) }
-                item { TitleRow("Favorites", favorites, openTitle) }
-                item { TitleRow("Trending This Week", d.value.trending.visible(), openTitle) }
-                item { TitleRow("Popular Movies", d.value.popularMovies.visible(), openTitle) }
-                item { TitleRow("Popular TV Shows", d.value.popularTv.visible(), openTitle) }
-                item { TitleRow("Now Playing in Theaters", d.value.nowPlaying.visible(), openTitle) }
-                item { TitleRow("Top Rated Movies", d.value.topMovies.visible(), openTitle) }
-                item { TitleRow("Top Rated TV Shows", d.value.topTv.visible(), openTitle) }
-                item {
-                    Column(Modifier.padding(start = 48.dp, top = 24.dp)) {
-                        RailHeader("Family Movie Night")
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            ActionButton("Pick a family movie for us", {
-                                scope.launch {
-                                    familyMsg = "Picking…"
-                                    val pick = runCatching { Tmdb.familyMovies((1..5).random()).random() }
-                                    val chosen = pick.getOrNull()
-                                    if (chosen != null) {
-                                        familyMsg = ""
-                                        openTitle(chosen)
-                                    } else {
-                                        familyMsg = pick.exceptionOrNull()?.message ?: "Could not pick"
-                                    }
-                                }
-                            }, primary = true)
-                            if (familyMsg.isNotBlank()) Text(familyMsg, color = McdColors.Muted)
-                        }
+                val v = d.value
+                item(key = "trending") {
+                    TitleRail("Trending This Week", v.trending.visible(), { nav.push(Screen.BrowseGrid("trending")) }, openTitle)
+                }
+                item(key = "popular") {
+                    if (v.popularFromService) {
+                        TitleRail("Popular on ${service.name} · Movies", v.popular.visible(), { nav.push(Screen.ServiceGrid(service)) }, openTitle)
+                    } else {
+                        TitleRail("Popular · Movies", v.popular.visible(), { nav.push(Screen.BrowseGrid("popular", "movie")) }, openTitle)
                     }
                 }
-                item { BrowseByYear(nav) }
+                item(key = "toprated") {
+                    TitleRail("Top Rated · Movies", v.topMovies.visible(), { nav.push(Screen.BrowseGrid("top", "movie")) }, openTitle)
+                }
+                item(key = "new") {
+                    TitleRail("New Releases · In Theaters", v.nowPlaying.visible(), { nav.push(Screen.BrowseGrid("new")) }, openTitle)
+                }
             }
+        }
+        item(key = "more") { MoreRow(nav) }
+    }
+}
+
+/** Small last row: shortcuts to everything that moved off Home. */
+@Composable
+private fun MoreRow(nav: Nav) {
+    Column(Modifier.padding(top = 24.dp)) {
+        RailHeader("More", Modifier.padding(start = 48.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item { CompactTile("Browse", "Genres, years, languages, services", { nav.tab(NavTab.Browse) }) }
+            item { CompactTile("Sports scores", "Live scores and schedules", { nav.push(Screen.Sports) }) }
+            item { CompactTile("Background Noise", "Random episodes of your shows", { nav.push(Screen.Noise) }) }
         }
     }
 }
@@ -259,26 +257,6 @@ private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true, underN
                         .background(if (i == index) Color.White else Color.White.copy(alpha = 0.35f)),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun BrowseByYear(nav: Nav) {
-    var year by remember { mutableIntStateOf(0) }
-    val years = remember { (java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) downTo 1970).toList() }
-    Column(Modifier.padding(top = 24.dp)) {
-        RailHeader("Browse by Year", Modifier.padding(start = 48.dp))
-        LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(years) { y -> ActionButton("$y", { year = y }, primary = y == year) }
-        }
-        if (year != 0) {
-            val movies by rememberLoad(year) { Tmdb.byYear("movie", year) }
-            val shows by rememberLoad(year) { Tmdb.byYear("tv", year) }
-            val m = movies
-            val sh = shows
-            if (m is Load.Ok) TitleRow("Movies from $year", m.value) { t -> nav.push(Screen.Detail(t.type, t.id)) }
-            if (sh is Load.Ok) TitleRow("Shows from $year", sh.value) { t -> nav.push(Screen.Detail(t.type, t.id)) }
         }
     }
 }

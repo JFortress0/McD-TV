@@ -89,6 +89,24 @@ object Library {
         }
     }.getOrDefault(emptyList())
 
+    @Volatile private var watchedCache: Pair<String, Set<Int>>? = null
+
+    /**
+     * True if this movie was watched to the end (history progress >= 0.9). Cheap enough for every
+     * poster card: the parsed set is reused until the stored history changes. Shows always return false
+     * (show history only tracks the latest episode).
+     */
+    fun isWatched(type: String, id: Int): Boolean {
+        if (type != "movie") return false
+        val raw = Prefs.json("lib_history")
+        val cached = watchedCache
+        val set = if (cached != null && cached.first == raw) cached.second else {
+            history().filter { it.meta.type == "movie" && it.progress >= 0.9f }.map { it.meta.tmdbId }.toSet()
+                .also { watchedCache = raw to it }
+        }
+        return id in set
+    }
+
     fun continueWatching() = history().filter { !it.finished && it.positionMs > 60_000 }
 
     fun resumePosition(meta: PlayMeta): Long =

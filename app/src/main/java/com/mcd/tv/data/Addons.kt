@@ -146,10 +146,6 @@ object Addons {
     private val sizeRx = Regex("([0-9]+(?:\\.[0-9]+)?)\\s?(GB|MB)", RegexOption.IGNORE_CASE)
     private val seedRx = Regex("👤\\s?([0-9]+)")
 
-    private fun qualityRank(q: String) = when (q) {
-        "4K" -> 4; "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0
-    }
-
     /**
      * Asks every installed addon for streams. id is an IMDb id for movies,
      * or "tt123:season:episode" for TV. Slow addons are skipped after 20 s.
@@ -210,15 +206,10 @@ object Addons {
         return h.keys().asSequence().associateWith { h.optString(it) }
     }
 
-    /** Cached first. Normal mode: best quality. Slow connection: 720p/1080p, smaller files first. */
-    fun sort(list: List<StreamSource>): List<StreamSource> {
-        val slow = Prefs.slowConnection
-        return list.sortedWith(
-            compareByDescending<StreamSource> { it.cached }
-                .thenByDescending {
-                    if (slow) (if (it.quality == "720p") 3 else if (it.quality == "1080p") 2 else 0) else qualityRank(it.quality)
-                }
-                .thenBy { if (slow) it.sizeGb else -it.sizeGb },
-        )
-    }
+    /**
+     * Cached first, then quality tier (stars), resolution and size; duplicates removed (see StreamInfo).
+     * Slow connection: 720p/1080p and smaller files first. Nothing is hidden here: the source list
+     * and Resolver.best apply the CAM / size-limit filter (StreamInfo.arrange).
+     */
+    fun sort(list: List<StreamSource>): List<StreamSource> = StreamInfo.ranked(list).map { it.source }
 }

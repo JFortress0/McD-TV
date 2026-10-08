@@ -15,6 +15,8 @@ data class Title(
     val year: String,
     val originCountries: List<String> = emptyList(),
     val language: String = "",
+    /** "yyyy-MM-dd" (movies: release date, shows: first air date), or "" when unknown. */
+    val releaseDate: String = "",
 )
 
 /** Where titles may come from. Set in Settings or the web page. */
@@ -99,7 +101,42 @@ data class Details(
 )
 
 /** A movie franchise: every film in it, oldest first. */
-data class TitleCollection(val id: Int, val name: String, val parts: List<Title>)
+data class TitleCollection(val id: Int, val name: String, val parts: List<Title>, val poster: String? = null, val backdrop: String? = null)
+
+/** Popular movie franchises for Browse > Collections (TMDB collection ids). */
+val POPULAR_COLLECTIONS = listOf(
+    10, // Star Wars
+    1241, // Harry Potter
+    119, // The Lord of the Rings
+    86311, // The Avengers
+    9485, // Fast & Furious
+    645, // James Bond
+    87359, // Mission: Impossible
+    263, // The Dark Knight
+    2344, // The Matrix
+    328, // Jurassic Park
+    1570, // Die Hard
+    8091, // Alien
+    528, // The Terminator
+    230, // The Godfather
+    2150, // Shrek
+    10194, // Toy Story
+    295, // Pirates of the Caribbean
+    264, // Back to the Future
+    84, // Indiana Jones
+    404609, // John Wick
+    1575, // Rocky
+    31562, // The Bourne
+    9888, // Home Alone
+    86066, // Despicable Me
+)
+
+/** Original languages for Browse > By Language (TMDB with_original_language codes). */
+val BROWSE_LANGUAGES = listOf(
+    "en" to "English", "es" to "Spanish", "fr" to "French", "ko" to "Korean", "ja" to "Japanese", "hi" to "Hindi",
+    "it" to "Italian", "de" to "German", "pt" to "Portuguese", "zh" to "Chinese", "sv" to "Swedish", "da" to "Danish",
+    "no" to "Norwegian", "tr" to "Turkish", "th" to "Thai", "ta" to "Tamil",
+)
 
 /** Streaming services shown on the Services screen (TMDB watch-provider ids, US). */
 data class Service(val id: Int, val name: String) {
@@ -193,6 +230,7 @@ object Tmdb {
                 }
             } ?: emptyList(),
             language = o.s("original_language") ?: "",
+            releaseDate = date,
         )
     }
 
@@ -266,15 +304,17 @@ object Tmdb {
     private suspend fun list(path: String, type: String?, params: Map<String, String> = emptyMap()) =
         parseList(get(path, params).optJSONArray("results"), type)
 
-    suspend fun trending() = list("/trending/all/week", null)
-    suspend fun popular(type: String) = list("/$type/popular", type, region())
+    /** type: "all", "movie" or "tv". */
+    suspend fun trending(type: String = "all", page: Int = 1) =
+        list("/trending/$type/week", if (type == "all") null else type, mapOf("page" to page.toString()))
+    suspend fun popular(type: String, page: Int = 1) = list("/$type/popular", type, region() + ("page" to page.toString()))
     /**
      * Top Rated, US edition: American titles only, ranked by vote average, with a
      * minimum vote count so a handful of votes can't top the chart. Movies are limited
      * to US-certified titles (G through R). Note: no public source splits ratings by
      * the voter's country or age, so this filters the titles, not the voters.
      */
-    suspend fun topRated(type: String): List<Title> {
+    suspend fun topRated(type: String, page: Int = 1): List<Title> {
         val p = mutableMapOf(
             "sort_by" to "vote_average.desc",
             "vote_count.gte" to if (type == "movie") "2500" else "800",
@@ -284,9 +324,9 @@ object Tmdb {
             p["certification_country"] = "US"
             p["certification"] = "G|PG|PG-13|R"
         }
-        return discover(type, p)
+        return discover(type, p, page)
     }
-    suspend fun nowPlaying() = list("/movie/now_playing", "movie", region())
+    suspend fun nowPlaying(page: Int = 1) = list("/movie/now_playing", "movie", region() + ("page" to page.toString()))
     suspend fun search(q: String) = list("/search/multi", null, mapOf("query" to q, "include_adult" to "false"))
 
     suspend fun discover(type: String, params: Map<String, String>, page: Int = 1): List<Title> {
@@ -314,10 +354,27 @@ object Tmdb {
         return discover(type, p, page)
     }
 
-    suspend fun byYear(type: String, year: Int) = discover(
+    suspend fun byYear(type: String, year: Int, page: Int = 1) = discover(
         type,
         if (type == "movie") mapOf("primary_release_year" to "$year") else mapOf("first_air_date_year" to "$year"),
+        page,
     )
+
+    /**
+     * Titles in one original language (Browse > By Language), most popular first.
+     * Deliberately NOT filtered by the country setting: picking a language is an explicit choice.
+     */
+    suspend fun byLanguage(type: String, lang: String, page: Int = 1): List<Title> {
+        val p = mapOf(
+            "with_original_language" to lang,
+            "sort_by" to "popularity.desc",
+            "vote_count.gte" to "20",
+            "include_adult" to "false",
+            "page" to page.toString(),
+        )
+        val arr = get("/discover/$type", p).optJSONArray("results") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { parse(arr.getJSONObject(it), type) }
+    }
 
     /** Family-friendly picks for Family Movie Night (genre 10751 = Family). */
     suspend fun familyMovies(page: Int) = discover(
@@ -389,7 +446,7 @@ object Tmdb {
             .mapNotNull { i -> arr.optJSONObject(i)?.let { j -> parse(j, "movie")?.let { t -> t to (j.s("release_date") ?: "") } } }
             .sortedWith(compareBy<Pair<Title, String>>({ it.second.isBlank() }, { it.second }))
             .map { it.first }
-        return TitleCollection(id, o.s("name") ?: "Collection", parts)
+        return TitleCollection(id, o.s("name") ?: "Collection", parts, o.s("poster_path"), o.s("backdrop_path"))
     }
 
     private fun parseEpisode(e: JSONObject) = Episode(

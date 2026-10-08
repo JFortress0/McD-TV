@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,6 +40,8 @@ fun SettingsScreen(nav: Nav) {
     var origin by remember { mutableStateOf(Prefs.origin) }
     var slow by remember { mutableStateOf(Prefs.slowConnection) }
     var intro by remember { mutableStateOf(Prefs.playIntro) }
+    var maxMovie by remember { mutableIntStateOf(Prefs.maxMovieGb) }
+    var maxEpisode by remember { mutableIntStateOf(Prefs.maxEpisodeGb) }
     val rd by rememberLoad(Prefs.rdAccessToken) { if (RealDebrid.connected) RealDebrid.accountSummary() else "Not connected" }
     val addons by rememberLoad { Prefs.addonUrls.map { u -> runCatching { Addons.manifest(u).name }.getOrDefault(u.take(40)) } }
 
@@ -99,6 +102,17 @@ fun SettingsScreen(nav: Nav) {
                 ActionButton("Intro on launch: ${if (intro) "ON" else "OFF"}", { intro = !intro; Prefs.playIntro = intro })
                 ActionButton("Replay intro", { nav.push(Screen.Intro) })
             }
+            // Source list hides bigger files (a "Show hidden" row reveals them). 0 = no limit.
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ActionButton("Movie size limit: ${sizeLimitLabel(maxMovie)}", {
+                    maxMovie = nextLimit(maxMovie, listOf(20, 40, 60, 0))
+                    Prefs.maxMovieGb = maxMovie
+                })
+                ActionButton("Episode size limit: ${sizeLimitLabel(maxEpisode)}", {
+                    maxEpisode = nextLimit(maxEpisode, listOf(4, 8, 12, 20, 0))
+                    Prefs.maxEpisodeGb = maxEpisode
+                })
+            }
 
             Spacer(Modifier.height(6.dp))
             RailHeader("Player test")
@@ -110,6 +124,11 @@ fun SettingsScreen(nav: Nav) {
         }
     }
 }
+
+private fun sizeLimitLabel(gb: Int) = if (gb <= 0) "No limit" else "$gb GB"
+
+/** The next value in [cycle] after [current] (the first one if [current] is not in the list). */
+private fun nextLimit(current: Int, cycle: List<Int>): Int = cycle[(cycle.indexOf(current) + 1) % cycle.size]
 
 /** Setup from a phone or computer: QR code for the internet Control page, plus the home-network page. */
 @Composable

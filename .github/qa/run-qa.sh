@@ -67,6 +67,7 @@ check_screen noise "BACKGROUND NOISE"
 check_screen library "Real-Debrid Cloud"
 check_screen live "playlist"
 check_screen search "Search movies"
+check_screen browse "Collections"
 check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
@@ -101,7 +102,10 @@ adb shell dumpsys activity activities | grep -q "com.mcd.tv" && pass "Live chann
 # 4c) Remote walk-through: title page, Play, back out.
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "detail:movie:603" >/dev/null
 sleep 9
-adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+# Main row is Play, Trailer (if any), Watchlist, "More": RIGHT x3 lands on More (a spare RIGHT is harmless).
+# More opens the second row and focuses its first button, Choose Source.
+for i in 1 2 3; do adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; done
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 2
 adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 6
 shot remote-choose-source
 for i in 1 2 3; do adb shell input keyevent KEYCODE_BACK; sleep 2; done

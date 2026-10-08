@@ -98,6 +98,19 @@ private fun DetailBody(nav: Nav, d: Details) {
 
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { playFocus.requestFocus() } }
 
+    // "⋯ More" opens a second row of actions; focus jumps to its first button.
+    var more by remember { mutableStateOf(false) }
+    val moreFocus = remember { FocusRequester() }
+    LaunchedEffect(more) {
+        if (more) { withFrameNanos { }; runCatching { moreFocus.requestFocus() } }
+    }
+    val movieProgress = remember { if (t.type == "movie") Library.history().firstOrNull { it.meta.historyKey == "movie:${t.id}" } else null }
+    val playLabel = when {
+        t.type == "tv" && last != null -> "▶  Resume S${last.meta.season}E${last.meta.episode}"
+        movieProgress != null && !movieProgress.finished && movieProgress.positionMs > 60_000 -> "▶  Resume"
+        else -> "▶  Play"
+    }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
         item {
             Box(Modifier.fillMaxWidth().heightIn(min = 400.dp)) {
@@ -148,30 +161,34 @@ private fun DetailBody(nav: Nav, d: Details) {
                         RatingsRow(t.rating, d.imdbId)
                         Text(t.overview, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(10.dp))
+                        // Main row: Play / Resume, Trailer, Watchlist, and "More" for everything else.
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            val resumeLabel = if (t.type == "tv" && last != null) "▶  Resume S${last.meta.season}E${last.meta.episode}" else "▶  Play"
-                            ActionButton(resumeLabel, {
+                            ActionButton(playLabel, {
                                 if (t.type == "movie") play(0, 0, true)
                                 else play(last?.meta?.season ?: season, last?.meta?.episode ?: 1, true)
                             }, Modifier.focusRequester(playFocus), primary = true)
-                            if (t.type == "movie") ActionButton("Choose Source", { play(0, 0, false) })
-                            ActionButton(if (fav) "♥ Favorite" else "♡ Favorite", { fav = Library.toggleFavorite(t) })
-                            ActionButton(if (listed) "✓ Watchlist" else "+ Watchlist", { listed = Library.toggleWatchlist(t) })
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             d.trailerKey?.let { key ->
-                                ActionButton("▶ Trailer", { if (!openYouTube(context, key)) note = "No YouTube app on this TV" })
+                                ActionButton("▶  Trailer", { if (!openYouTube(context, key)) note = "No YouTube app on this TV" })
                             }
-                            if (t.type == "movie") ActionButton("Mark as Watched", { Library.markWatched(meta()); note = "Marked as watched" })
-                            if (t.type == "tv") ActionButton(if (noise) "✓ In Background Noise" else "+ Background Noise", { noise = Library.toggleNoise(t) })
-                            ActionButton("Not for me", { Library.hide(t); note = "Hidden from home rows"; nav.back() })
+                            ActionButton(if (listed) "✓ Watchlist" else "+ Watchlist", { listed = Library.toggleWatchlist(t) })
+                            ActionButton(if (more) "⋯ Less" else "⋯ More", { more = !more })
                         }
-                        if (d.providers.isNotEmpty()) {
+                        if (more) {
                             Spacer(Modifier.height(8.dp))
-                            // LazyRow: long provider names scroll instead of running off the screen.
+                            // LazyRow: provider buttons and long labels scroll instead of running off the screen.
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                item { Text("ALSO ON", style = broadcastStyle(12.sp, McdColors.Muted).copy(letterSpacing = 1.2.sp)) }
+                                if (t.type == "movie") item { ActionButton("Choose Source", { play(0, 0, false) }, Modifier.focusRequester(moreFocus)) }
+                                item {
+                                    ActionButton(
+                                        if (fav) "♥ Favorite" else "♡ Favorite", { fav = Library.toggleFavorite(t) },
+                                        if (t.type == "movie") Modifier else Modifier.focusRequester(moreFocus),
+                                    )
+                                }
+                                if (t.type == "movie") item { ActionButton("Mark as Watched", { Library.markWatched(meta()); note = "Marked as watched" }) }
+                                if (t.type == "tv") item {
+                                    ActionButton(if (noise) "✓ In Background Noise" else "+ Background Noise", { noise = Library.toggleNoise(t) })
+                                }
+                                item { ActionButton("Not for me", { Library.hide(t); note = "Hidden from home rows"; nav.back() }) }
                                 items(d.providers.take(4)) { svc ->
                                     ActionButton("Open ${svc.name}", { if (!openApp(context, svc.packages)) note = "${svc.name} app is not installed on this TV" })
                                 }
@@ -281,28 +298,29 @@ fun openApp(context: android.content.Context, packages: List<String>): Boolean {
     return false
 }
 
-/** TMDB rating plus IMDb and Rotten Tomatoes critics and audience scores (when MDBList is set up). */
+/** Compact scores: TMDB, plus IMDb, Rotten Tomatoes critics / audience and Metacritic when MDBList is set up. */
 @Composable
 private fun RatingsRow(tmdb: Double, imdbId: String?) {
     val r by rememberLoad(imdbId) { if (imdbId != null) com.mcd.tv.data.RatingsSource.forImdb(imdbId) else com.mcd.tv.data.Ratings() }
     val ratings = (r as? Load.Ok<com.mcd.tv.data.Ratings>)?.value ?: com.mcd.tv.data.Ratings()
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-        if (tmdb > 0) ScoreChip("TMDB", "★ %.1f".format(tmdb), Color(0xFF0D253F))
-        ratings.imdb?.let { ScoreChip("IMDb", "%.1f".format(it), Color(0xFF8A6D00)) }
-        ratings.rtCritics?.let { ScoreChip("🍅 Critics", "$it%", if (it >= 60) Color(0xFFB3261E) else Color(0xFF3D6B1F)) }
-        ratings.rtAudience?.let { ScoreChip("🍿 Audience", "$it%", if (it >= 60) Color(0xFFB3261E) else Color(0xFF3D6B1F)) }
-        ratings.metacritic?.let { ScoreChip("Metacritic", "$it", Color(0xFF2E3A46)) }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+        if (tmdb > 0) ScoreChip("TMDB", "%.1f".format(tmdb), Color(0xFF01B4E4))
+        ratings.imdb?.let { ScoreChip("IMDb", "%.1f".format(it), Color(0xFFF5C518)) }
+        ratings.rtCritics?.let { ScoreChip("🍅", "$it%", Color.White) }
+        ratings.rtAudience?.let { ScoreChip("🍿", "$it%", Color.White) }
+        ratings.metacritic?.let { ScoreChip("MC", "$it", McdColors.Muted) }
     }
 }
 
+/** One small dark pill: colored source label, white score. */
 @Composable
-private fun ScoreChip(label: String, value: String, color: Color) {
+private fun ScoreChip(label: String, value: String, labelColor: Color) {
     Row(
-        Modifier.background(color, RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+        Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
-        Spacer(Modifier.width(6.dp))
-        Text(value, color = Color.White, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Text(label, color = labelColor, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Spacer(Modifier.width(4.dp))
+        Text(value, color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
     }
 }
