@@ -53,7 +53,10 @@ check_screen() { # name, expected text (case-insensitive regex)
   shot "screen-${1//:/-}"
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   adb pull /sdcard/ui.xml "qa-out/ui-${1//:/-}.xml" >/dev/null 2>&1
-  if grep -qiE "$2" "qa-out/ui-${1//:/-}.xml" 2>/dev/null; then pass "Screen $1 shows: $2"; else fail "Screen $1 shows: $2"; fi
+  if grep -qiE "$2" "qa-out/ui-${1//:/-}.xml" 2>/dev/null; then pass "Screen $1 shows: $2"; else
+    fail "Screen $1 shows: $2"
+    echo "      on screen: $(grep -o 'text="[^"]*"' "qa-out/ui-${1//:/-}.xml" 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-400)" | tee -a "$R"
+  fi
 }
 check_screen settings "Phone &amp; Computer Setup|Phone & Computer Setup"
 check_screen phone "MCD TV CONTROL"
@@ -77,13 +80,18 @@ https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_exam
 #EXTINF:-1 group-title="QA Movies",QA Movie Entry
 http://example.com/movie/user/pass/1.mp4
 M3U
-(cd qa-m3u && python3 -m http.server 8765 >/dev/null 2>&1 &)
+python3 -m http.server 8765 --directory qa-m3u >/dev/null 2>&1 < /dev/null &
+M3U_SERVER=$!
 sleep 2
 curl -sf -m 15 --data "m3u=http%3A%2F%2F10.0.2.2%3A8765%2Ftest.m3u" http://127.0.0.1:8642/ -o /dev/null \
   && pass "Setup page saves an M3U playlist" || fail "Setup page saves an M3U playlist"
+sleep 3 # let Android write the setting to disk before the app is restarted
 check_screen live "QA Test Channel"
 if grep -q "QA Movie Entry" qa-out/ui-live.xml 2>/dev/null; then fail "Live TV hides movie entries"; else pass "Live TV hides movie entries"; fi
 # Play the first channel with the remote and make sure the player opens.
+# Focus starts on the "Live TV" tab: DOWN -> "My Playlist" (source row), DOWN -> "All (n)" (group row),
+# DOWN -> first channel row. (A spare DOWN on the last row is harmless: there is nothing below it.)
+adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
 adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
 adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
 adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 10
@@ -109,6 +117,7 @@ else
   pass "No crashes"
 fi
 
+kill "$M3U_SERVER" 2>/dev/null # a server left running keeps the job from finishing
 echo "----"; cat "$R"
 if [ -n "$GITHUB_STEP_SUMMARY" ]; then { echo "## McD TV QA"; echo '```'; cat "$R"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"; fi
 exit $FAILED
