@@ -128,6 +128,19 @@ object RealDebrid {
     /** Valid access token (refreshed if needed), for other RD helpers. */
     suspend fun accessToken(): String = token()
 
+    /**
+     * Access token for the McD TV web app (your own browser), so it can play on a phone or computer.
+     * Refreshed first when it has less than [minValidMs] left, or when [force] is set (the browser got a 401).
+     * Returns the token and when it expires (epoch ms). The refresh token and client secret never leave the TV.
+     */
+    suspend fun webAccess(force: Boolean = false, minValidMs: Long = 15 * 60_000L): Pair<String, Long> {
+        if (!connected) throw IllegalStateException("Connect Real-Debrid in Settings first")
+        if (force || Prefs.rdExpiresAt - System.currentTimeMillis() < minValidMs) {
+            refresh(stale = Prefs.rdAccessToken, force = true)
+        }
+        return Prefs.rdAccessToken to Prefs.rdExpiresAt
+    }
+
     /** Account status line for Settings, e.g. "jfortress • premium until 2027-01-02". */
     suspend fun accountSummary(): String {
         val o = JSONObject(apiGet("/user"))

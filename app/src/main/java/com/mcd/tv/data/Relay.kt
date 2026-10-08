@@ -190,6 +190,10 @@ object Relay {
             }
             // ---- McD TV web app (docs/app) ----
             "web_init" -> runCatching { publishWebInit(cmd.optString("req")) }
+            // The web app's "Play here" needs a fresh Real-Debrid token (its copy is old, or RD answered 401).
+            "rd_token" -> runCatching { publishRdToken(cmd.optString("req"), cmd.optBoolean("force", false)) }
+            // Progress from "Play here", so Continue Watching on the TV stays in sync.
+            "progress" -> runCatching { recordWebProgress(cmd) }
             "open" -> {
                 val type = cmd.optString("type")
                 val id = cmd.optInt("id")
@@ -285,6 +289,11 @@ object Relay {
                 .put("episode", it.meta.episode)
                 .put("progress", Math.round(it.progress * 100) / 100.0)
         }
+        // Real-Debrid access for "Play here" in the browser: the access token only (refreshed first if near expiry).
+        val rd: Pair<String, Long>? = if (RealDebrid.connected) runCatching { RealDebrid.webAccess() }.getOrNull() else null
+        val addons = Prefs.addonUrls
+        // Addon URLs can be long (their config is in the URL): if they don't fit, they go in follow-up "addons" messages.
+        var withAddons = true
         fun build(): String = encrypt(
             JSONObject()
                 .put("type", "web_init")
@@ -294,12 +303,24 @@ object Relay {
                 .put("mdblist_key", Prefs.mdblistKey)
                 .put("origin_filter", Prefs.origin.key)
                 .put("us_only", Prefs.usOnly)
+                .put("slow_connection", Prefs.slowConnection)
+                .put("max_movie_gb", Prefs.maxMovieGb)
+                .put("max_episode_gb", Prefs.maxEpisodeGb)
+                .put("rd_connected", RealDebrid.connected)
+                .put("rd_token", rd?.first ?: "")
+                .put("rd_expires_at", rd?.second ?: 0L)
+                .put("addons_separate", !withAddons)
+                .apply { if (withAddons) put("addon_urls", JSONArray(addons)) }
                 .put("watchlist", JSONArray(watch))
                 .put("favorites", JSONArray(favs))
                 .put("continue", JSONArray(cont))
                 .toString(),
         )
         var msg = build()
+        if (msg.length > 3500 && addons.isNotEmpty()) {
+            withAddons = false
+            msg = build()
+        }
         while (msg.length > 3500 && (watch.size + favs.size + cont.size) > 0) {
             // Drop from the end of the longest list, a few at a time.
             val longest = maxOf(watch.size, favs.size, cont.size)
@@ -312,6 +333,83 @@ object Relay {
         }
         status = "Connected to the McD TV web app"
         Http.postText(BASE + outTopic, msg)
+        if (!withAddons) publishAddons(req, addons)
+    }
+
+    /**
+     * Addon URLs for the web app, in as few messages as fit the 3500-character budget.
+     * Each message: {type:"addons", req, part, parts, addon_urls}; the page joins the parts of one req.
+     */
+    private suspend fun publishAddons(req: String, urls: List<String>) {
+        fun build(chunk: List<String>, part: Int, parts: Int): String = encrypt(
+            JSONObject()
+                .put("type", "addons")
+                .put("req", req)
+                .put("ts", System.currentTimeMillis())
+                .put("part", part)
+                .put("parts", parts)
+                .put("addon_urls", JSONArray(chunk))
+                .toString(),
+        )
+        // Greedy split; "parts" is filled in afterwards (a few more digits never matter at this size).
+        val chunks = mutableListOf<List<String>>()
+        var cur = mutableListOf<String>()
+        for (u in urls) {
+            val next = cur + u
+            if (cur.isNotEmpty() && build(next, 99, 99).length > 3500) {
+                chunks.add(cur)
+                cur = mutableListOf(u)
+            } else {
+                cur = next.toMutableList()
+            }
+        }
+        if (cur.isNotEmpty()) chunks.add(cur)
+        chunks.forEachIndexed { i, c -> Http.postText(BASE + outTopic, build(c, i, chunks.size)) }
+    }
+
+    /** Reply to "rd_token": a fresh Real-Debrid access token for the web app's "Play here". */
+    private suspend fun publishRdToken(req: String, force: Boolean) {
+        val o = JSONObject()
+            .put("type", "rd_token")
+            .put("req", req)
+            .put("ts", System.currentTimeMillis())
+        try {
+            val (token, expiresAt) = RealDebrid.webAccess(force = force)
+            o.put("rd_token", token).put("rd_expires_at", expiresAt)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            o.put("rd_token", "").put("rd_expires_at", 0L)
+                .put("error", e.message ?: "Real-Debrid is not connected on the TV")
+        }
+        Http.postText(BASE + outTopic, encrypt(o.toString()))
+    }
+
+    /**
+     * "progress" from the web app's player: {type, id, season, episode, position_ms, duration_ms, name, poster, backdrop}.
+     * Recorded like the TV player does, so Continue Watching stays in sync. Ignored when fields are missing,
+     * or when the TV already has newer progress for this title (an old message replayed after the TV was off).
+     */
+    private fun recordWebProgress(cmd: JSONObject) {
+        val type = cmd.optString("type")
+        val id = cmd.optInt("id")
+        val pos = cmd.optLong("position_ms", -1L)
+        val dur = cmd.optLong("duration_ms", -1L)
+        val name = cmd.optString("name")
+        if ((type != "movie" && type != "tv") || id <= 0 || pos < 0 || dur <= 0 || name.isBlank()) return
+        val season = if (type == "tv") cmd.optInt("season", 0) else 0
+        val episode = if (type == "tv") cmd.optInt("episode", 0) else 0
+        if (type == "tv" && (season <= 0 || episode <= 0)) return
+        val meta = PlayMeta(
+            type, id, name,
+            cmd.optString("poster").ifBlank { null },
+            cmd.optString("backdrop").ifBlank { null },
+            season, episode,
+        )
+        val ts = cmd.optLong("ts", 0L)
+        val newer = Library.history().firstOrNull { it.meta.historyKey == meta.historyKey }?.updatedAt ?: 0L
+        // Only for messages over 10 minutes old, so a phone clock a little behind the TV doesn't drop live updates.
+        if (isStale(cmd) && newer > ts) return
+        Library.record(meta, pos.coerceAtMost(dur), dur)
     }
 
     private fun apply(d: JSONObject) {
