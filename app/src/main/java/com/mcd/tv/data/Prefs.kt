@@ -60,6 +60,42 @@ object Prefs {
     /** Guards the JSON list settings, which are read-modify-written from several threads. */
     private val listLock = Any()
 
+    private fun strList(key: String): List<String> = synchronized(listLock) {
+        runCatching {
+            val a = JSONArray(sp.getString(key, "[]"))
+            List(a.length()) { a.getString(it) }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun putStrList(key: String, v: List<String>) = synchronized(listLock) {
+        sp.edit().putString(key, JSONArray(v.distinct()).toString()).apply()
+    }
+
+    /** Favorite Live TV channels, by stream URL. */
+    val liveFavorites: List<String> get() = strList("live_favorites")
+
+    /** Adds or removes a favorite channel. Returns true when it is now a favorite. */
+    fun toggleLiveFavorite(url: String): Boolean = synchronized(listLock) {
+        val cur = strList("live_favorites")
+        val nowFav = url !in cur
+        putStrList("live_favorites", if (nowFav) cur + url else cur - url)
+        nowFav
+    }
+
+    /** Recently watched Live TV channels (stream URLs), most recent first, at most 20. */
+    val liveRecents: List<String> get() = strList("live_recents")
+
+    /** Records a channel as watched: moves it to the front of Recent and makes it the last channel. */
+    fun addLiveRecent(url: String) = synchronized(listLock) {
+        putStrList("live_recents", (listOf(url) + strList("live_recents").filter { it != url }).take(20))
+        put("live_last_url", url)
+    }
+
+    /** The Live TV channel watched last ("" if none). */
+    var liveLastUrl: String
+        get() = str("live_last_url")
+        set(v) = put("live_last_url", v)
+
     // ---- Addons (Stremio protocol): list of manifest URLs ----
     var addonUrls: List<String>
         get() = synchronized(listLock) {

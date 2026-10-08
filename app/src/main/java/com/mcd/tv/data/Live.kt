@@ -8,7 +8,15 @@ import java.util.TimeZone
 
 // ======================= Live TV: M3U playlists you supply =======================
 
-data class Channel(val name: String, val logo: String?, val group: String, val url: String)
+/** tvgId / tvgName come from the playlist's tvg-id and tvg-name attributes and link the channel to the program guide. */
+data class Channel(
+    val name: String,
+    val logo: String?,
+    val group: String,
+    val url: String,
+    val tvgId: String? = null,
+    val tvgName: String? = null,
+)
 
 object M3u {
     private val attr = Regex("([a-zA-Z-]+)=\"([^\"]*)\"")
@@ -20,23 +28,34 @@ object M3u {
      * Parses line by line, so very large playlists (100k+ entries) never sit in memory as one string.
      * Movie and series entries (Xtream-style /movie/ and /series/ links) are skipped: Live TV shows channels only.
      */
-    fun parseLines(lines: Sequence<String>, max: Int = 25_000): List<Channel> {
+    fun parseLines(lines: Sequence<String>, max: Int = 25_000, onGuideUrl: ((String) -> Unit)? = null): List<Channel> {
         val out = ArrayList<Channel>()
         var pendingName: String? = null
         var logo: String? = null
         var group = "Other"
+        var tvgId: String? = null
+        var tvgName: String? = null
         for (raw in lines) {
             val line = raw.trim()
             when {
+                line.startsWith("#EXTM3U", ignoreCase = true) -> {
+                    // Header can name the XMLTV guide: url-tvg="a.xml.gz,b.xml" (or x-tvg-url). Use the first one.
+                    val attrs = attr.findAll(line).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
+                    val guide = (attrs["url-tvg"] ?: attrs["x-tvg-url"] ?: attrs["tvg-url"] ?: "")
+                        .split(",").map { it.trim() }.firstOrNull { it.isNotEmpty() }
+                    if (guide != null) onGuideUrl?.invoke(guide)
+                }
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
                     val attrs = attr.findAll(line).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
                     logo = attrs["tvg-logo"]?.ifBlank { null }
                     group = attrs["group-title"]?.ifBlank { null } ?: "Other"
+                    tvgId = attrs["tvg-id"]?.trim()?.ifBlank { null }
+                    tvgName = attrs["tvg-name"]?.trim()?.ifBlank { null }
                     pendingName = line.substringAfterLast(",").trim().ifBlank { attrs["tvg-name"] ?: "Channel" }
                 }
                 line.isNotEmpty() && !line.startsWith("#") && pendingName != null -> {
                     val vod = line.contains("/movie/") || line.contains("/series/")
-                    if (!vod) out += Channel(pendingName!!, logo, group, line)
+                    if (!vod) out += Channel(pendingName!!, logo, group, line, tvgId, tvgName)
                     pendingName = null
                     if (out.size >= max) break
                 }
@@ -44,6 +63,10 @@ object M3u {
         }
         return out
     }
+
+    /** XMLTV guide link from the last loaded playlist's #EXTM3U header ("" when it has none). */
+    @Volatile var guideUrl: String = ""
+        private set
 
     private var cacheUrl = ""
     private var cacheAt = 0L
@@ -57,6 +80,7 @@ object M3u {
         return lock.withLock {
             val fresh = url == cacheUrl && System.currentTimeMillis() - cacheAt < 6 * 3600_000L
             if (fresh && !force && cache.isNotEmpty()) return@withLock cache
+            var guide = ""
             val list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 try {
@@ -66,11 +90,11 @@ object M3u {
                     c.setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20")
                     val code = c.responseCode
                     if (code !in 200..299) throw Exception("Playlist server answered $code. Check the link, or the account may be expired or in use on another screen.")
-                    c.inputStream.bufferedReader().useLines { parseLines(it) }
+                    c.inputStream.bufferedReader().useLines { parseLines(it) { g -> guide = g } }
                 } finally { c.disconnect() }
             }
             if (list.isEmpty()) throw Exception("The playlist loaded but had no live channels in it.")
-            cache = list; cacheUrl = url; cacheAt = System.currentTimeMillis()
+            cache = list; cacheUrl = url; cacheAt = System.currentTimeMillis(); guideUrl = guide
             list
         }
     }
