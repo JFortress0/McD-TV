@@ -194,8 +194,9 @@ object Relay {
                 val id = cmd.optString("id")
                 val k = cmd.optString("key")
                 if (!Regex("[a-z0-9]{10,40}").matches(id) || !Regex("[A-Za-z0-9_-]{40,50}").matches(k)) return
-                HouseSync.join(id, k)
-                publishState("Linked. Copying settings from your other TV…")
+                val once = cmd.optBoolean("once", false)
+                HouseSync.join(id, k, once)
+                publishState(if (once) "Copying settings from the other TV…" else "Linked. Copying settings from your other TV…")
             }
             "house_leave" -> {
                 HouseSync.leave()

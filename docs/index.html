@@ -164,7 +164,7 @@ a{color:var(--accent)}
 
   <h2>Your other TVs</h2>
   <div class="card">
-    <p class="hint">TVs that share settings stay the same: change a key, an addon or the playlist on one, and the others update within seconds. Watch history and Continue Watching stay separate on each TV.</p>
+    <p class="hint"><b>Copy once</b> gives another TV (a friend's, say) a one-time copy of your setup without your Real-Debrid, and the TVs don't stay linked. TVs that share settings stay the same: change a key, an addon or the playlist on one, and the others update within seconds. Watch history and Continue Watching stay separate on each TV.</p>
     <ul id="tvList"></ul>
     <label>Add another TV: open this page once from that TV's QR code, or paste its link here</label>
     <div class="row"><input id="otherLink" placeholder="https://jfortress0.github.io/McD-TV/#…"><button onclick="addOther()">Add</button></div>
@@ -344,7 +344,7 @@ function renderShare() {
   $("tvList").innerHTML = others.length ? others.map((t) => {
     const shared = mine && t.house && t.house === mine;
     return `<li><div class="grow"><div class="name">${esc(tvLabel(t))}</div><div class="url">${shared ? "Shares settings with this TV" : "Separate settings"}</div></div>` +
-      (shared ? `<button class="small" onclick="leaveHouse()">Stop sharing</button>` : `<button class="small primary" onclick="joinOther('${t.id}')">Use its settings here</button>`) +
+      (shared ? `<button class="small" onclick="leaveHouse()">Stop sharing</button>` : `<button class="small primary" onclick="joinOther('${t.id}')">Use its settings here</button><button class="small" onclick="joinOther('${t.id}', true)">Copy once</button>`) +
       `<button class="small" onclick="forgetOther('${t.id}')">Forget</button></li>`;
   }).join("") : '<li class="hint">No other TVs yet. Open this page from each TV\'s QR code once, and they show up here.</li>';
   if (state && state.house_joining) { $("shareMsg").className = "msg"; $("shareMsg").textContent = "Waiting for the settings from your other TV. Open Jarvis on that TV."; }
@@ -371,7 +371,7 @@ async function fetchHouse(t) {
   tvUpsert({ id: t.id, name: s.device_name || "", house: s.house });
   return s.house;
 }
-async function joinOther(id) {
+async function joinOther(id, once = false) {
   const t = tvsGet().find((x) => x.id === id); if (!t) return;
   const m = $("shareMsg");
   if (!state) { m.className = "err"; m.textContent = "Waiting for this TV first. Open Jarvis on it."; return; }
@@ -379,10 +379,13 @@ async function joinOther(id) {
   const house = await fetchHouse(t); const p = LINK_RX.exec(house || "");
   if (!p) { m.className = "err"; m.textContent = "Couldn't reach " + tvLabel(t) + ". Open Jarvis on that TV (newest version) and try again."; renderShare(); return; }
   if (p[0] === state.house) { m.className = "good"; m.textContent = "These TVs already share settings."; renderShare(); return; }
-  if (!confirm("Replace this TV's settings with the ones from " + tvLabel(t) + "? After this, both TVs stay in sync.")) { m.textContent = ""; return; }
+  const ask = once
+    ? "Copy the settings from " + tvLabel(t) + " to this TV one time? This TV keeps its own Real-Debrid, and the two TVs do not stay linked."
+    : "Replace this TV's settings with the ones from " + tvLabel(t) + "? After this, both TVs stay in sync.";
+  if (!confirm(ask)) { m.textContent = ""; return; }
   try {
-    await send({ cmd: "house_join", id: p[1], key: p[2] });
-    m.className = "good"; m.textContent = "Linked. This TV is copying the settings now (a few seconds).";
+    await send({ cmd: "house_join", id: p[1], key: p[2], once });
+    m.className = "good"; m.textContent = once ? "Copying the settings to this TV now (a few seconds)." : "Linked. This TV is copying the settings now (a few seconds).";
   } catch (e) { m.className = "err"; m.textContent = e.message; }
   renderShare();
 }

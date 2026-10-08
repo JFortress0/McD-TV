@@ -107,9 +107,19 @@ object HouseSync {
         scope.launch { runCatching { publishRequest() } }
     }
 
-    /** Joins another TV's house and takes its settings. */
+    /** Settings copied by "Copy once": everything shared except Real-Debrid, so the other person keeps their own. */
+    private val ONCE = SHARED.filterNot { it.startsWith("rd_") }
+
+    /** True while waiting for a one-time copy (kept in settings, so it survives a restart). */
+    private fun copyOnce(): Boolean = Prefs.json("house_once") == "1"
+
+    /**
+     * Joins another TV's house and takes its settings. With [once], this TV takes one copy (keeping its own
+     * Real-Debrid), then leaves at once: later changes on either side never reach the other.
+     */
     @Synchronized
-    fun join(id: String, key: String) {
+    fun join(id: String, key: String, once: Boolean = false) {
+        Prefs.putJson("house_once", if (once) "1" else "")
         if (id == Prefs.houseId && key == Prefs.houseKey) {
             scope.launch { runCatching { publishRequest() } }
             return
@@ -246,12 +256,20 @@ object HouseSync {
                 }
                 val data = runCatching { JSONObject(full) }.getOrNull() ?: return
                 val ts = m.optLong("ts", 0L)
+                val once = copyOnce()
                 val applied = synchronized(lock) {
                     if (ts <= Prefs.houseStamp) return@synchronized false
-                    Prefs.importKeys(SHARED, data)
+                    Prefs.importKeys(if (once) ONCE else SHARED, data)
                     Prefs.houseStamp = ts
                     lastText = snapshot()
                     true
+                }
+                if (applied && once) {
+                    Prefs.putJson("house_once", "")
+                    leave()
+                    LocalWeb.lastMessage = "Settings copied from the other TV"
+                    runCatching { Relay.publishState("Settings copied. This TV keeps its own settings from now on.") }
+                    return
                 }
                 if (applied) {
                     LocalWeb.lastMessage = "Settings updated from your other TV"
