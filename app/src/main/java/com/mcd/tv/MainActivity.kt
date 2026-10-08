@@ -224,7 +224,17 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
             val next: (() -> Unit)? = if (m != null && m.type == "tv" && s.imdbId != null) {
                 { nav.replace(Screen.Sources(m.copy(episode = m.episode + 1), s.imdbId, autoPlay = true)) }
             } else null
-            androidx.compose.runtime.key(s.url) { PlayerScreen(url = s.url, title = s.title, meta = m, onEnded = next, headers = s.headers) }
+            androidx.compose.runtime.key(s.url) {
+                if (m != null && next != null) {
+                    // TV episode: "Up next" countdown card before rolling into the next episode.
+                    com.mcd.tv.ui.UpNextPlayer(
+                        url = s.url, title = s.title, meta = m, headers = s.headers,
+                        onNext = next, onCancel = { nav.back() }, onSleep = { nav.back() },
+                    )
+                } else {
+                    PlayerScreen(url = s.url, title = s.title, meta = m, onEnded = next, headers = s.headers, onSleep = { nav.back() })
+                }
+            }
         }
     }
 }
