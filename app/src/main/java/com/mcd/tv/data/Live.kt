@@ -74,6 +74,18 @@ object M3u {
     private val lock = kotlinx.coroutines.sync.Mutex()
 
     /** Downloads and parses off the main thread; shared by Live TV and Sports, refreshed every 6 hours. */
+    /** User agents tried for playlist servers, most widely accepted first. */
+    private val USER_AGENTS = listOf(
+        "IPTVSmartersPro",
+        "okhttp/4.12.0",
+        "VLC/3.0.20 LibVLC/3.0.20",
+        "Mozilla/5.0 (Linux; Android 11; AFTKA) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    )
+
+    /** The user agent the playlist server last accepted; Live TV streams are requested with it too. */
+    @Volatile var userAgent: String = USER_AGENTS.first()
+        private set
+
     suspend fun load(force: Boolean = false): List<Channel> {
         val url = Prefs.m3uUrl
         if (url.isBlank()) return emptyList()
@@ -82,16 +94,29 @@ object M3u {
             if (fresh && !force && cache.isNotEmpty()) return@withLock cache
             var guide = ""
             val list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                try {
-                    c.connectTimeout = 20_000
-                    c.readTimeout = 90_000
-                    c.instanceFollowRedirects = true
-                    c.setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20")
-                    val code = c.responseCode
-                    if (code !in 200..299) throw Exception("Playlist server answered $code. Check the link, or the account may be expired or in use on another screen.")
-                    c.inputStream.bufferedReader().useLines { parseLines(it) { g -> guide = g } }
-                } finally { c.disconnect() }
+                // Some playlist servers only answer the user agents of common IPTV players,
+                // so try a few in turn and remember the one that works (the live player uses it too).
+                var lastCode = 0
+                var result: List<Channel>? = null
+                for (ua in (listOf(userAgent) + USER_AGENTS).distinct()) {
+                    val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    try {
+                        c.connectTimeout = 20_000
+                        c.readTimeout = 90_000
+                        c.instanceFollowRedirects = true
+                        c.setRequestProperty("User-Agent", ua)
+                        c.setRequestProperty("Accept", "*/*")
+                        val code = c.responseCode
+                        if (code !in 200..299) { lastCode = code; continue }
+                        result = c.inputStream.bufferedReader().useLines { parseLines(it) { g -> guide = g } }
+                        userAgent = ua
+                        break
+                    } finally { c.disconnect() }
+                }
+                result ?: throw Exception(
+                    "The playlist server refused the link (code $lastCode). Check that the link is the full M3U link from your provider, " +
+                        "that the account is active, and that it is not playing on another screen. Some providers also need you to ask them to allow a new device."
+                )
             }
             if (list.isEmpty()) throw Exception("The playlist loaded but had no live channels in it.")
             cache = list; cacheUrl = url; cacheAt = System.currentTimeMillis(); guideUrl = guide
