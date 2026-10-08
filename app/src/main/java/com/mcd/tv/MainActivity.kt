@@ -5,8 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.lifecycle.lifecycleScope
 import com.mcd.tv.data.Account
 import com.mcd.tv.data.LocalWeb
@@ -88,7 +91,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
-        LocalWeb.start()
+        if (intent?.getBooleanExtra("qa_mode", false) == true) { LocalWeb.qaMode = true; Prefs.qaMode = true }
+        // The home-network setup page (port 8642) normally runs only while Phone & Computer Setup is open
+        // (PhoneSetupScreen starts and stops it). The automated QA run talks to it directly, so a launch
+        // with a QA extra ("--ez qa true", or "--es screen ...") starts it here too.
+        if (intent?.hasExtra("qa") == true || !intent?.getStringExtra("screen").isNullOrEmpty()) LocalWeb.start()
         Relay.start() // internet setup link (works from any network)
         // Signed in to a McD TV account? Pick up changes made on other TVs.
         lifecycleScope.launch {
@@ -118,13 +125,6 @@ class MainActivity : ComponentActivity() {
             else -> null
         }
         setContent { McdTheme { App(startScreen) } }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        // The home-network setup page keeps running while McD TV is in memory,
-        // including when the Fire TV screensaver comes on. start() does nothing if it already runs.
-        LocalWeb.start()
     }
 
     override fun onStop() {
@@ -171,8 +171,31 @@ private fun App(startScreen: Screen? = null) {
 
     BackHandler(enabled = stack.size > 1) { pop() }
 
-    when (val s = stack.last()) {
-        Screen.Intro -> IntroScreen(onDone = { nav.replace(Screen.Home) })
+    // Each back-stack entry gets its own saved state (scroll positions, typed search, picked genre…),
+    // keyed by its position and screen: Detail -> Detail starts fresh, and Back restores the page as it was.
+    val holder = rememberSaveableStateHolder()
+    val entryKey = "${stack.lastIndex}:${stack.last()}"
+    val shownKeys = remember { mutableSetOf<String>() }
+    SideEffect {
+        // Drop saved state for entries that left the stack (popped, replaced, or cleared by a tab switch).
+        shownKeys.add(entryKey)
+        val live = stack.mapIndexed { i, sc -> "$i:$sc" }.toSet()
+        val gone = shownKeys.filter { it !in live }
+        gone.forEach { holder.removeState(it) }
+        shownKeys.removeAll(gone.toSet())
+    }
+    key(entryKey) {
+        holder.SaveableStateProvider(entryKey) {
+            ScreenContent(stack.last(), nav, isOnlyEntry = stack.size == 1)
+        }
+    }
+}
+
+@Composable
+private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
+    when (val s = screen) {
+        // "Replay intro" pushes Intro on top of Settings: go back there instead of stacking a second Home.
+        Screen.Intro -> IntroScreen(onDone = { if (isOnlyEntry) nav.replace(Screen.Home) else nav.back() })
         Screen.Home -> HomeScreen(nav)
         Screen.Search -> SearchScreen(nav)
         Screen.Library -> LibraryScreen(nav)
