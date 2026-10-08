@@ -218,63 +218,29 @@ fun IntroScreen(onDone: () -> Unit) {
             }
         }
 
-        // ---- Logo block, with camera shake on every hit ----
-        Column(
+        // ---- McD TV logo art: slams in on the first hit, shakes on each hit, slow push-in after ----
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(R.drawable.intro_logo),
+            contentDescription = "McD TV",
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier
-                .align(Alignment.Center)
+                .fillMaxSize()
                 .graphicsLayer {
+                    alpha = ramp(t, 0.80f, 0.90f)
+                    val slam = 0.35f * pulse(t, 0.85f, 16f)
+                    val stabs = 0.04f * (pulse(t, 1.05f, 20f) + pulse(t, 1.25f, 20f) + pulse(t, 1.6f, 18f) + pulse(t, 2.0f, 18f))
+                    val hit = 0.05f * pulse(t, 2.45f, 10f)
+                    val pushIn = 0.06f * ramp(t, 0.85f, 6.4f)
+                    val sc = 1f + slam + stabs + hit + pushIn
+                    scaleX = sc
+                    scaleY = sc
                     val amp = (14f * pulse(t, 0.85f, 14f) + 9f * pulse(t, 1.05f, 14f) +
                         9f * pulse(t, 1.25f, 14f) + 18f * pulse(t, 2.45f, 12f)) * density
                     translationX = sin(t * 97f) * amp
                     translationY = cos(t * 83f) * amp * 0.6f
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "THIS IS",
-                style = introStyle(34.sp, McdColors.Red).copy(letterSpacing = 10.sp),
-                modifier = Modifier.graphicsLayer {
-                    val p = ramp(t, 2.7f, 2.95f)
-                    alpha = p
-                    translationY = (1f - easeOut(p)) * -40f * density
-                },
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ChromeWordmark(
-                    text = "McD",
-                    modifier = Modifier
-                        .graphicsLayer {
-                            alpha = if (t >= 0.85f) 1f else 0f
-                            val s = 1f + 1.6f * pulse(t, 0.85f, 22f) +
-                                0.07f * (pulse(t, 1.05f, 20f) + pulse(t, 1.25f, 20f)) +
-                                0.06f * pulse(t, 2.45f, 10f)
-                            scaleX = s
-                            scaleY = s
-                        }
-                        .sheen { t },
-                )
-                Spacer(modifier = Modifier.width(24.dp))
-                TvBadge(
-                    scale = 3.4f,
-                    modifier = Modifier
-                        .graphicsLayer {
-                            val p = easeOut(ramp(t, 1.6f, 1.9f))
-                            alpha = if (t >= 1.6f) 1f else 0f
-                            translationX = (1f - p) * 1400f * density
-                            val s = 1f + 0.12f * pulse(t, 2.0f, 14f) + 0.08f * pulse(t, 2.45f, 10f)
-                            scaleX = s
-                            scaleY = s
-                        }
-                        .sheen { t },
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "MICK-DEE  •  TEE VEE",
-                style = introStyle(26.sp, McdColors.Muted).copy(letterSpacing = 6.sp),
-                modifier = Modifier.graphicsLayer { alpha = ramp(t, 3.6f, 4.1f) },
-            )
-        }
+                }
+                .sheen { t },
+        )
 
         // ---- Bottom ticker bar slams in on the big hit ----
         Box(
