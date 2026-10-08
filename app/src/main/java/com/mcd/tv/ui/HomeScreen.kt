@@ -25,6 +25,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -143,19 +145,32 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
     // TopNav (Max-style), and takes focus. With Continue Watching, that row comes first and has focus.
     val heroOnTop = continueWatching.isEmpty()
 
+    // The TV scrolls a focused item about a third of the way down the screen. For the top of Home that hides
+    // the menu and the top of the hero, so focus there always shows the page from its very top.
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val pinTop = Modifier.onFocusChanged { f ->
+        if (f.hasFocus) {
+            scope.launch {
+                withFrameNanos { }
+                listState.animateScrollToItem(0)
+            }
+        }
+    }
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().hudBackground(),
         contentPadding = PaddingValues(bottom = 48.dp),
     ) {
         item(key = "top") {
-            Box(Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().then(pinTop)) {
                 if (heroOnTop && heroes.isNotEmpty()) Hero(heroes, nav, takeFocus = true, underNav = true)
                 TopNav(NavTab.Home, nav.tab, profileName = Prefs.activeProfileName, onProfile = { nav.push(Screen.Profiles) })
             }
         }
 
         if (continueWatching.isNotEmpty()) item(key = "continue") {
-            HistoryRow("Continue Watching", continueWatching, nav, firstFocus)
+            Box(pinTop) { HistoryRow("Continue Watching", continueWatching, nav, firstFocus) }
         }
         liveRow?.let { (label, channels) -> item(key = "live") { LiveChannelsRow(label, channels, nav) } }
         if (!heroOnTop && heroes.isNotEmpty()) item(key = "hero") { Hero(heroes, nav, takeFocus = false) }
