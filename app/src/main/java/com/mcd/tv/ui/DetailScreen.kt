@@ -136,6 +136,9 @@ private fun DetailBody(nav: Nav, d: Details) {
                         }
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            d.trailerKey?.let { key ->
+                                ActionButton("▶ Trailer", { if (!openYouTube(context, key)) note = "No YouTube app on this TV" })
+                            }
                             if (t.type == "movie") ActionButton("Mark as Watched", { Library.markWatched(meta()); note = "Marked as watched" })
                             if (t.type == "tv") ActionButton(if (noise) "✓ In Background Noise" else "+ Background Noise", { noise = Library.toggleNoise(t) })
                             ActionButton("Not for me", { Library.hide(t); note = "Hidden from home rows"; nav.back() })
@@ -177,12 +180,15 @@ private fun DetailBody(nav: Nav, d: Details) {
             }
         }
         item { TitleRow(if (t.type == "tv") "Similar Shows" else "Similar Movies", d.similar) { s -> nav.push(Screen.Detail(s.type, s.id)) } }
+        val collectionId = d.collectionId
+        if (t.type == "movie" && collectionId != null) item { CollectionRow(nav, collectionId, d.collectionName) }
     }
 }
 
 @Composable
 private fun EpisodeRow(tvId: Int, season: Int, onPlay: (Episode) -> Unit) {
     val eps by rememberLoad(tvId, season) { Tmdb.season(tvId, season) }
+    val watched = remember(tvId, season) { Library.seasonProgress(tvId, season) }
     when (val l = eps) {
         is Load.Loading -> StatusText("Loading episodes…", Modifier.padding(start = 48.dp))
         is Load.Err -> StatusText(l.message, Modifier.padding(start = 48.dp))
@@ -191,15 +197,53 @@ private fun EpisodeRow(tvId: Int, season: Int, onPlay: (Episode) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             items(l.value, key = { it.number }) { e ->
+                val p = watched[e.number]
+                val done = p != null && p >= 0.9f
                 WideCard(
                     title = "${e.number}. ${e.name}",
-                    subtitle = e.airDate,
+                    subtitle = if (done) "✓ Watched   ${e.airDate}" else e.airDate,
                     image = Tmdb.img(e.still, "w500"),
                     onClick = { onPlay(e) },
+                    progress = if (p != null && !done && p > 0.01f) p else null,
                 )
             }
         }
     }
+}
+
+/** Movie franchise row (TMDB collection), every entry, oldest first. */
+@Composable
+private fun CollectionRow(nav: Nav, collectionId: Int, fallbackName: String?) {
+    val c by rememberLoad(collectionId) { Tmdb.collection(collectionId) }
+    val col = (c as? Load.Ok<com.mcd.tv.data.TitleCollection>)?.value ?: return
+    if (col.parts.size < 2) return
+    TitleRow(col.name.ifBlank { fallbackName ?: "Collection" }, col.parts) { s -> nav.push(Screen.Detail(s.type, s.id)) }
+}
+
+/**
+ * Plays a YouTube video: the TV YouTube app first (Fire TV, then Android TV), then any app
+ * that opens the link. Returns false when nothing on this TV can open it.
+ */
+fun openYouTube(context: android.content.Context, key: String): Boolean {
+    val web = android.net.Uri.parse("https://www.youtube.com/watch?v=$key")
+    val app = android.net.Uri.parse("vnd.youtube:$key")
+    fun tryStart(uri: android.net.Uri, pkg: String?): Boolean {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (pkg != null) intent.setPackage(pkg)
+        return try {
+            context.startActivity(intent)
+            true
+        } catch (e: android.content.ActivityNotFoundException) {
+            false
+        } catch (e: SecurityException) {
+            false
+        }
+    }
+    for (pkg in listOf("com.amazon.firetv.youtube", "com.google.android.youtube.tv")) {
+        if (tryStart(web, pkg) || tryStart(app, pkg)) return true
+    }
+    return tryStart(web, null)
 }
 
 /** Opens another app (Netflix, Hulu…) on this TV. Returns false if none of the packages is installed. */

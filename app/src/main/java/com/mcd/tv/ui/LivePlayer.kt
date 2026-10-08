@@ -162,6 +162,7 @@ fun LivePlayerScreen(nav: Nav, index: Int) {
                 title = playingChannel.name,
                 onKeyEvent = onKey,
                 autoShowControls = false,
+                sleepTimerEnabled = false,
             )
         }
         if (overlayVisible) {
