@@ -25,24 +25,44 @@ import androidx.tv.material3.darkColorScheme
 import com.mcd.tv.R
 
 /**
- * McD TV palette: near-black graphite, signal red with a glow, cool cyan for secondary focus.
- * (Names kept from the first theme so every screen picks up the new look.)
+ * McD TV palette: Max-style near-black with deep navy light from the top and a clean blue accent.
+ * Property names are kept from the first theme so every screen picks up the new look:
+ * Red / RedBright / RedDark now map to the blue accents. The intro keeps its own red constants.
  */
 object McdColors {
-    val Navy = Color(0xFF07090D)       // page background (darkest)
-    val NavyLight = Color(0xFF10141B)  // raised areas, focused rows
-    val Card = Color(0xFF161B23)       // cards and fields
-    val Line = Color(0xFF262D38)       // hairlines and outlines
-    val Red = Color(0xFFE11D2E)
-    val RedBright = Color(0xFFFF3B4A)
-    val RedDark = Color(0xFF8F0F1A)
-    val Cyan = Color(0xFF38BDF8)
+    val Navy = Color(0xFF05070D)       // page background (darkest)
+    val NavyLight = Color(0xFF1A2335)  // raised surfaces, focused rows
+    val Card = Color(0xFF111827)       // cards and fields at rest
+    val Line = Color(0xFF1F2937)       // hairlines and outlines
+    val Red = Color(0xFF3D7BFF)        // accent blue (name kept for compatibility)
+    val RedBright = Color(0xFF6EA0FF)  // bright accent: focus rings, glows
+    val RedDark = Color(0xFF1E4FC2)    // deep accent
+    val Cyan = Color(0xFF6EA0FF)       // secondary focus (same bright blue)
     val White = Color(0xFFFFFFFF)
-    val Muted = Color(0xFF9AA3AF)
+    val Muted = Color(0xFFA3ADC2)      // secondary text
+
+    /** Accent aliases for new code. */
+    val Accent = Red
+    val AccentBright = RedBright
+    val Raised = NavyLight
+
+    /** Live sports badges stay red. */
+    val LiveRed = Color(0xFFE11D2E)
+
+    /** The intro animation keeps the original red broadcast look. */
+    val IntroRed = Color(0xFFE11D2E)
+    val IntroRedBright = Color(0xFFFF3B4A)
+    val IntroRedDark = Color(0xFF8F0F1A)
+    val IntroNavy = Color(0xFF07090D)
+    val IntroNavyLight = Color(0xFF10141B)
 }
 
-/** Background for every page: soft charcoal fading to black, with a faint red light from the top. */
-val ScreenBackground = Brush.verticalGradient(listOf(Color(0xFF12161D), Color(0xFF0A0C11), McdColors.Navy))
+/** Background for every page: deep navy light from the top fading into near-black. */
+val ScreenBackground = Brush.verticalGradient(
+    0f to Color(0xFF0A1430),
+    0.35f to Color(0xFF070B18),
+    1f to McdColors.Navy,
+)
 
 /** Exo 2: squared, wide headline face (bundled, SIL Open Font License). */
 val HeadingFont = FontFamily(
@@ -50,13 +70,13 @@ val HeadingFont = FontFamily(
     Font(R.font.exo2_semibold, FontWeight.SemiBold),
 )
 
-/** Headlines, section titles, card titles. */
+/** Headlines, section titles, card titles: clean bold sans, slightly tightened at large sizes. */
 fun broadcastStyle(size: TextUnit, color: Color = McdColors.White) = TextStyle(
-    fontFamily = HeadingFont,
+    fontFamily = FontFamily.SansSerif,
     fontWeight = FontWeight.Bold,
     fontSize = size,
     color = color,
-    letterSpacing = 0.5.sp,
+    letterSpacing = if (size.isSp && size.value >= 24f) (-0.5).sp else 0.sp,
 )
 
 /** The intro keeps its heavy italic sports-broadcast lettering. */
@@ -83,21 +103,22 @@ fun McdTheme(content: @Composable () -> Unit) {
     )
 }
 
-/** The "McD TV" wordmark for headers: clean white italic. */
+/** The "McD TV" wordmark for headers: white bold Exo 2, "TV" in the accent blue. */
 @Composable
 fun McdLogo(modifier: Modifier = Modifier, scale: Float = 1f) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy((6 * scale).dp)) {
-        Text("McD", style = introStyle((36 * scale).sp))
-        Text("TV", style = introStyle((36 * scale).sp, McdColors.Red))
+    val style = TextStyle(fontFamily = HeadingFont, fontWeight = FontWeight.Bold, fontSize = (32 * scale).sp, letterSpacing = (-0.5).sp)
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy((5 * scale).dp)) {
+        Text("McD", style = style.copy(color = McdColors.White))
+        Text("TV", style = style.copy(color = McdColors.Red))
     }
 }
 
-/** Red "TV" badge, used by the intro animation. */
+/** Red "TV" badge in the intro's broadcast style. */
 @Composable
 fun TvBadge(scale: Float = 1f, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .background(McdColors.Red, RoundedCornerShape((6 * scale).dp))
+            .background(McdColors.IntroRed, RoundedCornerShape((6 * scale).dp))
             .padding(horizontal = (10 * scale).dp, vertical = (2 * scale).dp),
     ) {
         Text(text = "TV", style = introStyle((30 * scale).sp))

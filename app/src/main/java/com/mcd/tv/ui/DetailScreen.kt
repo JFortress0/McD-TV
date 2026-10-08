@@ -101,17 +101,40 @@ private fun DetailBody(nav: Nav, d: Details) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
         item {
             Box(Modifier.fillMaxWidth().heightIn(min = 400.dp)) {
-                AsyncImage(Tmdb.img(t.backdrop, "w1280"), t.name, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
-                Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(McdColors.Navy, McdColors.Navy.copy(alpha = 0.75f), Color.Transparent))))
-                Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, McdColors.Navy))))
+                AsyncImage(
+                    Tmdb.img(t.backdrop, "w1280"), t.name, contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter, modifier = Modifier.matchParentSize(),
+                )
+                // Full-bleed backdrop melting into the page on the left and at the bottom (Max-style).
+                Box(
+                    Modifier.matchParentSize().background(
+                        Brush.horizontalGradient(
+                            0f to McdColors.Navy,
+                            0.35f to McdColors.Navy.copy(alpha = 0.88f),
+                            0.65f to McdColors.Navy.copy(alpha = 0.35f),
+                            1f to Color.Transparent,
+                        ),
+                    ),
+                )
+                Box(
+                    Modifier.matchParentSize().background(
+                        Brush.verticalGradient(
+                            0f to McdColors.Navy.copy(alpha = 0.45f),
+                            0.20f to Color.Transparent,
+                            0.65f to Color.Transparent,
+                            0.88f to McdColors.Navy.copy(alpha = 0.85f),
+                            1f to McdColors.Navy,
+                        ),
+                    ),
+                )
                 Row(Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 28.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
                     AsyncImage(
                         Tmdb.img(t.poster, "w342"), t.name, contentScale = ContentScale.Crop,
-                        modifier = Modifier.width(160.dp).height(240.dp).clip(RoundedCornerShape(8.dp)).background(McdColors.Card),
+                        modifier = Modifier.width(160.dp).height(240.dp).clip(RoundedCornerShape(6.dp)).background(McdColors.Card),
                     )
                     Spacer(Modifier.width(28.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(t.name.uppercase(), style = broadcastStyle(30.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(t.name, style = broadcastStyle(30.sp).copy(lineHeight = 34.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (d.tagline.isNotBlank()) Text(d.tagline, color = McdColors.Muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
                             listOfNotNull(
@@ -119,10 +142,11 @@ private fun DetailBody(nav: Nav, d: Details) {
                                 if (d.runtimeMin > 0) "${d.runtimeMin / 60}h ${d.runtimeMin % 60}m" else null,
                                 d.genres.take(3).joinToString(" / ").ifBlank { null },
                             ).joinToString("   •   "),
-                            color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp),
+                            color = McdColors.Muted, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                            modifier = Modifier.padding(vertical = 6.dp),
                         )
                         RatingsRow(t.rating, d.imdbId)
-                        Text(t.overview, color = Color.White, fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(t.overview, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             val resumeLabel = if (t.type == "tv" && last != null) "▶  Resume S${last.meta.season}E${last.meta.episode}" else "▶  Play"
@@ -147,13 +171,13 @@ private fun DetailBody(nav: Nav, d: Details) {
                             Spacer(Modifier.height(8.dp))
                             // LazyRow: long provider names scroll instead of running off the screen.
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                item { Text("ALSO ON", style = broadcastStyle(13.sp, McdColors.Muted)) }
+                                item { Text("ALSO ON", style = broadcastStyle(12.sp, McdColors.Muted).copy(letterSpacing = 1.2.sp)) }
                                 items(d.providers.take(4)) { svc ->
                                     ActionButton("Open ${svc.name}", { if (!openApp(context, svc.packages)) note = "${svc.name} app is not installed on this TV" })
                                 }
                             }
                         }
-                        if (note.isNotBlank()) Text(note, color = McdColors.Red, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                        if (note.isNotBlank()) Text(note, color = McdColors.RedBright, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
             }

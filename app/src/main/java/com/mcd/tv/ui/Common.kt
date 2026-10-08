@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,6 +52,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.Glow
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.mcd.tv.data.Title
@@ -86,18 +88,27 @@ fun StatusText(text: String, modifier: Modifier = Modifier) {
 
 // ---------------- Cards ----------------
 
-private val cardBorder @Composable get() = CardDefaults.border(focusedBorder = Border(border = BorderStroke(3.dp, McdColors.Red)))
-private val cardColors @Composable get() = CardDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.Card)
+private val CardShape = RoundedCornerShape(6.dp)
+private val cardShape @Composable get() = CardDefaults.shape(shape = CardShape)
+private val cardBorder @Composable get() = CardDefaults.border(
+    focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = CardShape),
+)
+private val cardColors @Composable get() = CardDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight)
+private val cardGlow @Composable get() = CardDefaults.glow(
+    focusedGlow = Glow(elevationColor = McdColors.RedBright.copy(alpha = 0.45f), elevation = 10.dp),
+)
 
-/** Portrait poster with rating badge, like HuberTV's rows. */
+/** Portrait poster with rating badge. Focus: white ring, slight lift and a soft blue glow. */
 @Composable
 fun PosterCard(t: Title, onClick: () -> Unit, modifier: Modifier = Modifier, width: Dp = 140.dp) {
     Card(
         onClick = onClick,
         modifier = modifier.width(width).height(width * 1.5f),
+        shape = cardShape,
         colors = cardColors,
         border = cardBorder,
-        scale = CardDefaults.scale(focusedScale = 1.1f),
+        glow = cardGlow,
+        scale = CardDefaults.scale(focusedScale = 1.06f),
     ) {
         Box(Modifier.fillMaxSize()) {
             AsyncImage(
@@ -107,17 +118,18 @@ fun PosterCard(t: Title, onClick: () -> Unit, modifier: Modifier = Modifier, wid
                 modifier = Modifier.fillMaxSize(),
             )
             if (t.poster == null) {
-                Text(t.name, style = broadcastStyle(16.sp), modifier = Modifier.align(Alignment.Center).padding(8.dp))
+                Text(t.name, style = broadcastStyle(15.sp), modifier = Modifier.align(Alignment.Center).padding(8.dp))
             }
             if (t.rating > 0) {
                 Text(
                     text = "★ %.1f".format(t.rating),
                     color = Color.White,
                     fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(6.dp)
-                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
                         .padding(horizontal = 5.dp, vertical = 1.dp),
                 )
             }
@@ -125,7 +137,7 @@ fun PosterCard(t: Title, onClick: () -> Unit, modifier: Modifier = Modifier, wid
     }
 }
 
-/** Landscape card with optional progress bar (Continue Watching). */
+/** Landscape card with optional progress bar (Continue Watching). Title and subtitle sit under the image. */
 @Composable
 fun WideCard(
     title: String,
@@ -135,28 +147,44 @@ fun WideCard(
     modifier: Modifier = Modifier,
     progress: Float? = null,
 ) {
-    Card(
-        onClick = onClick,
-        modifier = modifier.width(280.dp).height(158.dp),
-        colors = cardColors,
-        border = cardBorder,
-        scale = CardDefaults.scale(focusedScale = 1.08f),
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            AsyncImage(model = image, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            Box(
-                Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)))),
-            )
-            Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                Text(title, style = broadcastStyle(17.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (subtitle.isNotBlank()) Text(subtitle, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
+    var focused by remember { mutableStateOf(false) }
+    Column(Modifier.width(280.dp)) {
+        Card(
+            onClick = onClick,
+            modifier = modifier.onFocusChanged { focused = it.isFocused }.width(280.dp).height(158.dp),
+            shape = cardShape,
+            colors = cardColors,
+            border = cardBorder,
+            glow = cardGlow,
+            scale = CardDefaults.scale(focusedScale = 1.06f),
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                AsyncImage(model = image, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 if (progress != null) {
-                    Spacer(Modifier.height(6.dp))
-                    Box(Modifier.fillMaxWidth().height(4.dp).background(Color.White.copy(alpha = 0.25f))) {
-                        Box(Modifier.fillMaxWidth(progress).height(4.dp).background(McdColors.Red))
+                    Box(
+                        Modifier.fillMaxWidth().height(40.dp).align(Alignment.BottomStart)
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
+                    )
+                    Box(
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)
+                            .height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.25f)),
+                    ) {
+                        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp).background(McdColors.Red))
                     }
                 }
             }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            title,
+            color = if (focused) Color.White else McdColors.Muted,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (subtitle.isNotBlank()) {
+            Text(subtitle, color = McdColors.Muted.copy(alpha = if (focused) 1f else 0.75f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -165,7 +193,7 @@ fun WideCard(
 @Composable
 fun TitleRow(label: String, items: List<Title>, onOpen: (Title) -> Unit) {
     if (items.isEmpty()) return
-    Column(Modifier.padding(top = 18.dp)) {
+    Column(Modifier.padding(top = 20.dp)) {
         RailHeader(label, Modifier.padding(start = 48.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
@@ -177,26 +205,27 @@ fun TitleRow(label: String, items: List<Title>, onOpen: (Title) -> Unit) {
 }
 
 /**
- * Pill button. Primary: red gradient with a soft red glow. Secondary: dark with an outline
- * that lights up cyan when focused. Focus also scales it up slightly.
+ * Pill button (about 40dp tall).
+ * Primary: white with near-black text; focused adds a bright blue ring and a soft glow.
+ * Secondary: translucent white with white text; focused turns solid white with black text.
+ * Focus also scales it up slightly.
  */
 @Composable
 fun ActionButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = false) {
     var focused by remember { mutableStateOf(false) }
-    val glowColor = if (primary) McdColors.Red else McdColors.Cyan
-    val showGlow = primary || focused
     val shape = RoundedCornerShape(50)
+    val solid = primary || focused
     Box(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
-            .graphicsLayer { val s = if (focused) 1.06f else 1f; scaleX = s; scaleY = s }
+            .graphicsLayer { val s = if (focused) 1.05f else 1f; scaleX = s; scaleY = s }
             .drawBehind {
-                if (showGlow) {
-                    // Soft glow: stacked rounded outlines fading outward (works on every Android version).
-                    for (i in 1..7) {
+                if (focused) {
+                    // Soft blue glow: a few rounded outlines fading outward (works on every Android version).
+                    for (i in 1..4) {
                         val g = i * 2.5f
                         drawRoundRect(
-                            color = glowColor.copy(alpha = (if (focused) 0.11f else 0.06f) * (8 - i) / 7f),
+                            color = McdColors.RedBright.copy(alpha = 0.10f * (5 - i) / 4f),
                             topLeft = androidx.compose.ui.geometry.Offset(-g, -g),
                             size = androidx.compose.ui.geometry.Size(size.width + 2 * g, size.height + 2 * g),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2 + g),
@@ -205,25 +234,14 @@ fun ActionButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
                 }
             }
             .clip(shape)
-            .background(
-                if (primary) Brush.verticalGradient(listOf(if (focused) McdColors.RedBright else Color(0xFFF0303F), McdColors.RedDark))
-                else Brush.verticalGradient(listOf(if (focused) Color(0xFF1C2430) else Color(0xFF12171E), Color(0xFF0C1015))),
-            )
-            .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = when {
-                    primary && focused -> Color.White
-                    primary -> McdColors.RedBright.copy(alpha = 0.7f)
-                    focused -> McdColors.Cyan
-                    else -> McdColors.Line
-                },
-                shape = shape,
-            )
+            .background(if (solid) Color.White else Color.White.copy(alpha = 0.12f))
+            .then(if (primary && focused) Modifier.border(2.dp, McdColors.RedBright, shape) else Modifier)
             .clickable(onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 22.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(text, color = if (solid) Color(0xFF05070D) else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -236,7 +254,7 @@ fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)
         modifier = Modifier
             .width(104.dp)
             .onFocusChanged { focused = it.isFocused }
-            .graphicsLayer { val sc = if (focused) 1.1f else 1f; scaleX = sc; scaleY = sc }
+            .graphicsLayer { val sc = if (focused) 1.06f else 1f; scaleX = sc; scaleY = sc }
             .then(if (onClick != null) Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick) else Modifier)
             .padding(4.dp),
     ) {
@@ -245,14 +263,15 @@ fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)
             contentDescription = name,
             contentScale = ContentScale.Crop,
             modifier = Modifier.size(84.dp).clip(CircleShape).background(McdColors.Card)
-                .border(if (focused) 3.dp else 0.dp, if (focused) McdColors.Red else Color.Transparent, CircleShape),
+                .border(2.dp, if (focused) Color.White else Color.Transparent, CircleShape),
         )
-        Text(name, fontSize = 12.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(4.dp))
+        Text(name, fontSize = 12.sp, color = if (focused) Color.White else Color.White.copy(alpha = 0.9f), fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(role, fontSize = 11.sp, color = McdColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-/** Top navigation: plain text tabs (current one underlined in red) and a profile/settings circle. */
+/** Top navigation: plain text tabs (current one white with a blue underline) and a profile/settings circle. */
 enum class NavTab(val label: String) { Home("Home"), Search("Search"), Library("My List"), Genres("Genres"), Sports("Sports"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
 
 @Composable
@@ -262,19 +281,22 @@ private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit, modif
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (focused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+            .clip(RoundedCornerShape(50))
+            .background(if (focused) Color.White.copy(alpha = 0.16f) else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Text(
             label,
-            color = if (selected || focused) Color.White else Color(0xFFC3C9D2),
+            color = if (selected || focused) Color.White else McdColors.Muted,
             fontSize = 14.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium,
             maxLines = 1,
         )
-        Box(Modifier.padding(top = 4.dp).width(if (selected) 18.dp else 0.dp).height(2.dp).background(McdColors.Red))
+        Box(
+            Modifier.padding(top = 4.dp).width(if (selected) 20.dp else 0.dp).height(2.dp)
+                .clip(RoundedCornerShape(1.dp)).background(McdColors.Red),
+        )
     }
 }
 
@@ -284,15 +306,24 @@ private fun ProfileCircle(selected: Boolean, onClick: () -> Unit, modifier: Modi
     Box(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
-            .size(40.dp)
+            .graphicsLayer { val sc = if (focused) 1.08f else 1f; scaleX = sc; scaleY = sc }
+            .size(38.dp)
             .clip(CircleShape)
-            .background(if (focused) Color.White.copy(alpha = 0.15f) else Color.Transparent)
-            .border(2.dp, if (focused) McdColors.Cyan else if (selected) McdColors.Red else Color(0xFFC3C9D2), CircleShape)
+            .background(Brush.linearGradient(listOf(McdColors.RedBright, McdColors.RedDark)))
+            .border(
+                2.dp,
+                when {
+                    focused -> Color.White
+                    selected -> McdColors.RedBright.copy(alpha = 0.9f)
+                    else -> Color.Transparent
+                },
+                CircleShape,
+            )
             .clickable(onClick = onClick),
     ) {
         // Simple person glyph: head and shoulders.
         Canvas(Modifier.fillMaxSize()) {
-            val c = Color(0xFFE5E7EB)
+            val c = Color.White.copy(alpha = 0.92f)
             drawCircle(c, radius = size.minDimension * 0.17f, center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height * 0.38f))
             drawArc(
                 c, startAngle = 180f, sweepAngle = 180f, useCenter = true,
@@ -303,6 +334,7 @@ private fun ProfileCircle(selected: Boolean, onClick: () -> Unit, modifier: Modi
     }
 }
 
+/** Transparent top bar (it floats over hero backdrops): wordmark, text tabs, profile circle. */
 @Composable
 fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier, autoFocus: Boolean = false) {
     val currentFocus = remember { FocusRequester() }
@@ -313,10 +345,10 @@ fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Mod
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        McdLogo(scale = 0.75f)
-        Spacer(Modifier.width(20.dp))
+        McdLogo(scale = 0.7f)
+        Spacer(Modifier.width(24.dp))
         NavTab.entries.filter { it != NavTab.Settings }.forEach { tab ->
             NavItem(tab.label, tab == current, { onSelect(tab) }, if (tab == current) Modifier.focusRequester(currentFocus) else Modifier)
         }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,11 +28,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +81,7 @@ fun HomeScreen(nav: Nav) {
     val continueWatching = remember { Library.continueWatching().sortedByDescending { it.updatedAt } }
     val recent = remember { history.filter { h -> continueWatching.none { it.meta.historyKey == h.meta.historyKey } }.take(20) }
     val firstFocus = remember { FocusRequester() }
+    val favorites = remember { Library.favorites() }
     // Suggestions: titles like the last few things you watched or favorited.
     val suggestions by rememberLoad {
         val seeds = (history.map { it.meta.type to it.meta.tmdbId } + Library.favorites().map { it.type to it.id }).distinct().take(4)
@@ -89,16 +93,24 @@ fun HomeScreen(nav: Nav) {
         if (history.isNotEmpty()) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
     }
     val watchlist = remember { Library.watchlist() }
-    val favorites = remember { Library.favorites() }
     val scope = rememberCoroutineScope()
     var familyMsg by remember { mutableStateOf("") }
     val openTitle: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
+    val heroes = (data as? Load.Ok<HomeData>)?.value?.trending?.visible()?.filter { it.backdrop != null }?.take(6) ?: emptyList()
+    // With no history and no favorites there are no rows above the hero (suggestions need seeds), so the
+    // hero goes full-bleed at the very top of the page, behind the transparent TopNav (Max-style).
+    val heroOnTop = history.isEmpty() && favorites.isEmpty()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(ScreenBackground),
         contentPadding = PaddingValues(bottom = 48.dp),
     ) {
-        item { TopNav(NavTab.Home, nav.tab) }
+        item(key = "top") {
+            Box(Modifier.fillMaxWidth()) {
+                if (heroOnTop && heroes.isNotEmpty()) Hero(heroes, nav, takeFocus = history.isEmpty(), underNav = true)
+                TopNav(NavTab.Home, nav.tab)
+            }
+        }
 
         // 1) Resume, 2) recently watched, 3) suggestions, then everything else.
         if (continueWatching.isNotEmpty()) item {
@@ -124,8 +136,7 @@ fun HomeScreen(nav: Nav) {
                 }
             }
             is Load.Ok -> {
-                val heroes = d.value.trending.visible().filter { it.backdrop != null }.take(6)
-                if (heroes.isNotEmpty()) item { Hero(heroes, nav, takeFocus = history.isEmpty()) }
+                if (heroes.isNotEmpty() && !heroOnTop) item { Hero(heroes, nav, takeFocus = history.isEmpty()) }
 
                 item { TitleRow("My Watchlist", watchlist, openTitle) }
                 item { TitleRow("Favorites", favorites, openTitle) }
@@ -162,9 +173,16 @@ fun HomeScreen(nav: Nav) {
     }
 }
 
-/** Big backdrop banner that rotates through trending titles, like HuberTV's hero. */
+/** Hero height: about 65% of the 540dp TV canvas. */
+private val HeroHeight = 350.dp
+
+/**
+ * Full-bleed backdrop banner that rotates through trending titles (Max-style): the image fades into
+ * the page on the left and at the bottom, with title, meta line, overview and Play / More Info on top.
+ * [underNav]: the hero is the first thing on the page and the transparent TopNav floats over its top.
+ */
 @Composable
-private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true) {
+private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true, underNav: Boolean = false) {
     var index by remember { mutableIntStateOf(0) }
     var paused by remember { mutableStateOf(false) }
     val t = items[index % items.size]
@@ -182,32 +200,64 @@ private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true) {
         }
     }
 
-    Box(Modifier.fillMaxWidth().height(420.dp)) {
+    Box(Modifier.fillMaxWidth().height(HeroHeight)) {
         AsyncImage(
             model = Tmdb.img(t.backdrop, "w1280"),
             contentDescription = t.name,
             contentScale = ContentScale.Crop,
+            alignment = Alignment.TopCenter,
             modifier = Modifier.fillMaxSize(),
         )
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(McdColors.Navy, McdColors.Navy.copy(alpha = 0.6f), Color.Transparent))))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, McdColors.Navy))))
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 24.dp).width(620.dp)) {
-            Text(t.name.uppercase(), style = broadcastStyle(44.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        // Left: solid page color fading to clear, so the text always reads.
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    0f to McdColors.Navy,
+                    0.30f to McdColors.Navy.copy(alpha = 0.85f),
+                    0.60f to McdColors.Navy.copy(alpha = 0.25f),
+                    1f to Color.Transparent,
+                ),
+            ),
+        )
+        // Top (only when the nav floats over it, or the hero sits mid-page) and bottom: melt into the page.
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to McdColors.Navy.copy(alpha = if (underNav) 0.55f else 0.9f),
+                    0.25f to Color.Transparent,
+                    0.60f to Color.Transparent,
+                    0.85f to McdColors.Navy.copy(alpha = 0.8f),
+                    1f to McdColors.Navy,
+                ),
+            ),
+        )
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 22.dp).width(560.dp)) {
             Text(
-                listOfNotNull(t.year.ifBlank { null }, if (t.rating > 0) "★ %.1f".format(t.rating) else null, if (t.type == "tv") "SERIES" else "MOVIE").joinToString("  •  "),
-                color = McdColors.Muted, fontSize = 14.sp,
+                if (t.type == "tv") "FEATURED SERIES" else "FEATURED MOVIE",
+                color = McdColors.RedBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(t.name, style = broadcastStyle(36.sp).copy(lineHeight = 40.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                listOfNotNull(t.year.ifBlank { null }, if (t.rating > 0) "★ %.1f".format(t.rating) else null, if (t.type == "tv") "Series" else "Movie").joinToString("  •  "),
+                color = McdColors.Muted, fontSize = 14.sp, fontWeight = FontWeight.Medium,
             )
             Spacer(Modifier.height(8.dp))
-            Text(t.overview, color = Color.White, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(16.dp))
+            Text(t.overview, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ActionButton("▶  Play", { paused = true; nav.push(Screen.Detail(t.type, t.id)) }, Modifier.focusRequester(playFocus), primary = true)
                 ActionButton("More Info", { paused = true; nav.push(Screen.Detail(t.type, t.id)) })
             }
         }
-        Row(Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 28.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 30.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items.indices.forEach { i ->
-                Box(Modifier.width(if (i == index) 22.dp else 8.dp).height(4.dp).background(if (i == index) McdColors.Red else Color.White.copy(alpha = 0.4f)))
+                Box(
+                    Modifier.width(if (i == index) 20.dp else 6.dp).height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(if (i == index) Color.White else Color.White.copy(alpha = 0.35f)),
+                )
             }
         }
     }

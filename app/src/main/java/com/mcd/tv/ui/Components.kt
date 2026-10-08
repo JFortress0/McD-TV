@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -23,11 +22,12 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.Glow
 import androidx.tv.material3.Text
 
 /**
- * A D-pad friendly tile. Focus = grows slightly + red border, like a broadcast graphic.
- * [tag] is an optional red label in the corner (e.g. "PLAY" or "PHASE 3").
+ * A D-pad friendly tile. Focus = grows slightly + white ring and a soft blue glow.
+ * [tag] is an optional accent label in the corner (e.g. "PLAY" or "PHASE 3").
  */
 @Composable
 fun TileCard(
@@ -41,14 +41,18 @@ fun TileCard(
     Card(
         onClick = onClick,
         modifier = modifier.width(300.dp).height(168.dp),
+        shape = CardDefaults.shape(shape = RoundedCornerShape(6.dp)),
         colors = CardDefaults.colors(
             containerColor = McdColors.Card,
-            focusedContainerColor = McdColors.Card,
+            focusedContainerColor = McdColors.NavyLight,
         ),
         border = CardDefaults.border(
-            focusedBorder = Border(border = BorderStroke(2.dp, McdColors.Red)),
+            focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(6.dp)),
         ),
-        scale = CardDefaults.scale(focusedScale = 1.08f),
+        glow = CardDefaults.glow(
+            focusedGlow = Glow(elevationColor = McdColors.RedBright.copy(alpha = 0.45f), elevation = 10.dp),
+        ),
+        scale = CardDefaults.scale(focusedScale = 1.06f),
     ) {
         Box(
             modifier = Modifier
@@ -56,8 +60,8 @@ fun TileCard(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            if (dimmed) McdColors.Card else Color(0xFF1A2029),
-                            if (dimmed) McdColors.Navy else Color(0xFF0E1218),
+                            if (dimmed) McdColors.Card else Color(0xFF1A2335),
+                            if (dimmed) McdColors.Navy else Color(0xFF0D1424),
                         ),
                     ),
                 ),
@@ -87,8 +91,8 @@ fun TileCard(
                     text = tag,
                     color = Color.White,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    fontStyle = FontStyle.Italic,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(10.dp)
@@ -100,23 +104,12 @@ fun TileCard(
     }
 }
 
-/** Section header: thin red bar + uppercase headline. */
+/** Section header: bold white title-case text, no decoration. */
 @Composable
 fun RailHeader(text: String, modifier: Modifier = Modifier) {
-    androidx.compose.foundation.layout.Row(
-        modifier = modifier.padding(bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .height(22.dp)
-                .background(McdColors.Red, RoundedCornerShape(2.dp)),
-        )
-        Text(
-            text = text.uppercase(),
-            style = broadcastStyle(21.sp).copy(letterSpacing = 1.sp),
-            modifier = Modifier.padding(start = 12.dp),
-        )
-    }
+    Text(
+        text = text,
+        style = broadcastStyle(18.sp),
+        modifier = modifier.padding(bottom = 8.dp),
+    )
 }

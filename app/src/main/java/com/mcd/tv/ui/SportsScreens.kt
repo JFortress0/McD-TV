@@ -167,9 +167,9 @@ private fun GameCard(g: Game, onClick: () -> Unit) {
                 TeamRow(g.home, !awayLead, g.state != "pre")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (g.live) {
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(McdColors.Red))
+                        Box(Modifier.size(10.dp).clip(CircleShape).background(McdColors.LiveRed))
                         Spacer(Modifier.width(6.dp))
-                        Text("LIVE", style = broadcastStyle(13.sp, McdColors.Red))
+                        Text("LIVE", style = broadcastStyle(13.sp, McdColors.LiveRed))
                         Spacer(Modifier.width(10.dp))
                     }
                     Text(g.detail, color = Color.White, fontSize = 13.sp)
