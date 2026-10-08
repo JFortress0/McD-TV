@@ -88,7 +88,7 @@ private const val PLAY_PAUSE_JS = """
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun WebScreen(startUrl: String) {
+fun WebScreen(startUrl: String, onPlayVideo: (url: String, headers: Map<String, String>, title: String) -> Unit = { _, _, _ -> }) {
     val context = LocalContext.current
     val activity = context as? Activity
     val focus = remember { FocusRequester() }
@@ -103,6 +103,11 @@ fun WebScreen(startUrl: String) {
     var desktop by remember { mutableStateOf(true) }
     val startHost = remember { Uri.parse(startUrl).host?.removePrefix("www.") ?: "" }
     val lastKey = "web_last_$startHost"
+    // Video streams this page loads (HLS/DASH/MP4), newest first, with the headers they were requested with.
+    val found = remember { androidx.compose.runtime.mutableStateListOf<Pair<String, Map<String, String>>>() }
+    val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    val currentPage = remember { java.util.concurrent.atomic.AtomicReference(startUrl) }
+    val currentUa = remember { java.util.concurrent.atomic.AtomicReference(DESKTOP_UA) } // readable off the UI thread
 
     val chrome = remember {
         object : WebChromeClient() {
@@ -134,10 +139,40 @@ fun WebScreen(startUrl: String) {
             isFocusable = false // the remote drives the pointer, not WebView focus
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    // Video players often live in a frame from another site: always let frames load.
+                    if (!request.isForMainFrame) return false
                     val host = request.url.host?.removePrefix("www.") ?: return true
                     val sameSite = host == startHost || host.endsWith(".$startHost")
                     // Block cross-site redirects that happen without a click (typical ad hijacks).
                     return !sameSite && !request.hasGesture()
+                }
+
+                /** Watches (never blocks) what the page loads, to spot the video stream it plays. */
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): android.webkit.WebResourceResponse? {
+                    val u = request.url.toString()
+                    val path = (request.url.path ?: "").lowercase()
+                    val isStream = path.endsWith(".m3u8") || path.endsWith(".mpd") ||
+                        (path.endsWith(".mp4") && !u.contains("/ads/", ignoreCase = true))
+                    if (isStream) {
+                        val h0 = request.requestHeaders.filterKeys { k -> k.equals("Referer", true) || k.equals("Origin", true) || k.equals("User-Agent", true) }
+                            .mapKeys { (k, _) -> when { k.equals("Referer", true) -> "Referer"; k.equals("Origin", true) -> "Origin"; else -> "User-Agent" } }
+                        // Stream hosts often check where the request came from; send what the page would.
+                        val h = h0.toMutableMap().apply {
+                            putIfAbsent("Referer", currentPage.get())
+                            currentUa.get().takeIf { it.isNotBlank() }?.let { putIfAbsent("User-Agent", it) }
+                        }
+                        mainHandler.post {
+                            found.removeAll { it.first == u }
+                            found.add(0, u to h)
+                            while (found.size > 5) found.removeAt(found.lastIndex)
+                        }
+                    }
+                    return null
+                }
+
+                override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                    if (url != null) currentPage.set(url)
+                    mainHandler.post { found.clear() }
                 }
 
                 override fun onPageFinished(view: WebView, url: String?) {
@@ -207,7 +242,10 @@ fun WebScreen(startUrl: String) {
                     Key.MediaFastForward, Key.PageDown -> { web.pageDown(false); true }
                     Key.MediaRewind, Key.PageUp -> { web.pageUp(false); true }
                     Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
-                        js(PLAY_PAUSE_JS) { if (it == "none") "No video on this page" else if (it == "play") "Playing" else "Paused" }; true
+                        val v = found.firstOrNull()
+                        if (v != null) onPlayVideo(v.first, v.second, title)
+                        else js(PLAY_PAUSE_JS) { if (it == "none") "No video found yet. Start the video on the page first." else if (it == "play") "Playing" else "Paused" }
+                        true
                     }
                     else -> false
                 }
@@ -244,10 +282,19 @@ fun WebScreen(startUrl: String) {
         // First-open help.
         if (showHelp && !showBar) {
             Text(
-                "Arrows: move  •  OK: click  •  ⏪ ⏩: page up/down  •  ⏯: play/pause video  •  ≡ Menu: toolbar  •  Back: previous page",
+                "Arrows: move  •  OK: click  •  ⏪ ⏩: page up/down  •  ⏯: watch the page's video in the McD TV player  •  ≡ Menu: toolbar  •  Back: previous page",
                 color = Color.White, fontSize = 15.sp,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
                     .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(10.dp)).padding(horizontal = 18.dp, vertical = 10.dp),
+            )
+        }
+
+        if (found.isNotEmpty() && !showBar) {
+            Text(
+                "▶  Video found: press ⏯ Play/Pause to watch it in the McD TV player (or ≡ Menu)",
+                color = Color.White, fontSize = 15.sp,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
+                    .background(McdColors.Red, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }
 
@@ -266,7 +313,13 @@ fun WebScreen(startUrl: String) {
                     .background(Color(0xEE07090D)).padding(horizontal = 32.dp, vertical = 14.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ActionButton("◀ Back", { if (web.canGoBack()) web.goBack(); showBar = false }, Modifier.focusRequester(barFocus))
+                    if (found.isNotEmpty()) {
+                        ActionButton("▶ Play video in McD TV player", {
+                            showBar = false
+                            found.firstOrNull()?.let { onPlayVideo(it.first, it.second, title) }
+                        }, Modifier.focusRequester(barFocus), primary = true)
+                    }
+                    ActionButton("◀ Back", { if (web.canGoBack()) web.goBack(); showBar = false }, if (found.isEmpty()) Modifier.focusRequester(barFocus) else Modifier)
                     ActionButton("Forward ▶", { if (web.canGoForward()) web.goForward(); showBar = false })
                     ActionButton("⟳ Reload", { web.reload(); showBar = false })
                     ActionButton("⌂ Start page", { web.loadUrl(startUrl); showBar = false })
@@ -279,6 +332,7 @@ fun WebScreen(startUrl: String) {
                     ActionButton(if (desktop) "Mobile site" else "Desktop site", {
                         desktop = !desktop
                         web.settings.userAgentString = if (desktop) DESKTOP_UA else null
+                        currentUa.set(if (desktop) DESKTOP_UA else "")
                         web.reload(); showBar = false
                     })
                 }

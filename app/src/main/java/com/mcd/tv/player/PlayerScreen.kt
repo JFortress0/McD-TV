@@ -56,7 +56,13 @@ private fun mediaItemFor(url: String): MediaItem {
 
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(url: String, title: String, meta: PlayMeta? = null, onEnded: (() -> Unit)? = null) {
+fun PlayerScreen(
+    url: String,
+    title: String,
+    meta: PlayMeta? = null,
+    onEnded: (() -> Unit)? = null,
+    headers: Map<String, String> = emptyMap(),
+) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -65,7 +71,8 @@ fun PlayerScreen(url: String, title: String, meta: PlayMeta? = null, onEnded: ((
         // Follow http->https redirects (common with debrid and CDN links).
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setUserAgent("McDTV/0.1 (Android TV)")
+            .setUserAgent(headers["User-Agent"] ?: "McDTV/0.1 (Android TV)")
+            .setDefaultRequestProperties(headers.filterKeys { it != "User-Agent" })
         val dataSource = DefaultDataSource.Factory(context, http)
 
         // Decoder fallback: if the Fire Stick's main decoder refuses a stream,

@@ -62,7 +62,14 @@ sealed interface Screen {
     data class Sources(val meta: PlayMeta, val imdbId: String, val autoPlay: Boolean) : Screen
     data class Web(val url: String, val name: String) : Screen
     /** imdbId lets a TV episode roll into the next one when it ends. */
-    data class Player(val url: String, val title: String, val meta: PlayMeta? = null, val imdbId: String? = null) : Screen
+    data class Player(
+        val url: String,
+        val title: String,
+        val meta: PlayMeta? = null,
+        val imdbId: String? = null,
+        /** Extra HTTP headers some streams need (Referer, Origin, User-Agent), e.g. video found by the browser. */
+        val headers: Map<String, String> = emptyMap(),
+    ) : Screen
 }
 
 /** Navigation actions handed to every screen. */
@@ -173,13 +180,13 @@ private fun App(startScreen: Screen? = null) {
         Screen.RdCloud -> RdCloudScreen(nav)
         is Screen.Detail -> DetailScreen(nav, s.type, s.id)
         is Screen.Sources -> SourcesScreen(nav, s.meta, s.imdbId, s.autoPlay)
-        is Screen.Web -> WebScreen(s.url)
+        is Screen.Web -> WebScreen(s.url) { url, headers, title -> nav.push(Screen.Player(url, title, headers = headers)) }
         is Screen.Player -> {
             val m = s.meta
             val next: (() -> Unit)? = if (m != null && m.type == "tv" && s.imdbId != null) {
                 { nav.replace(Screen.Sources(m.copy(episode = m.episode + 1), s.imdbId, autoPlay = true)) }
             } else null
-            androidx.compose.runtime.key(s.url) { PlayerScreen(url = s.url, title = s.title, meta = m, onEnded = next) }
+            androidx.compose.runtime.key(s.url) { PlayerScreen(url = s.url, title = s.title, meta = m, onEnded = next, headers = s.headers) }
         }
     }
 }
