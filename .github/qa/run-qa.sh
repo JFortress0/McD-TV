@@ -12,7 +12,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk && pass "APK instal
 adb logcat -c
 
 # 1) Launch with intro, then home.
-adb shell am start -n com.mcd.tv/.MainActivity
+adb shell am start -n com.mcd.tv/.MainActivity --ez qa true --ez qa_mode true
 sleep 4; shot 01-intro
 sleep 12; shot 02-home
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml qa-out/ui-home.xml >/dev/null 2>&1
@@ -68,8 +68,40 @@ check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
 
+# 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
+mkdir -p qa-m3u
+cat > qa-m3u/test.m3u <<'M3U'
+#EXTM3U
+#EXTINF:-1 tvg-logo="" group-title="QA Sports",QA Test Channel
+https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
+#EXTINF:-1 group-title="QA Movies",QA Movie Entry
+http://example.com/movie/user/pass/1.mp4
+M3U
+(cd qa-m3u && python3 -m http.server 8765 >/dev/null 2>&1 &)
+sleep 2
+curl -sf -m 15 --data "m3u=http%3A%2F%2F10.0.2.2%3A8765%2Ftest.m3u" http://127.0.0.1:8642/ -o /dev/null \
+  && pass "Setup page saves an M3U playlist" || fail "Setup page saves an M3U playlist"
+check_screen live "QA Test Channel"
+if grep -q "QA Movie Entry" qa-out/ui-live.xml 2>/dev/null; then fail "Live TV hides movie entries"; else pass "Live TV hides movie entries"; fi
+# Play the first channel with the remote and make sure the player opens.
+adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 10
+shot live-playing
+adb shell dumpsys activity activities | grep -q "com.mcd.tv" && pass "Live channel opens the player without leaving the app" || fail "Live channel opens the player without leaving the app"
+
+# 4c) Remote walk-through: title page, Play, back out.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "detail:movie:603" >/dev/null
+sleep 9
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 6
+shot remote-choose-source
+for i in 1 2 3; do adb shell input keyevent KEYCODE_BACK; sleep 2; done
+shot remote-after-back
+
 # 5) Crash check.
 adb logcat -d > qa-out/logcat.txt
+if grep -q "ANR in com.mcd.tv" qa-out/logcat.txt; then fail "No freezes (ANR)"; grep -A 15 "ANR in com.mcd.tv" qa-out/logcat.txt > qa-out/anr.txt; else pass "No freezes (ANR)"; fi
 if grep -q "FATAL EXCEPTION" qa-out/logcat.txt; then
   fail "No crashes"
   grep -A 25 "FATAL EXCEPTION" qa-out/logcat.txt > qa-out/crash.txt
