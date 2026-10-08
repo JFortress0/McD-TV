@@ -235,7 +235,7 @@ private fun JarvisThinking() {
             )
         }
         Spacer(Modifier.height(8.dp))
-        Text("Searching films and series for a match…", color = McdColors.Muted, fontSize = 13.sp)
+        Text("Cross-referencing the archives, sir…", color = McdColors.Muted, fontSize = 13.sp)
     }
 }
 
@@ -243,7 +243,7 @@ private fun JarvisThinking() {
 private fun JarvisResults(a: JarvisAnswer, onOpen: (JarvisMatch) -> Unit) {
     if (a.clarify.isNotBlank()) JarvisLine(a.clarify)
     if (a.matches.isEmpty()) {
-        if (a.clarify.isBlank()) JarvisLine("I couldn't place that one. Add a detail: an actor, a year, a scene.")
+        if (a.clarify.isBlank()) JarvisLine("I'm afraid that one eludes me, sir. An actor, a year or a scene would help.")
         return
     }
     RailHeader(if (a.matches.size == 1) "Best match" else "Best guesses", Modifier.padding(top = 6.dp))

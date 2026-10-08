@@ -1162,7 +1162,7 @@ function askTv(q) {
   return new Promise((resolve, reject) => {
     if (!S.link) { reject(new Error("Link your TV first: open Settings in this app.")); return; }
     const req = newReq();
-    const t = setTimeout(() => { askWait.delete(req); reject(new Error(ASK_OFF)); }, 20000);
+    const t = setTimeout(() => { askWait.delete(req); reject(new Error(ASK_OFF)); }, 40000);
     askWait.set(req, (m) => { clearTimeout(t); askWait.delete(req); resolve(m); });
     relaySend({ cmd: "ask", req, ts: Date.now(), q: q.slice(0, 600) })
       .catch(() => { clearTimeout(t); askWait.delete(req); reject(new Error("Couldn't reach the relay. Check your internet.")); });
@@ -1183,7 +1183,7 @@ async function runAsk(q, out, tok) {
     if (m.error) { out.innerHTML = askLine(m.error); return; }
     const head = m.clarify ? askLine(m.clarify) : "";
     const gs = (Array.isArray(m.guesses) ? m.guesses : []).filter((g) => g && (g.type === "movie" || g.type === "tv") && +g.id > 0).slice(0, 6);
-    if (!gs.length) { out.innerHTML = head || askLine("I couldn't place that one. Add a detail: an actor, a year, a scene."); return; }
+    if (!gs.length) { out.innerHTML = head || askLine("I'm afraid that one eludes me, sir. An actor, a year or a scene would help."); return; }
     out.innerHTML = head + gridSkeleton(gs.length);
     // Not origin-filtered: the user asked for these by description.
     const got = await mapPool(gs, 6, async (g) => { const t = norm(await api.lite(g.type, g.id), g.type); return t ? { t, g } : null; });
