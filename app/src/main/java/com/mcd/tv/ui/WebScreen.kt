@@ -14,10 +14,16 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +38,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -39,17 +46,45 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.tv.material3.Text
+import com.mcd.tv.data.Prefs
+import kotlinx.coroutines.delay
+
+private const val DESKTOP_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+/** Makes the biggest video or video frame on the page fill the screen (works on most sites). */
+private const val FILL_VIDEO_JS = """
+(function(){
+  var best=null, area=0;
+  document.querySelectorAll('video, iframe').forEach(function(e){
+    var r=e.getBoundingClientRect(); var a=r.width*r.height; if(a>area){area=a;best=e;}
+  });
+  if(!best) return 'none';
+  if(best.dataset.mcdFull==='1'){ best.style.cssText=best.dataset.mcdOld||''; best.dataset.mcdFull='0'; return 'off'; }
+  best.dataset.mcdOld=best.style.cssText; best.dataset.mcdFull='1';
+  best.style.cssText='position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;z-index:2147483647!important;background:#000!important;border:0!important;';
+  return 'on';
+})()
+"""
+
+/** Play or pause the main video on the page. */
+private const val PLAY_PAUSE_JS = """
+(function(){ var v=document.querySelector('video'); if(!v) return 'none'; if(v.paused){v.play();return 'play';} v.pause(); return 'pause'; })()
+"""
 
 /**
- * A simple TV web browser with a remote-controlled mouse pointer.
- *  - Arrows move the pointer (hold to speed up). At the screen edge, the page scrolls.
- *  - OK clicks. BACK goes back a page, or leaves the browser on the first page.
- *  - Fullscreen video works. Pop-up windows and pages that redirect you to another
- *    site without a click are blocked.
+ * TV web browser with a remote-controlled pointer.
+ *  Arrows: move the pointer (hold to speed up); at a screen edge the page scrolls.
+ *  OK: click.   Rewind / Fast-forward: page up / page down.   Play/Pause: play or pause the video.
+ *  Menu (≡): toolbar with Back, Forward, Reload, Start page, Zoom, Fill screen with video, Desktop/Mobile.
+ *  BACK: previous page; on the first page, leaves the browser.
+ * Pop-up windows and cross-site redirects that happen without a click are blocked.
+ * Each site reopens on the last page you were on.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -57,11 +92,17 @@ fun WebScreen(startUrl: String) {
     val context = LocalContext.current
     val activity = context as? Activity
     val focus = remember { FocusRequester() }
-    var cursor by remember { mutableStateOf(Offset(400f, 300f)) }
+    val barFocus = remember { FocusRequester() }
+    var cursor by remember { mutableStateOf(Offset(640f, 360f)) }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var title by remember { mutableStateOf(startUrl) }
-    var speed by remember { mutableStateOf(18f) }
+    var speed by remember { mutableStateOf(22f) }
+    var showBar by remember { mutableStateOf(false) }
+    var showHelp by remember { mutableStateOf(true) }
+    var toast by remember { mutableStateOf("") }
+    var desktop by remember { mutableStateOf(true) }
     val startHost = remember { Uri.parse(startUrl).host?.removePrefix("www.") ?: "" }
+    val lastKey = "web_last_$startHost"
 
     val chrome = remember {
         object : WebChromeClient() {
@@ -87,6 +128,9 @@ fun WebScreen(startUrl: String) {
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
+            settings.builtInZoomControls = true
+            settings.displayZoomControls = false
+            settings.userAgentString = DESKTOP_UA
             isFocusable = false // the remote drives the pointer, not WebView focus
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -98,10 +142,13 @@ fun WebScreen(startUrl: String) {
 
                 override fun onPageFinished(view: WebView, url: String?) {
                     title = view.title ?: url ?: ""
+                    val u = url ?: return
+                    val host = Uri.parse(u).host?.removePrefix("www.") ?: return
+                    if (host == startHost || host.endsWith(".$startHost")) Prefs.putJson(lastKey, u)
                 }
             }
             webChromeClient = chrome
-            loadUrl(startUrl)
+            loadUrl(Prefs.json(lastKey).ifBlank { startUrl })
         }
     }
 
@@ -113,6 +160,12 @@ fun WebScreen(startUrl: String) {
         }
     }
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { delay(7000); showHelp = false }
+    LaunchedEffect(toast) { if (toast.isNotBlank()) { delay(2500); toast = "" } }
+    LaunchedEffect(showBar) {
+        withFrameNanos { }
+        runCatching { if (showBar) barFocus.requestFocus() else focus.requestFocus() }
+    }
 
     fun tap() {
         val t = SystemClock.uptimeMillis()
@@ -124,25 +177,38 @@ fun WebScreen(startUrl: String) {
         up.recycle()
     }
 
-    BackHandler(enabled = fullscreenView != null || web.canGoBack()) {
-        if (fullscreenView != null) chrome.onHideCustomView() else web.goBack()
+    fun js(code: String, say: (String) -> String) = web.evaluateJavascript(code) { r -> toast = say(r.trim('"')) }
+
+    BackHandler(enabled = showBar || fullscreenView != null || web.canGoBack()) {
+        when {
+            showBar -> showBar = false
+            fullscreenView != null -> chrome.onHideCustomView()
+            else -> web.goBack()
+        }
     }
 
     Box(
         Modifier
             .fillMaxSize()
             .onPreviewKeyEvent { e ->
-                if (e.type == KeyEventType.KeyUp) { speed = 18f; return@onPreviewKeyEvent false }
+                if (e.key == Key.Menu && e.type == KeyEventType.KeyUp) { showBar = !showBar; return@onPreviewKeyEvent true }
+                if (showBar) return@onPreviewKeyEvent false // toolbar has focus: let it handle the keys
+                if (e.type == KeyEventType.KeyUp) { speed = 22f; return@onPreviewKeyEvent false }
                 val w = web.width.toFloat()
                 val h = web.height.toFloat()
                 val step = speed
-                speed = (speed * 1.15f).coerceAtMost(70f) // holding a direction accelerates
+                speed = (speed * 1.18f).coerceAtMost(90f) // holding a direction accelerates
                 when (e.key) {
-                    Key.DirectionLeft -> { if (cursor.x <= 0f) web.scrollBy(-200, 0) else cursor = cursor.copy(x = (cursor.x - step).coerceAtLeast(0f)); true }
-                    Key.DirectionRight -> { if (cursor.x >= w - 1) web.scrollBy(200, 0) else cursor = cursor.copy(x = (cursor.x + step).coerceAtMost(w - 1)); true }
-                    Key.DirectionUp -> { if (cursor.y <= 0f) web.scrollBy(0, -300) else cursor = cursor.copy(y = (cursor.y - step).coerceAtLeast(0f)); true }
-                    Key.DirectionDown -> { if (cursor.y >= h - 1) web.scrollBy(0, 300) else cursor = cursor.copy(y = (cursor.y + step).coerceAtMost(h - 1)); true }
+                    Key.DirectionLeft -> { if (cursor.x <= 0f) web.scrollBy(-250, 0) else cursor = cursor.copy(x = (cursor.x - step).coerceAtLeast(0f)); true }
+                    Key.DirectionRight -> { if (cursor.x >= w - 1) web.scrollBy(250, 0) else cursor = cursor.copy(x = (cursor.x + step).coerceAtMost(w - 1)); true }
+                    Key.DirectionUp -> { if (cursor.y <= 0f) web.scrollBy(0, -350) else cursor = cursor.copy(y = (cursor.y - step).coerceAtLeast(0f)); true }
+                    Key.DirectionDown -> { if (cursor.y >= h - 1) web.scrollBy(0, 350) else cursor = cursor.copy(y = (cursor.y + step).coerceAtMost(h - 1)); true }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { tap(); true }
+                    Key.MediaFastForward, Key.PageDown -> { web.pageDown(false); true }
+                    Key.MediaRewind, Key.PageUp -> { web.pageUp(false); true }
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
+                        js(PLAY_PAUSE_JS) { if (it == "none") "No video on this page" else if (it == "play") "Playing" else "Paused" }; true
+                    }
                     else -> false
                 }
             }
@@ -150,18 +216,74 @@ fun WebScreen(startUrl: String) {
             .focusable(),
     ) {
         AndroidView(factory = { web }, modifier = Modifier.fillMaxSize())
-        // Pointer: white ring with a red dot.
+
+        // Pointer: big arrow with a dark outline, readable on any page.
         Canvas(Modifier.fillMaxSize()) {
-            drawCircle(Color.Black.copy(alpha = 0.5f), radius = 16f, center = cursor, style = Stroke(width = 6f))
-            drawCircle(Color.White, radius = 14f, center = cursor, style = Stroke(width = 3f))
-            drawCircle(McdColors.Red, radius = 5f, center = cursor)
+            val p = Path().apply {
+                moveTo(cursor.x, cursor.y)
+                lineTo(cursor.x, cursor.y + 34f)
+                lineTo(cursor.x + 9f, cursor.y + 26f)
+                lineTo(cursor.x + 16f, cursor.y + 40f)
+                lineTo(cursor.x + 22f, cursor.y + 37f)
+                lineTo(cursor.x + 15f, cursor.y + 23f)
+                lineTo(cursor.x + 26f, cursor.y + 23f)
+                close()
+            }
+            drawPath(p, Color.White)
+            drawPath(p, Color.Black, style = Stroke(width = 3f))
+            drawCircle(McdColors.Red, radius = 4f, center = cursor)
         }
+
+        // Title strip.
         Text(
-            title,
-            color = Color.White,
-            fontSize = 12.sp,
-            maxLines = 1,
-            modifier = Modifier.align(Alignment.TopCenter).padding(4.dp),
+            title, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+                .padding(horizontal = 12.dp, vertical = 3.dp),
         )
+
+        // First-open help.
+        if (showHelp && !showBar) {
+            Text(
+                "Arrows: move  •  OK: click  •  ⏪ ⏩: page up/down  •  ⏯: play/pause video  •  ≡ Menu: toolbar  •  Back: previous page",
+                color = Color.White, fontSize = 15.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
+                    .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(10.dp)).padding(horizontal = 18.dp, vertical = 10.dp),
+            )
+        }
+
+        if (toast.isNotBlank()) {
+            Text(
+                toast, color = Color.White, fontSize = 16.sp,
+                modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+            )
+        }
+
+        // Toolbar (Menu button).
+        if (showBar) {
+            Column(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                    .background(Color(0xEE07090D)).padding(horizontal = 32.dp, vertical = 14.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ActionButton("◀ Back", { if (web.canGoBack()) web.goBack(); showBar = false }, Modifier.focusRequester(barFocus))
+                    ActionButton("Forward ▶", { if (web.canGoForward()) web.goForward(); showBar = false })
+                    ActionButton("⟳ Reload", { web.reload(); showBar = false })
+                    ActionButton("⌂ Start page", { web.loadUrl(startUrl); showBar = false })
+                    ActionButton("Zoom −", { web.zoomOut() })
+                    ActionButton("Zoom +", { web.zoomIn() })
+                    ActionButton("⛶ Fill screen with video", {
+                        showBar = false
+                        js(FILL_VIDEO_JS) { when (it) { "on" -> "Video fills the screen. Use this button again to undo."; "off" -> "Back to normal"; else -> "No video found on this page" } }
+                    }, primary = true)
+                    ActionButton(if (desktop) "Mobile site" else "Desktop site", {
+                        desktop = !desktop
+                        web.settings.userAgentString = if (desktop) DESKTOP_UA else null
+                        web.reload(); showBar = false
+                    })
+                }
+                Text("Menu or Back closes this bar.", color = McdColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
     }
 }
