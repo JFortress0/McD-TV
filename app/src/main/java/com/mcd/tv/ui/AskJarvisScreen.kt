@@ -66,7 +66,7 @@ import com.mcd.tv.data.JarvisAnswer
 import com.mcd.tv.data.JarvisMatch
 
 /** Example prompts shown before the first question. Selecting one fills the field and asks. */
-private val ASK_EXAMPLES = listOf(
+internal val ASK_EXAMPLES = listOf(
     "Robert Downey Jr plays a genius inventor who builds a suit",
     "Space movie where they travel through a wormhole to save humanity",
     "Show about a chemistry teacher who starts making drugs",
@@ -189,7 +189,7 @@ fun AskJarvisScreen(nav: Nav, initial: String = "") {
 
 /** "JARVIS: ..." line: the label in accent Orbitron, the text in HUD white. */
 @Composable
-private fun JarvisLine(text: String, modifier: Modifier = Modifier) {
+internal fun JarvisLine(text: String, modifier: Modifier = Modifier) {
     Text(
         buildAnnotatedString {
             withStyle(SpanStyle(color = McdColors.Accent, fontFamily = HudDisplay, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.5.sp)) {
@@ -203,7 +203,7 @@ private fun JarvisLine(text: String, modifier: Modifier = Modifier) {
 
 /** Spinner, "ANALYZING…" and a thin scanning bar sweeping left to right. */
 @Composable
-private fun JarvisThinking() {
+internal fun JarvisThinking() {
     val sweep = rememberInfiniteTransition(label = "jarvis-scan")
     val x by sweep.animateFloat(
         initialValue = 0f,
@@ -240,7 +240,7 @@ private fun JarvisThinking() {
 }
 
 @Composable
-private fun JarvisResults(a: JarvisAnswer, onOpen: (JarvisMatch) -> Unit) {
+internal fun JarvisResults(a: JarvisAnswer, onOpen: (JarvisMatch) -> Unit) {
     if (a.clarify.isNotBlank()) JarvisLine(a.clarify)
     if (a.matches.isEmpty()) {
         if (a.clarify.isBlank()) JarvisLine("I'm afraid that one eludes me, sir. An actor, a year or a scene would help.")
@@ -281,7 +281,7 @@ private fun JarvisMatchCard(m: JarvisMatch, onClick: () -> Unit) {
 
 /** Small chamfered example chip: hairline at rest, cyan fill with dark text when focused. */
 @Composable
-private fun AskChip(text: String, onClick: () -> Unit) {
+internal fun AskChip(text: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
         Modifier

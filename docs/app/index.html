@@ -445,7 +445,7 @@ footer{color:var(--muted)}
   <nav class="links" aria-label="Main">
     <a href="#/" data-nav="home">Home</a>
     <a href="#/browse" data-nav="browse">Browse</a>
-    <a href="#/search" data-nav="search">Search</a>
+    <a href="#/search" data-nav="search">Jarvis</a>
     <a href="#/list" data-nav="list">My List</a>
   </nav>
   <div class="hdr-right">
@@ -459,7 +459,7 @@ footer{color:var(--muted)}
 <nav class="tabbar" aria-label="Tabs">
   <a href="#/" data-nav="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a>
   <a href="#/browse" data-nav="browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Browse</a>
-  <a href="#/search" data-nav="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search</a>
+  <a href="#/search" data-nav="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Jarvis</a>
   <a href="#/list" data-nav="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z"/></svg>My List</a>
   <a href="#/settings" data-nav="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>Settings</a>
 </nav>
@@ -1093,59 +1093,54 @@ function renderGrid(v, tok, kind, q) {
 
 // ---------- Search ----------
 let searchTimer = 0;
+const DESCRIBE_WORDS = new Set(["movie","movies","film","show","series","where","about","with","that","who","plays","played","starring","like","guy","girl","man","woman","kid","kids","what","which","remember"]);
+function looksLikeDescription(q) {
+  const w = q.toLowerCase().split(/\s+/).filter(Boolean);
+  return q.trim().endsWith("?") || w.length >= 5 || (w.length >= 3 && w.some((x) => DESCRIBE_WORDS.has(x)));
+}
 function renderSearch(v, tok, q0) {
-  v.innerHTML = `<div class="page"><div class="search-h"><h1>Search</h1>
-    <button class="btn primary small" id="askToggle" type="button" aria-expanded="false" aria-controls="askPanel">&#10022; Ask Jarvis</button></div>
-    <div class="panel askp hidden" id="askPanel">
-      <div class="ask-h">${ASK_RING}<div><h2>Ask Jarvis</h2><p class="muted">Describe a movie or show. Plot, actors, a scene, anything you remember.</p></div></div>
-      <form class="ask-row" id="askForm"><input id="askq" type="text" placeholder="That movie where&#8230;" autocomplete="off" enterkeyhint="search" maxlength="600" aria-label="Describe a movie or show"><button class="btn primary" type="submit">Ask</button></form>
-      <div class="askex" id="askEx">${ASK_EXAMPLES.map((e) => `<button class="chip" type="button" data-ex="${esc(e)}">${esc(e)}</button>`).join("")}</div>
-      <div id="askOut" aria-live="polite"></div>
-    </div>
+  v.innerHTML = `<div class="page"><div class="search-h"><h1>Jarvis</h1></div>
     <div class="searchbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input id="q" type="search" placeholder="Movies, shows and people" autocomplete="off" enterkeyhint="search" value="${esc(q0)}" aria-label="Search"></div>
+    <input id="q" type="search" placeholder="Search or ask Jarvis&#8230;" autocomplete="off" enterkeyhint="search" maxlength="600" value="${esc(q0)}" aria-label="Search or ask Jarvis"></div>
+    <p class="muted" style="margin:6px 0 0">Type a title, or describe one ("the movie where&#8230;") and press Enter.</p>
+    <div class="askex" id="askEx">${ASK_EXAMPLES.map((e) => `<button class="chip" type="button" data-ex="${esc(e)}">${esc(e)}</button>`).join("")}</div>
+    <div id="askOut" aria-live="polite"></div>
     <div id="results"></div></div>`;
-  const input = $("#q", v), out = $("#results", v);
+  const input = $("#q", v), out = $("#results", v), askOut = $("#askOut", v), ex = $("#askEx", v);
   let qtok = 0;
-  async function run(q) {
+  function ask(q) { ex.classList.add("hidden"); runAsk(q, askOut, tok); }
+  async function run(q, entered) {
     const my = ++qtok;
     history.replaceState(null, "", "#/search" + (q ? "?q=" + encodeURIComponent(q) : ""));
     curHash = location.hash;
     if (!q.trim()) {
-      out.innerHTML = rowShell("sugg", "Trending searches", "#/browse/trending").replace('class="row"', 'class="row" style="margin:0 calc(-1*var(--gut))"');
+      askOut.innerHTML = ""; ex.classList.remove("hidden");
+      out.innerHTML = rowShell("sugg", "Trending", "#/browse/trending").replace('class="row"', 'class="row" style="margin:0 calc(-1*var(--gut))"');
       fillRow("sugg", api.trending("all"), posterCard, tok);
       return;
     }
+    ex.classList.add("hidden");
+    const describe = looksLikeDescription(q);
+    if (entered && describe) ask(q.trim()); else if (!entered) askOut.innerHTML = "";
     out.innerHTML = gridSkeleton(12);
     try {
       const r = await api.search(q.trim());
       if (my !== qtok || tok !== routeTok) return;
       if (!r.titles.length && !r.people.length) {
-        out.innerHTML = `<p class="muted">No results for "${esc(q)}".</p><button class="btn small" type="button" id="tryAsk">&#10022; Try Ask Jarvis</button>`;
-        $("#tryAsk", out).addEventListener("click", () => openAsk(q.trim(), true));
+        if (entered && !describe) { out.innerHTML = ""; ask(q.trim()); return; }
+        out.innerHTML = `<p class="muted">No titles match "${esc(q)}". Press Enter to ask Jarvis.</p>`;
         return;
       }
       out.innerHTML = (r.people.length ? `<div class="section-h" style="margin-top:4px"><h2>People</h2></div><div class="scroller" style="margin:0 calc(-1*var(--gut));padding-top:4px">${r.people.slice(0, 20).map(personCard).join("")}</div>` : "") +
-        (r.titles.length ? `<div class="section-h"><h2>Movies and shows</h2></div><div class="grid">${r.titles.map(posterCard).join("")}</div>` : "");
+        (r.titles.length ? `<div class="section-h"><h2>Titles</h2></div><div class="grid">${r.titles.map(posterCard).join("")}</div>` : "") +
+        (describe && entered ? "" : `<p class="muted" style="margin-top:14px">Not what you meant? <button class="btn small" type="button" id="tryAsk">&#10022; Ask Jarvis</button></p>`);
+      const ta = $("#tryAsk", out); if (ta) ta.addEventListener("click", () => { ask(q.trim()); askOut.scrollIntoView({ block: "nearest", behavior: "smooth" }); });
     } catch (e) { if (my === qtok) out.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   }
-  input.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => run(input.value), 350); });
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { clearTimeout(searchTimer); run(input.value); input.blur(); } });
-  // ---- Ask Jarvis: the question goes to the TV (the key stays there); the TV answers with TMDB ids ----
-  const panel = $("#askPanel", v), toggle = $("#askToggle", v), askq = $("#askq", v), askOut = $("#askOut", v);
-  function openAsk(text, go) {
-    panel.classList.remove("hidden"); toggle.setAttribute("aria-expanded", "true");
-    if (text != null) askq.value = text;
-    if (go && askq.value.trim()) runAsk(askq.value, askOut, tok); else askq.focus();
-    panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }
-  toggle.addEventListener("click", () => {
-    if (panel.classList.contains("hidden")) openAsk(null, false);
-    else { panel.classList.add("hidden"); toggle.setAttribute("aria-expanded", "false"); }
-  });
-  $("#askForm", v).addEventListener("submit", (e) => { e.preventDefault(); askq.blur(); runAsk(askq.value, askOut, tok); });
-  $$("#askEx .chip", v).forEach((b) => b.addEventListener("click", () => openAsk(b.dataset.ex, true)));
-  run(q0);
+  input.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => run(input.value, false), 350); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { clearTimeout(searchTimer); run(input.value, true); input.blur(); } });
+  $$("#askEx .chip", v).forEach((b) => b.addEventListener("click", () => { input.value = b.dataset.ex; run(b.dataset.ex, true); }));
+  run(q0, !!q0);
   if (matchMedia("(min-width:900px)").matches || !q0) setTimeout(() => input.focus({ preventScroll: true }), 30);
 }
 

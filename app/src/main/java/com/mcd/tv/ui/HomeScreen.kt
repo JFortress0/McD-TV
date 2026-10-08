@@ -215,7 +215,6 @@ private fun MoreRow(nav: Nav) {
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item { CompactTile("Ask Jarvis", "Describe it, Jarvis finds it", { nav.push(Screen.AskJarvis()) }) }
             item { CompactTile("Browse", "Genres, years, languages, services", { nav.tab(NavTab.Browse) }) }
             item { CompactTile("Live TV", "Your channels and favorites", { nav.tab(NavTab.Live) }) }
             item { CompactTile("Websites", "Sites you added on the Control page", { nav.push(Screen.Sports) }) }

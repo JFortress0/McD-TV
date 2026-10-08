@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -90,49 +92,144 @@ fun PosterGrid(items: List<Title>, state: LazyGridState = rememberLazyGridState(
     }
 }
 
-// ============================== Search ==============================
+// ============================== Jarvis (search + Ask Jarvis in one box) ==============================
+
+/** Descriptions ("the movie where...") go to Jarvis; short names go to title search only. */
+private val DESCRIBE_WORDS = setOf(
+    "movie", "movies", "film", "show", "series", "where", "about", "with", "that", "who", "plays", "played",
+    "starring", "like", "guy", "girl", "man", "woman", "kid", "kids", "what", "which", "remember",
+)
+
+internal fun looksLikeDescription(q: String): Boolean {
+    val words = q.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (q.trim().endsWith("?")) return true
+    if (words.size >= 5) return true
+    return words.size >= 3 && words.count { it in DESCRIBE_WORDS } >= 1
+}
 
 @Composable
 fun SearchScreen(nav: Nav) {
     var query by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf("") }
+    var attempt by rememberSaveable { mutableIntStateOf(0) }
+    /** Jarvis asked for this query even though it looked like a plain title. */
+    var forceAsk by rememberSaveable { mutableStateOf(false) }
+    val hasKey = remember { com.mcd.tv.data.Jarvis.configured }
     val field = remember { FocusRequester() }
-    val gridState = rememberLazyGridState()
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+    fun submit(text: String = query) {
+        val q = text.trim()
+        if (q.isEmpty()) return
+        keyboard?.hide()
+        query = q
+        forceAsk = false
+        if (q == submitted) attempt++ else submitted = q
+        runCatching { field.requestFocus() }
+    }
+
     // Focus the field (no keyboard yet: OK opens it), so typing is one press away.
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { field.requestFocus() } }
     TabPage(nav, NavTab.Search, autoFocus = false) {
-        Row(Modifier.padding(horizontal = 48.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            BasicTextField(
-                value = query,
-                onValueChange = { query = it },
-                singleLine = true,
-                textStyle = TextStyle(color = McdColors.White, fontSize = 22.sp),
-                cursorBrush = SolidColor(McdColors.Red),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, showKeyboardOnFocus = false),
-                keyboardActions = KeyboardActions(onSearch = { submitted = query.trim() }),
-                modifier = Modifier.weight(1f).focusRequester(field)
-                    .background(McdColors.Card, HudShape).border(1.5.dp, McdColors.Accent, HudShape)
-                    .padding(16.dp),
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(start = 48.dp, end = 48.dp, top = 4.dp, bottom = 24.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                HudRing(40.dp)
+                Spacer(Modifier.width(14.dp))
+                BasicTextField(
+                    value = query,
+                    onValueChange = { query = it.take(600) },
+                    singleLine = true,
+                    textStyle = TextStyle(color = McdColors.White, fontSize = 22.sp, fontFamily = HudText),
+                    cursorBrush = SolidColor(McdColors.Accent),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, showKeyboardOnFocus = false),
+                    keyboardActions = KeyboardActions(onSearch = { submit() }),
+                    decorationBox = { inner ->
+                        Box {
+                            if (query.isEmpty()) {
+                                Text("Search or ask Jarvis…", color = McdColors.Muted.copy(alpha = 0.7f), fontSize = 22.sp, maxLines = 1)
+                            }
+                            inner()
+                        }
+                    },
+                    modifier = Modifier.weight(1f).focusRequester(field)
+                        .background(McdColors.Card, HudShape).border(1.5.dp, McdColors.Accent, HudShape)
+                        .padding(16.dp),
+                )
+                Spacer(Modifier.width(14.dp))
+                ActionButton("Go", { submit() }, primary = true)
+            }
+            Text(
+                "Search movies and shows by name, or describe one and Jarvis works it out. Press OK to type or use the mic.",
+                color = McdColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),
             )
-            Spacer(Modifier.width(14.dp))
-            // Can't remember the name? Describe it to Jarvis instead.
-            ActionButton("✦ Ask Jarvis", { nav.push(Screen.AskJarvis()) }, primary = true)
-        }
-        Text("Search movies and TV shows. Press OK to type, then Search on the keyboard.", color = McdColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 6.dp))
-        if (submitted.isNotBlank()) {
-            val res by rememberLoad(submitted) { Tmdb.search(submitted) }
-            when (val r = res) {
-                is Load.Loading -> StatusText("Searching…", Modifier.padding(start = 48.dp))
-                is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
-                is Load.Ok -> if (r.value.isEmpty()) {
-                    Row(Modifier.padding(horizontal = 48.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("No titles match \"$submitted\".", color = McdColors.Muted, fontSize = 16.sp)
-                        Spacer(Modifier.width(16.dp))
-                        ActionButton("Try Ask Jarvis", { nav.push(Screen.AskJarvis(submitted)) })
-                    }
-                } else {
-                    PosterGrid(r.value, gridState) { nav.push(Screen.Detail(it.type, it.id)) }
+
+            if (submitted.isBlank()) {
+                RailHeader("Try")
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    (listOf("Interstellar", "The Office") + ASK_EXAMPLES.take(2)).forEach { ex -> AskChip(ex) { submit(ex) } }
                 }
+            } else {
+            val describe = looksLikeDescription(submitted)
+            val titles by rememberLoad(submitted) { Tmdb.search(submitted) }
+            val noTitles = (titles as? Load.Ok)?.value?.isEmpty() == true
+            // Ask Jarvis when it reads like a description, when asked to, or when no title matches the name.
+            val ask = hasKey && (describe || forceAsk || noTitles)
+
+            @Composable
+            fun JarvisPart() {
+                val res by rememberLoad(submitted, attempt) { com.mcd.tv.data.Jarvis.ask(submitted) }
+                when (val r = res) {
+                    is Load.Loading -> JarvisThinking()
+                    is Load.Err -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        JarvisLine(r.message)
+                        Row { ActionButton("Try again", { attempt++ }) }
+                    }
+                    is Load.Ok -> JarvisResults(r.value) { m -> nav.push(Screen.Detail(m.title.type, m.title.id)) }
+                }
+            }
+
+            @Composable
+            fun TitlesPart() {
+                when (val r = titles) {
+                    is Load.Loading -> StatusText("Searching…")
+                    is Load.Err -> StatusText(r.message)
+                    is Load.Ok -> if (r.value.isEmpty()) {
+                        if (!hasKey) Text("No titles match \"$submitted\".", color = McdColors.Muted, fontSize = 16.sp)
+                    } else {
+                        RailHeader("Titles", Modifier.padding(top = 8.dp))
+                        LazyRow(
+                            contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            items(r.value.take(30), key = { "${it.type}-${it.id}" }) { t ->
+                                PosterCard(t, onClick = { nav.push(Screen.Detail(t.type, t.id)) }, width = 150.dp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (ask && (describe || forceAsk)) {
+                JarvisPart()
+                TitlesPart()
+            } else {
+                TitlesPart()
+                if (ask) {
+                    JarvisPart()
+                } else if (hasKey && titles is Load.Ok) {
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Not what you meant?", color = McdColors.Muted, fontSize = 15.sp)
+                        Spacer(Modifier.width(14.dp))
+                        ActionButton("✦ Ask Jarvis", { forceAsk = true })
+                    }
+                }
+            }
+            if (!hasKey && describe) {
+                JarvisLine(com.mcd.tv.data.Jarvis.NO_KEY)
+            }
             }
         }
     }

@@ -364,7 +364,7 @@ fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)
 }
 
 /** Top navigation: wordmark, uppercase Orbitron tabs (current one cyan with an underline and dot), clock, profile ring. */
-enum class NavTab(val label: String) { Home("Home"), Search("Search"), Browse("Browse"), Library("My List"), Genres("Genres"), Sports("Websites"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
+enum class NavTab(val label: String) { Home("Home"), Search("Jarvis"), Browse("Browse"), Library("My List"), Genres("Genres"), Sports("Websites"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
 
 /** Tabs shown in the bar, in order. Genres, Websites (NavTab.Sports), Services and Background Noise live under Browse. */
 private val BarTabs = listOf(NavTab.Home, NavTab.Search, NavTab.Browse, NavTab.Live, NavTab.Library)
