@@ -215,32 +215,3 @@ fun ChannelRow(ch: Channel, onClick: () -> Unit) {
     }
 }
 
-// ============================== Live TV ==============================
-
-@Composable
-fun LiveTvScreen(nav: Nav) {
-    val res by rememberLoad(Prefs.m3uUrl) { M3u.load() }
-    var group by remember { mutableStateOf<String?>(null) }
-    TabPage(nav, NavTab.Live) {
-        when (val r = res) {
-            is Load.Loading -> StatusText("Loading your channels… big playlists can take up to a minute the first time.", Modifier.padding(start = 48.dp))
-            is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
-            is Load.Ok -> if (r.value.isEmpty()) {
-                Column(Modifier.padding(horizontal = 48.dp)) {
-                    StatusText("No playlist yet. McD TV ships with no channels; add your own M3U playlist URL.")
-                    ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
-                }
-            } else {
-                val groups = remember(r.value) { r.value.map { it.group }.distinct() }
-                val shown = remember(r.value, group) { r.value.filter { group == null || it.group == group }.take(500) }
-                LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { ActionButton("All (${r.value.size})", { group = null }, primary = group == null) }
-                    items(groups) { gname -> ActionButton(gname, { group = gname }, primary = gname == group) }
-                }
-                LazyColumn(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(shown) { ch -> ChannelRow(ch) { nav.push(Screen.Player(ch.url, ch.name)) } }
-                }
-            }
-        }
-    }
-}

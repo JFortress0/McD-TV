@@ -19,7 +19,17 @@ data class StreamSource(
     val sizeGb: Double,
     val seeders: Int?,
     val cached: Boolean,
+    /** HTTP headers the addon says the stream needs (behaviorHints.proxyHeaders.request). */
+    val headers: Map<String, String> = emptyMap(),
 )
+
+/** A browsable addon catalog of live channels or events (Stremio types tv, channel, events). */
+data class LiveCatalog(val addonUrl: String, val addonName: String, val type: String, val id: String, val name: String) {
+    val label get() = if (name.isBlank()) addonName else "$name"
+}
+
+/** One channel or event in a live catalog. */
+data class LiveItem(val addonUrl: String, val type: String, val id: String, val name: String, val poster: String?, val info: String)
 
 data class AddonInfo(val manifestUrl: String, val name: String, val description: String, val streams: Boolean)
 
@@ -49,6 +59,57 @@ object Addons {
             if (name == "stream") streams = true
         }
         return AddonInfo(url, o.s("name") ?: "Addon", o.s("description") ?: "", streams)
+    }
+
+    private val liveTypes = setOf("tv", "channel", "events")
+
+    /** Live channel and event catalogs from every installed addon (catalogs that need a search term are skipped). */
+    suspend fun liveCatalogs(): List<LiveCatalog> = coroutineScope {
+        Prefs.addonUrls.map { m ->
+            async {
+                withTimeoutOrNull(15_000) {
+                    runCatching {
+                        val o = JSONObject(Http.get(m))
+                        val addonName = o.s("name") ?: "Addon"
+                        val cats = o.optJSONArray("catalogs") ?: return@runCatching emptyList<LiveCatalog>()
+                        (0 until cats.length()).mapNotNull { i ->
+                            val c = cats.getJSONObject(i)
+                            val type = c.optString("type")
+                            if (type !in liveTypes) return@mapNotNull null
+                            val extras = c.optJSONArray("extra")
+                            val needsInput = extras != null && (0 until extras.length()).any { j ->
+                                val e = extras.optJSONObject(j)
+                                e != null && e.optBoolean("isRequired") && e.optString("name") != "skip"
+                            } || (c.optJSONArray("extraRequired")?.length() ?: 0) > 0
+                            if (needsInput) null else LiveCatalog(m, addonName, type, c.optString("id"), c.optString("name"))
+                        }
+                    }.getOrDefault(emptyList())
+                } ?: emptyList()
+            }
+        }.awaitAll().flatten()
+    }
+
+    private fun enc(id: String) = java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+
+    /** One page of a live catalog. */
+    suspend fun catalog(c: LiveCatalog, skip: Int = 0): List<LiveItem> {
+        val path = if (skip > 0) "${c.id}/skip=$skip" else c.id
+        val o = JSONObject(Http.get("${base(c.addonUrl)}/catalog/${c.type}/$path.json"))
+        val metas = o.optJSONArray("metas") ?: return emptyList()
+        return (0 until metas.length()).map { i ->
+            val m = metas.getJSONObject(i)
+            val genres = m.optJSONArray("genres")?.let { g -> (0 until g.length()).joinToString(" / ") { g.optString(it) } } ?: ""
+            LiveItem(c.addonUrl, m.s("type") ?: c.type, m.optString("id"), m.s("name") ?: "Channel",
+                m.s("logo") ?: m.s("poster"), genres.ifBlank { m.s("description")?.take(80) ?: "" })
+        }
+    }
+
+    /** Streams for one live channel or event, from the addon that listed it. Torrent-only results are dropped. */
+    suspend fun liveStreams(item: LiveItem): List<StreamSource> {
+        val addonName = runCatching { manifest(item.addonUrl).name }.getOrDefault("Addon")
+        val o = JSONObject(Http.get("${base(item.addonUrl)}/stream/${item.type}/${enc(item.id)}.json"))
+        val arr = o.optJSONArray("streams") ?: return emptyList()
+        return (0 until arr.length()).map { parse(addonName, arr.getJSONObject(it)) }.filter { it.url != null }
     }
 
     /** Adds an addon after checking its manifest loads. */
@@ -117,7 +178,13 @@ object Addons {
             sizeGb = sizeGb,
             seeders = seedRx.find(title)?.groupValues?.get(1)?.toIntOrNull(),
             cached = cached,
+            headers = headersOf(s),
         )
+    }
+
+    private fun headersOf(s: JSONObject): Map<String, String> {
+        val h = s.optJSONObject("behaviorHints")?.optJSONObject("proxyHeaders")?.optJSONObject("request") ?: return emptyMap()
+        return h.keys().asSequence().associateWith { h.optString(it) }
     }
 
     /** Cached first. Normal mode: best quality. Slow connection: 720p/1080p, smaller files first. */

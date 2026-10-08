@@ -64,6 +64,7 @@ sealed interface Screen {
     /** autoPlay = the Play button: pick the best source and start immediately. */
     data class Sources(val meta: PlayMeta, val imdbId: String, val autoPlay: Boolean) : Screen
     data class Web(val url: String, val name: String) : Screen
+    data class LiveChannel(val item: com.mcd.tv.data.LiveItem) : Screen
     /** imdbId lets a TV episode roll into the next one when it ends. */
     data class Player(
         val url: String,
@@ -190,6 +191,7 @@ private fun App(startScreen: Screen? = null) {
         is Screen.Person -> PersonScreen(nav, s.id)
         is Screen.Detail -> DetailScreen(nav, s.type, s.id, s.openSources)
         is Screen.Sources -> SourcesScreen(nav, s.meta, s.imdbId, s.autoPlay)
+        is Screen.LiveChannel -> com.mcd.tv.ui.LiveChannelScreen(nav, s.item)
         is Screen.Web -> WebScreen(s.url) { url, headers, title -> nav.push(Screen.Player(url, title, headers = headers)) }
         is Screen.Player -> {
             val m = s.meta
