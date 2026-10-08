@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -14,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import com.mcd.tv.data.Account
 import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.Relay
+import com.mcd.tv.data.RemoteNav
 import com.mcd.tv.data.PlayMeta
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -186,6 +188,25 @@ private fun App(startScreen: Screen? = null) {
     }
 
     BackHandler(enabled = stack.size > 1) { pop() }
+
+    // "Open on TV" / "Play on TV" from the McD TV web app. In the background this still runs,
+    // so the new screen is simply there when the app comes back to the front.
+    LaunchedEffect(Unit) {
+        Relay.navRequests.collect { r ->
+            if (stack.last() == Screen.Intro) stack[stack.lastIndex] = Screen.Home
+            when (r) {
+                is RemoteNav.Open -> {
+                    val target = Screen.Detail(r.type, r.id)
+                    if (stack.last() != target) stack.add(target)
+                }
+                is RemoteNav.Play -> {
+                    val detail = Screen.Detail(r.meta.type, r.meta.tmdbId)
+                    if (stack.last() != detail) stack.add(detail)
+                    stack.add(Screen.Sources(r.meta, r.imdbId, autoPlay = true))
+                }
+            }
+        }
+    }
 
     // Each back-stack entry gets its own saved state (scroll positions, typed search, picked genre…),
     // keyed by its position and screen: Detail -> Detail starts fresh, and Back restores the page as it was.

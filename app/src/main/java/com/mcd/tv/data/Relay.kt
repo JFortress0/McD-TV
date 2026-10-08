@@ -7,7 +7,11 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -20,6 +24,14 @@ import java.util.zip.Inflater
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+
+/** A screen the McD TV web app asked the TV to show ("open" and "play" relay commands). */
+sealed interface RemoteNav {
+    /** The title page. */
+    data class Open(val type: String, val id: Int) : RemoteNav
+    /** The source list for [meta], picking the best source and playing it. */
+    data class Play(val meta: PlayMeta, val imdbId: String) : RemoteNav
+}
 
 /**
  * Setup over the internet, so it works from any phone or computer, at home or away,
@@ -44,6 +56,14 @@ object Relay {
 
     var status by mutableStateOf("Starting…")
     var lastMessageAt by mutableStateOf(0L)
+
+    /**
+     * Screens the web app asked for. MainActivity's App() collects this and pushes the screen.
+     * A Channel (not a SharedFlow) so a request made while nothing collects (activity being
+     * recreated) is kept and applied once the app is back.
+     */
+    private val navChannel = Channel<RemoteNav>(capacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val navRequests: Flow<RemoteNav> = navChannel.receiveAsFlow()
 
     private val inTopic get() = "mcdtv-${Prefs.relayId}-in"
     private val outTopic get() = "mcdtv-${Prefs.relayId}-out"
@@ -168,7 +188,130 @@ object Relay {
                     .getOrElse { "Real-Debrid add failed: ${it.message}" }
                 publishState(note)
             }
+            // ---- McD TV web app (docs/app) ----
+            "web_init" -> runCatching { publishWebInit(cmd.optString("req")) }
+            "open" -> {
+                val type = cmd.optString("type")
+                val id = cmd.optInt("id")
+                if ((type != "movie" && type != "tv") || id <= 0 || isStale(cmd)) return
+                navChannel.trySend(RemoteNav.Open(type, id))
+                publishAck(cmd, "Opened ${nameFor(type, id, cmd)} on the TV")
+            }
+            "play" -> {
+                val type = cmd.optString("type")
+                val id = cmd.optInt("id")
+                if ((type != "movie" && type != "tv") || id <= 0 || isStale(cmd)) return
+                val d = runCatching { Tmdb.details(type, id) }.getOrNull()
+                val imdb = d?.imdbId
+                if (d == null || imdb == null) {
+                    navChannel.trySend(RemoteNav.Open(type, id))
+                    publishAck(cmd, "Opened ${nameFor(type, id, cmd)} on the TV. Pick a source there.")
+                    return
+                }
+                var season = cmd.optInt("season", 0)
+                var episode = cmd.optInt("episode", 0)
+                if (type == "tv" && (season <= 0 || episode <= 0)) {
+                    // No episode picked: resume the last one watched, else start at the beginning.
+                    val last = Library.history().firstOrNull { it.meta.historyKey == "tv:$id" }?.meta
+                    if (last != null && last.season > 0 && last.episode > 0) {
+                        season = last.season
+                        episode = last.episode
+                    } else {
+                        season = d.seasons.firstOrNull()?.number ?: 1
+                        episode = 1
+                    }
+                }
+                if (type == "movie") {
+                    season = 0
+                    episode = 0
+                }
+                val t = d.title
+                val meta = PlayMeta(type, id, t.name, t.poster, t.backdrop, season, episode)
+                navChannel.trySend(RemoteNav.Play(meta, imdb))
+                publishAck(cmd, "Starting ${meta.label} on the TV")
+            }
+            "watchlist" -> {
+                val type = cmd.optString("type")
+                val id = cmd.optInt("id")
+                if ((type != "movie" && type != "tv") || id <= 0) return
+                val on = cmd.optBoolean("on", true)
+                val t = runCatching { Tmdb.details(type, id).title }.getOrNull() ?: Title(
+                    id = id,
+                    type = type,
+                    name = cmd.optString("name").ifBlank { "Untitled" },
+                    overview = "",
+                    poster = cmd.optString("poster").ifBlank { null },
+                    backdrop = cmd.optString("backdrop").ifBlank { null },
+                    rating = 0.0,
+                    year = cmd.optString("year"),
+                )
+                if (Library.inWatchlist(t) != on) Library.toggleWatchlist(t)
+                publishAck(cmd, if (on) "Added ${t.name} to your watchlist" else "Removed ${t.name} from your watchlist")
+            }
         }
+    }
+
+    /** "open" and "play" sent more than 10 minutes ago (TV was off) are dropped, so the TV doesn't jump screens later. */
+    private fun isStale(cmd: JSONObject): Boolean {
+        val ts = cmd.optLong("ts", 0L)
+        return ts > 0L && System.currentTimeMillis() - ts > 10 * 60_000L
+    }
+
+    private fun nameFor(type: String, id: Int, cmd: JSONObject): String =
+        cmd.optString("name").ifBlank { if (type == "tv") "the show" else "the movie" }
+
+    /** A short reply to one web app command; [cmd]'s "req" is echoed so the page can match it. */
+    private suspend fun publishAck(cmd: JSONObject, note: String) {
+        status = note
+        val o = JSONObject()
+            .put("type", "ack")
+            .put("note", note)
+            .put("req", cmd.optString("req"))
+            .put("ts", System.currentTimeMillis())
+        runCatching { Http.postText(BASE + outTopic, encrypt(o.toString())) }
+    }
+
+    /**
+     * Keys, filters and list ids for the web app. ids only, at most 60 per list, and the whole
+     * encrypted message stays under 3500 characters (ntfy's limit is 4 KB per message).
+     */
+    private suspend fun publishWebInit(req: String) {
+        fun ref(type: String, id: Int) = JSONObject().put("type", type).put("id", id)
+        var watch = Library.watchlist().take(60).map { ref(it.type, it.id) }
+        var favs = Library.favorites().take(60).map { ref(it.type, it.id) }
+        var cont = Library.continueWatching().take(60).map {
+            ref(it.meta.type, it.meta.tmdbId)
+                .put("season", it.meta.season)
+                .put("episode", it.meta.episode)
+                .put("progress", Math.round(it.progress * 100) / 100.0)
+        }
+        fun build(): String = encrypt(
+            JSONObject()
+                .put("type", "web_init")
+                .put("req", req)
+                .put("ts", System.currentTimeMillis())
+                .put("tmdb_key", Prefs.tmdbKey)
+                .put("mdblist_key", Prefs.mdblistKey)
+                .put("origin_filter", Prefs.origin.key)
+                .put("us_only", Prefs.usOnly)
+                .put("watchlist", JSONArray(watch))
+                .put("favorites", JSONArray(favs))
+                .put("continue", JSONArray(cont))
+                .toString(),
+        )
+        var msg = build()
+        while (msg.length > 3500 && (watch.size + favs.size + cont.size) > 0) {
+            // Drop from the end of the longest list, a few at a time.
+            val longest = maxOf(watch.size, favs.size, cont.size)
+            when (longest) {
+                watch.size -> watch = watch.dropLast(5)
+                favs.size -> favs = favs.dropLast(5)
+                else -> cont = cont.dropLast(5)
+            }
+            msg = build()
+        }
+        status = "Connected to the McD TV web app"
+        Http.postText(BASE + outTopic, msg)
     }
 
     private fun apply(d: JSONObject) {

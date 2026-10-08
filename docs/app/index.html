@@ -1,0 +1,1204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="theme-color" content="#05070D">
+<title>McD TV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://image.tmdb.org">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05070D;--nav1:#0A1430;--nav2:#070B18;--card:#111827;--raised:#1A2335;--accent:#3D7BFF;--bright:#6EA0FF;
+  --muted:#A3ADC2;--line:#1F2937;--ok:#1f9d55;--warn:#e0a526;--bad:#ff6b6b;
+  --gut:16px;--pw:118px;--ww:240px;--hdr:56px;--tab:62px;
+  --font:Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (min-width:600px){:root{--pw:140px;--ww:280px}}
+@media (min-width:900px){:root{--gut:40px;--pw:164px;--ww:320px;--hdr:68px;--tab:0px}}
+@media (min-width:1500px){:root{--gut:56px;--pw:184px;--ww:360px}}
+*{box-sizing:border-box}
+html{background:var(--bg);color-scheme:dark;-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;color:#fff;font:15px/1.45 var(--font);overflow-x:hidden;
+  background:linear-gradient(180deg,var(--nav1) 0,var(--nav2) 280px,var(--bg) 680px) no-repeat,var(--bg);
+  padding-bottom:calc(var(--tab) + env(safe-area-inset-bottom))}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+img{display:block}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--bright);outline-offset:3px;border-radius:8px}
+.hidden{display:none!important}
+.muted{color:var(--muted)}
+h1,h2,h3{letter-spacing:-.3px;margin:0}
+
+/* ---------- header ---------- */
+header.top{position:sticky;top:0;z-index:50;height:var(--hdr);display:flex;align-items:center;gap:20px;padding:0 var(--gut);
+  background:linear-gradient(180deg,rgba(5,7,13,.82),rgba(5,7,13,.55));backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);
+  border-bottom:1px solid rgba(31,41,55,.55);padding-top:env(safe-area-inset-top);height:calc(var(--hdr) + env(safe-area-inset-top))}
+.logo{font-weight:800;font-size:22px;letter-spacing:-.6px;white-space:nowrap}.logo b{color:var(--accent)}
+nav.links{display:none;gap:4px}
+nav.links a{padding:8px 14px;border-radius:999px;color:var(--muted);font-weight:600;font-size:15px;transition:color .15s,background .15s}
+nav.links a:hover{color:#fff}
+nav.links a.on{color:#fff;background:rgba(255,255,255,.08)}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.tvpill{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:999px;padding:5px 11px;white-space:nowrap;cursor:pointer}
+.dot{width:8px;height:8px;border-radius:50%;background:#555;flex:0 0 auto}
+.dot.online{background:#2bd46e;box-shadow:0 0 8px #2bd46e}.dot.connecting{background:var(--warn)}.dot.offline{background:var(--bad)}
+.iconbtn{display:none;width:38px;height:38px;border-radius:50%;align-items:center;justify-content:center;color:var(--muted)}
+.iconbtn:hover{color:#fff;background:rgba(255,255,255,.08)}
+@media (min-width:900px){nav.links{display:flex}.iconbtn{display:flex}}
+@media (max-width:420px){.tvpill .lbl{display:none}}
+
+/* ---------- bottom tab bar (phones) ---------- */
+nav.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;justify-content:space-around;
+  height:calc(var(--tab) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);
+  background:rgba(5,7,13,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line)}
+nav.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:600;color:var(--muted)}
+nav.tabbar a.on{color:#fff}nav.tabbar a.on svg{color:var(--bright)}
+nav.tabbar svg{width:22px;height:22px}
+@media (min-width:900px){nav.tabbar{display:none}}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:6px;padding:11px 18px;font-weight:700;font-size:15px;cursor:pointer;
+  background:rgba(255,255,255,.14);color:#fff;transition:background .15s,transform .1s,box-shadow .15s;white-space:nowrap;min-height:44px}
+.btn:hover{background:rgba(255,255,255,.24)}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:#fff;color:#05070D}
+.btn.primary:hover{background:#e8eefc;box-shadow:0 0 0 2px var(--bright),0 0 18px rgba(110,160,255,.35)}
+.btn.blue{background:var(--accent)}.btn.blue:hover{background:#5a8fff}
+.btn.small{padding:7px 12px;font-size:13px;min-height:34px}
+.btn[aria-pressed="true"]{background:rgba(61,123,255,.22);color:var(--bright)}
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px var(--gut) 8px;margin:0 calc(-1*var(--gut))}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;padding:7px 14px;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap}
+.chip:hover{color:#fff;border-color:#33415a}
+.chip.on{background:#fff;color:#05070D;border-color:#fff}
+.seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;color:var(--muted);font-weight:700;font-size:13px;padding:7px 14px;border-radius:999px;cursor:pointer}
+.seg button.on{background:var(--raised);color:#fff}
+
+/* ---------- layout ---------- */
+main#view{min-height:60vh}
+.page{padding:18px var(--gut) 40px}
+.page h1{font-size:26px;font-weight:800;margin:6px 0 14px}
+@media (min-width:900px){.page{padding-top:28px}.page h1{font-size:34px}}
+.section-h{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:26px 0 12px}
+.section-h h2{font-size:19px;font-weight:700}
+
+/* ---------- hero ---------- */
+.hero{position:relative;margin-top:calc(-1*(var(--hdr) + env(safe-area-inset-top)));height:min(78vh,700px);min-height:440px;overflow:hidden;background:var(--card)}
+.hero .slide{position:absolute;inset:0;opacity:0;transition:opacity .8s ease;pointer-events:none}
+.hero .slide.on{opacity:1;pointer-events:auto}
+.hero .bd{position:absolute;inset:0;background-size:cover;background-position:center 20%}
+.hero .shade{position:absolute;inset:0;background:linear-gradient(0deg,var(--bg) 2%,rgba(5,7,13,.65) 38%,rgba(5,7,13,.1) 70%,rgba(5,7,13,.45) 100%),linear-gradient(90deg,rgba(5,7,13,.75),rgba(5,7,13,0) 60%)}
+.hero .content{position:absolute;left:var(--gut);right:var(--gut);bottom:44px;max-width:640px}
+.hero .kicker{color:var(--bright);font-weight:700;font-size:12px;letter-spacing:1.6px;text-transform:uppercase;margin-bottom:8px}
+.hero h1{font-size:clamp(30px,6vw,56px);font-weight:800;line-height:1.02;letter-spacing:-1px;margin-bottom:10px;text-shadow:0 2px 24px rgba(0,0,0,.5)}
+.hero .meta{color:#d7deeb;font-size:14px;margin-bottom:10px}
+.hero p{color:#d0d7e4;margin:0 0 18px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;max-width:560px}
+.hero .actions{display:flex;gap:10px;flex-wrap:wrap}
+.hero .dots{position:absolute;right:var(--gut);bottom:20px;display:flex;gap:6px}
+.hero .dots button{width:22px;height:4px;border-radius:2px;border:0;background:rgba(255,255,255,.3);cursor:pointer;padding:0}
+.hero .dots button.on{background:#fff}
+@media (max-width:599px){.hero{height:72vh;min-height:460px}.hero .content{bottom:36px}.hero .dots{left:var(--gut);right:auto;bottom:14px}}
+
+/* ---------- rows ---------- */
+.row{margin:18px 0 6px;position:relative}
+.row-h{display:flex;align-items:baseline;justify-content:space-between;padding:0 var(--gut);margin-bottom:2px}
+.row-h h2{font-size:18px;font-weight:700}
+@media (min-width:900px){.row-h h2{font-size:21px}}
+.row-h a{color:var(--muted);font-size:13px;font-weight:600}.row-h a:hover{color:#fff}
+.scroller{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;padding:12px var(--gut) 14px;scroll-padding:0 var(--gut);scrollbar-width:none;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.scroller::-webkit-scrollbar{display:none}
+.scroller>*{scroll-snap-align:start}
+@media (min-width:900px){.scroller{gap:14px}}
+.arr{display:none;position:absolute;top:44px;bottom:14px;width:var(--gut);min-width:40px;border:0;background:linear-gradient(90deg,rgba(5,7,13,.85),rgba(5,7,13,0));color:#fff;font-size:30px;cursor:pointer;z-index:3;opacity:0;transition:opacity .2s}
+.arr.r{right:0;background:linear-gradient(270deg,rgba(5,7,13,.85),rgba(5,7,13,0))}.arr.l{left:0}
+@media (hover:hover) and (min-width:900px){.arr{display:block}.row:hover .arr{opacity:1}}
+.row .empty{padding:8px var(--gut);color:var(--muted);font-size:14px}
+
+/* ---------- cards ---------- */
+.card{flex:0 0 auto;width:var(--pw);display:block}
+.poster{position:relative;aspect-ratio:2/3;border-radius:8px;overflow:hidden;background:var(--card);box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .22s ease,box-shadow .22s ease}
+.poster img{width:100%;height:100%;object-fit:cover}
+.poster .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;font-weight:700;color:var(--muted);font-size:14px;background:linear-gradient(160deg,var(--raised),var(--card))}
+.badge{position:absolute;left:6px;top:6px;background:rgba(5,7,13,.78);backdrop-filter:blur(6px);border-radius:6px;padding:2px 6px;font-size:11px;font-weight:700}
+.badge .s{color:#f5c518}
+.wlmark{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.cap{margin-top:7px;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (hover:hover){.card:hover .poster,.card:focus-visible .poster{transform:scale(1.05);box-shadow:0 0 0 2px var(--bright),0 10px 28px rgba(0,0,0,.55)}}
+.card:focus-visible{outline:none}.card:focus-visible .poster{box-shadow:0 0 0 2px var(--bright)}
+.wcard{flex:0 0 auto;width:var(--ww);position:relative}
+.wcard a{display:block}
+.wimg{position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:var(--card);transition:transform .22s ease,box-shadow .22s}
+.wimg img{width:100%;height:100%;object-fit:cover}
+.prog{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.25)}.prog i{display:block;height:100%;background:var(--accent)}
+@media (hover:hover){.wcard:hover .wimg{transform:scale(1.04);box-shadow:0 0 0 2px var(--bright)}}
+.wcard a:focus-visible .wimg{box-shadow:0 0 0 2px var(--bright)}
+.miniplay{position:absolute;right:8px;top:8px;width:38px;height:38px;border-radius:50%;border:0;background:rgba(5,7,13,.72);backdrop-filter:blur(6px);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.miniplay:hover{background:#fff;color:#05070D}
+.pcard{flex:0 0 auto;width:calc(var(--pw)*.78);text-align:center;display:block}
+.pcard .face{aspect-ratio:1;border-radius:50%;overflow:hidden;background:var(--raised);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:24px;color:var(--muted)}
+.pcard .face img{width:100%;height:100%;object-fit:cover}
+@media (hover:hover){.pcard:hover .face{transform:scale(1.05);box-shadow:0 0 0 2px var(--bright)}}
+.pcard:focus-visible .face{box-shadow:0 0 0 2px var(--bright)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:16px 10px}
+.grid .card,.grid .pcard{width:auto}
+@media (min-width:600px){.grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:20px 14px}}
+@media (min-width:900px){.grid{grid-template-columns:repeat(auto-fill,minmax(164px,1fr))}}
+
+/* ---------- skeletons ---------- */
+.sk{background:linear-gradient(90deg,#0f1522 0,#1A2335 45%,#0f1522 90%);background-size:220% 100%;animation:sh 1.3s linear infinite;border-radius:8px}
+@keyframes sh{from{background-position:120% 0}to{background-position:-120% 0}}
+.sk-poster{flex:0 0 auto;width:var(--pw);aspect-ratio:2/3}
+.sk-wide{flex:0 0 auto;width:var(--ww);aspect-ratio:16/9}
+.sk-line{height:14px;margin:8px 0}
+.grid .sk-poster{width:auto}
+
+/* ---------- title page ---------- */
+.tp{position:relative;margin-top:calc(-1*(var(--hdr) + env(safe-area-inset-top)))}
+.tp-bd{position:relative;height:min(62vh,620px);min-height:300px;background:var(--card) center 20%/cover no-repeat}
+.tp-bd::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,var(--bg) 3%,rgba(5,7,13,.55) 45%,rgba(5,7,13,.2) 75%,rgba(5,7,13,.5)),linear-gradient(90deg,rgba(5,7,13,.8),rgba(5,7,13,0) 65%)}
+.tp-inner{position:relative;display:flex;gap:28px;padding:0 var(--gut);margin-top:-150px;z-index:2;align-items:flex-end}
+.tp-poster{display:none;flex:0 0 auto;width:220px;border-radius:10px;overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.6);aspect-ratio:2/3;background:var(--card)}
+.tp-poster img{width:100%;height:100%;object-fit:cover}
+.tp-info{flex:1;min-width:0;max-width:820px}
+.tp-info h1{font-size:clamp(28px,5vw,50px);font-weight:800;line-height:1.05;letter-spacing:-.8px;margin-bottom:8px}
+.tp-meta{color:#d7deeb;font-size:14px;display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:10px}
+.scores{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
+.score{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:6px;padding:4px 9px;font-size:13px;font-weight:700}
+.score .k{color:var(--muted);font-weight:600}
+.score.imdb .k{color:#f5c518}.score.rt .k{color:#fa6b4a}
+.tagline{color:var(--bright);font-style:italic;margin:4px 0 8px}
+.overview{color:#d0d7e4;margin:0 0 16px;max-width:760px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.prov{color:var(--muted);font-size:13px;margin-top:4px}
+.prov b{color:#fff;font-weight:600}
+@media (min-width:900px){.tp-poster{display:block}.tp-inner{margin-top:-240px}}
+@media (max-width:599px){.tp-bd{height:56vw;min-height:240px}.tp-inner{margin-top:-60px}.actions .btn{flex:1 1 auto}}
+.trailer{position:relative;display:block;width:100%;max-width:880px;aspect-ratio:16/9;border:0;padding:0;border-radius:10px;overflow:hidden;background:#000;cursor:pointer}
+.trailer img{width:100%;height:100%;object-fit:cover;opacity:.75;transition:opacity .2s}
+.trailer:hover img{opacity:.9}
+.trailer .pb{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,.92);color:#05070D;display:flex;align-items:center;justify-content:center;font-size:24px;padding-left:4px}
+.trailer iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.eps{display:flex;flex-direction:column;gap:12px}
+.ep{display:flex;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;align-items:flex-start}
+.ep .still{flex:0 0 auto;width:150px;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:var(--raised)}
+.ep .still img{width:100%;height:100%;object-fit:cover}
+.ep .body{flex:1;min-width:0}
+.ep .t{font-weight:700}
+.ep .d{color:var(--muted);font-size:12px;margin:2px 0 4px}
+.ep .o{color:#c8d0dd;font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:0}
+.ep .btn{margin-top:8px}
+.ep.resume{border-color:var(--accent)}
+@media (min-width:900px){.ep .still{width:220px}}
+@media (max-width:420px){.ep .still{width:116px}}
+
+/* ---------- person ---------- */
+.pp{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+.pp .ph{width:140px;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:var(--card);flex:0 0 auto}
+.pp .ph img{width:100%;height:100%;object-fit:cover}
+.pp .info{flex:1;min-width:240px}
+.bio{color:#d0d7e4;white-space:pre-line;max-width:820px}
+.bio.clamp{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.linkbtn{background:none;border:0;color:var(--bright);font-weight:700;cursor:pointer;padding:4px 0}
+@media (min-width:900px){.pp .ph{width:200px}}
+
+/* ---------- browse ---------- */
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (min-width:600px){.tiles{grid-template-columns:repeat(3,1fr)}}
+@media (min-width:1100px){.tiles{grid-template-columns:repeat(4,1fr)}}
+.tile{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:84px;padding:14px;border-radius:10px;background:linear-gradient(140deg,var(--raised),var(--card));border:1px solid var(--line);font-weight:800;font-size:16px;overflow:hidden;transition:transform .18s,box-shadow .18s,border-color .18s}
+.tile small{display:block;color:var(--muted);font-weight:500;font-size:12px;margin-top:2px}
+.tile::before{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;background:radial-gradient(var(--glow,rgba(61,123,255,.35)),transparent 70%)}
+@media (hover:hover){.tile:hover{transform:translateY(-2px);border-color:var(--bright);box-shadow:0 8px 24px rgba(0,0,0,.4)}}
+.svc{min-height:72px;font-size:17px;color:#fff;border:0}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+select,input[type=text],input[type=search],input[type=password]{background:#0B1220;color:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;font-size:16px}
+select:focus-visible,input:focus-visible{outline:2px solid var(--bright);outline-offset:1px}
+.more{display:flex;justify-content:center;margin:24px 0}
+
+/* ---------- search ---------- */
+.searchbox{position:relative;margin-bottom:16px}
+.searchbox input{width:100%;font-size:18px;padding:14px 16px 14px 46px;border-radius:10px;background:var(--card)}
+.searchbox svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:var(--muted)}
+
+/* ---------- panels, settings, pairing ---------- */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px;max-width:760px}
+.panel h2{font-size:18px;margin-bottom:6px}
+.panel p{margin:6px 0}
+.panel label{display:block;color:var(--muted);font-size:13px;margin:12px 0 5px}
+.panel .rowf{display:flex;gap:8px;flex-wrap:wrap}.panel .rowf input,.panel .rowf select{flex:1;min-width:180px}
+.steps{margin:10px 0;padding-left:22px}.steps li{margin:8px 0}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;background:#1F2937}
+.pill.ok{background:rgba(31,157,85,.25);color:#5fd38a}.pill.no{background:rgba(255,107,107,.15);color:#ff9b9b}
+.notice{max-width:760px;margin:30px auto;text-align:center;padding:30px 18px}
+.notice h2{font-size:22px;margin-bottom:8px}
+.notice .actions{justify-content:center}
+.spinner{width:32px;height:32px;border:3px solid var(--raised);border-top-color:var(--bright);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- toast ---------- */
+#toast{position:fixed;left:50%;bottom:calc(var(--tab) + env(safe-area-inset-bottom) + 16px);transform:translate(-50%,20px);z-index:90;max-width:min(92vw,520px);
+  background:var(--raised);border:1px solid #2b3a55;color:#fff;padding:12px 18px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-weight:600;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#toast.ok{border-color:rgba(43,212,110,.6)}#toast.warn{border-color:rgba(224,165,38,.7)}
+footer{padding:30px var(--gut) 40px;color:#59637a;font-size:12px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="logo" href="#/" aria-label="McD TV home">McD <b>TV</b></a>
+  <nav class="links" aria-label="Main">
+    <a href="#/" data-nav="home">Home</a>
+    <a href="#/browse" data-nav="browse">Browse</a>
+    <a href="#/search" data-nav="search">Search</a>
+    <a href="#/list" data-nav="list">My List</a>
+  </nav>
+  <div class="hdr-right">
+    <a class="tvpill" id="tvpill" href="#/settings" title="TV connection"><span class="dot" id="tvdot"></span><span class="lbl" id="tvlbl">Not linked</span></a>
+    <a class="iconbtn" href="#/settings" aria-label="Settings" data-nav="settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></a>
+  </div>
+</header>
+
+<main id="view" tabindex="-1"></main>
+
+<nav class="tabbar" aria-label="Tabs">
+  <a href="#/" data-nav="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a>
+  <a href="#/browse" data-nav="browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Browse</a>
+  <a href="#/search" data-nav="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search</a>
+  <a href="#/list" data-nav="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z"/></svg>My List</a>
+  <a href="#/settings" data-nav="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>Settings</a>
+</nav>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+// =====================================================================================
+// McD TV web app. Talks to the TV through the same encrypted ntfy.sh relay as the
+// Control page (docs/index.html): link "#<relayId>.<base64urlKey>", topics
+// mcdtv-<id>-in / mcdtv-<id>-out, messages "v1:" + base64url(iv(12) || AES-256-GCM(deflate-raw(JSON))).
+// The key never leaves this browser.
+// =====================================================================================
+const RELAY = "https://ntfy.sh/";
+const TMDB = "https://api.themoviedb.org/3";
+const IMG = "https://image.tmdb.org/t/p/";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const LS = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+function readJSON(k) { try { return JSON.parse(LS.get(k) || "null"); } catch { return null; } }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const LINK_KEY = "mcdtv_link"; // shared with the Control page (same origin)
+const INIT_KEY = "mcdtv_web_init";
+
+// ---------- pairing link ----------
+function parseLink(h) {
+  const m = /#?([a-z0-9]{10,40})\.([A-Za-z0-9_-]{40,50})$/.exec(String(h || "").trim());
+  return m ? { id: m[1], key: m[2] } : null;
+}
+
+// ---------- crypto: deflate-raw + AES-256-GCM, "v1:" + base64url(iv || ciphertext+tag) ----------
+const b64u = {
+  enc(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  },
+  dec: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)),
+};
+async function pipe(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
+async function importKey(k64) { return crypto.subtle.importKey("raw", b64u.dec(k64), "AES-GCM", false, ["encrypt", "decrypt"]); }
+async function encrypt(obj, key) {
+  const zipped = await pipe(new TextEncoder().encode(JSON.stringify(obj)), new CompressionStream("deflate-raw"));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, zipped));
+  const all = new Uint8Array(12 + ct.length); all.set(iv); all.set(ct, 12);
+  return "v1:" + b64u.enc(all);
+}
+async function decrypt(msg, key) {
+  if (!msg || !msg.startsWith("v1:")) return null;
+  try {
+    const all = b64u.dec(msg.slice(3));
+    const pt = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, key, all.slice(12)));
+    return JSON.parse(new TextDecoder().decode(await pipe(pt, new DecompressionStream("deflate-raw"))));
+  } catch { return null; }
+}
+
+// ---------- app state ----------
+const S = {
+  link: null, key: null, es: null,
+  init: readJSON(INIT_KEY), // last "web_init" reply from the TV: keys, filters, list ids
+  manualTmdb: LS.get("mcdtv_web_tmdb"),
+  manualMdb: LS.get("mcdtv_web_mdb"),
+  originPref: LS.get("mcdtv_web_origin"), // "" = same as the TV
+  status: "none", lastInitAsk: 0, initTimer: 0,
+};
+const pending = new Map(); // req id -> timeout
+function keys() {
+  const i = S.init || {};
+  return { tmdb: i.tmdb_key || S.manualTmdb || "", mdb: i.mdblist_key || S.manualMdb || "", fromTv: !!i.tmdb_key };
+}
+function origin() {
+  const o = String(S.originPref || (S.init && S.init.origin_filter) || "no_asia").toLowerCase();
+  return o === "all" || o === "us" ? o : "no_asia";
+}
+const usOnly = () => !S.init || S.init.us_only !== false;
+function lists() { const i = S.init || {}; return { watchlist: i.watchlist || [], favorites: i.favorites || [], cont: i.continue || [] }; }
+const inWL = (type, id) => lists().watchlist.some((r) => r.type === type && +r.id === +id);
+const contFor = (type, id) => lists().cont.find((r) => r.type === type && +r.id === +id);
+function saveInit() { if (S.init) LS.set(INIT_KEY, JSON.stringify(S.init)); }
+
+// ---------- relay ----------
+function setStatus(s) {
+  S.status = s;
+  const dot = $("#tvdot"), lbl = $("#tvlbl");
+  dot.className = "dot " + s;
+  lbl.textContent = { none: "Not linked", connecting: "Connecting", online: "TV online", offline: "TV offline" }[s] || s;
+  const st = $("#setStatus"); if (st) st.innerHTML = statusHTML();
+  // "Getting set up with your TV" spinner: swap it for the offline help once the TV fails to answer.
+  if (s === "offline" && !keys().tmdb && $("#view .spinner")) route();
+}
+async function relaySend(cmd) {
+  const r = await fetch(RELAY + "mcdtv-" + S.link.id + "-in", { method: "POST", body: await encrypt(cmd, S.key) });
+  if (!r.ok) throw new Error("Relay error " + r.status);
+}
+const newReq = () => Math.random().toString(36).slice(2, 10);
+
+async function onRelay(raw, live) {
+  const m = await decrypt(raw, S.key);
+  if (!m || typeof m !== "object") return;
+  if (live) { setStatus("online"); clearTimeout(S.initTimer); }
+  if (m.type === "web_init") applyInit(m);
+  else if (m.type === "ack" && live) {
+    const t = pending.get(m.req);
+    if (t) { clearTimeout(t); pending.delete(m.req); toast(m.note || "Done on the TV", "ok"); }
+  }
+}
+
+function applyInit(m) {
+  const prev = S.init || {};
+  if ((m.ts || 0) < (prev.ts || 0)) return;
+  const hadKey = !!keys().tmdb;
+  const sig = (o) => JSON.stringify([o.watchlist || [], o.favorites || [], o.continue || [], o.origin_filter, o.us_only]);
+  const changed = sig(prev) !== sig(m);
+  if (S.link) m.relay_id = S.link.id;
+  S.init = m; saveInit();
+  if (!hadKey && keys().tmdb) { route(); return; }
+  if (changed) onListsChanged();
+}
+
+async function askInit() {
+  if (!S.link) return;
+  S.lastInitAsk = Date.now();
+  clearTimeout(S.initTimer);
+  S.initTimer = setTimeout(() => { if (S.status !== "online") setStatus("offline"); }, 8000);
+  try { await relaySend({ cmd: "web_init", req: newReq(), ts: Date.now() }); } catch { setStatus("offline"); }
+}
+
+async function connect() {
+  if (S.es) { S.es.close(); S.es = null; }
+  if (!S.link) { setStatus("none"); return; }
+  setStatus("connecting");
+  const topic = RELAY + "mcdtv-" + S.link.id + "-out";
+  // 1) recent replies (keys and lists while the TV is off), 2) live updates, 3) ask the TV for fresh ones.
+  try {
+    const t = await (await fetch(topic + "/json?poll=1&since=12h")).text();
+    for (const line of t.trim().split("\n").filter(Boolean)) {
+      try { const e = JSON.parse(line); if (e.event === "message") await onRelay(e.message, false); } catch {}
+    }
+  } catch {}
+  const es = new EventSource(topic + "/sse");
+  es.onmessage = (e) => { try { const ev = JSON.parse(e.data); if (ev.event === "message") onRelay(ev.message, true); } catch {} };
+  S.es = es;
+  askInit();
+}
+
+/** Sends a command to the TV and shows its answer (or a timeout) as a toast. */
+async function remote(cmd, sending) {
+  if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return false; }
+  const req = newReq();
+  cmd.req = req; cmd.ts = Date.now();
+  pending.set(req, setTimeout(() => { pending.delete(req); toast("TV didn't answer (is McD TV open?)", "warn"); }, 8000));
+  if (sending) toast(sending);
+  try { await relaySend(cmd); return true; }
+  catch (e) { clearTimeout(pending.get(req)); pending.delete(req); toast("Couldn't reach the relay. Check your internet.", "warn"); return false; }
+}
+
+async function pair(l) {
+  const changed = !S.link || S.link.id !== l.id || S.link.key !== l.key;
+  S.link = l;
+  LS.set(LINK_KEY, l.id + "." + l.key);
+  if (!changed && S.key) return;
+  if (S.init && S.init.relay_id && S.init.relay_id !== l.id) { S.init = null; LS.del(INIT_KEY); }
+  try { S.key = await importKey(l.key); } catch { S.link = null; S.key = null; toast("That link is not valid.", "warn"); return; }
+  if (S.init) { S.init.relay_id = l.id; saveInit(); }
+  connect();
+}
+function unpair() {
+  if (S.es) S.es.close();
+  S.es = null; S.link = null; S.key = null; S.init = null;
+  LS.del(LINK_KEY); LS.del(INIT_KEY);
+  setStatus("none");
+}
+
+// ---------- toast ----------
+let toastTimer = 0;
+function toast(text, kind) {
+  const t = $("#toast");
+  t.textContent = text; t.className = "on" + (kind ? " " + kind : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ""; }, kind === "ok" || kind === "warn" ? 4200 : 3000);
+}
+
+// ---------- TMDB ----------
+const ASIA_C = new Set(["JP", "KR", "KP", "CN", "TW", "HK", "MO", "MN", "IN", "PK", "BD", "LK", "NP", "BT", "MV", "AF",
+  "TH", "VN", "LA", "KH", "MM", "MY", "SG", "ID", "PH", "BN", "TL", "KZ", "UZ", "TM", "KG", "TJ"]);
+const ASIA_L = new Set(["ja", "ko", "zh", "cn", "hi", "ta", "te", "ml", "kn", "mr", "bn", "pa", "gu", "ur", "or", "as",
+  "th", "vi", "id", "ms", "tl", "km", "lo", "my", "mn", "ne", "si", "dz", "kk", "uz"]);
+const MOVIE_GENRES = [[28, "Action"], [12, "Adventure"], [16, "Animation"], [35, "Comedy"], [80, "Crime"], [99, "Documentary"], [18, "Drama"],
+  [10751, "Family"], [14, "Fantasy"], [36, "History"], [27, "Horror"], [10402, "Music"], [9648, "Mystery"], [10749, "Romance"],
+  [878, "Sci-Fi"], [53, "Thriller"], [10752, "War"], [37, "Western"]];
+const TV_GENRES = [[10759, "Action & Adventure"], [16, "Animation"], [35, "Comedy"], [80, "Crime"], [99, "Documentary"], [18, "Drama"],
+  [10751, "Family"], [10762, "Kids"], [9648, "Mystery"], [10764, "Reality"], [10765, "Sci-Fi & Fantasy"], [10768, "War & Politics"], [37, "Western"]];
+const LANGS = [["en", "English"], ["es", "Spanish"], ["fr", "French"], ["ko", "Korean"], ["ja", "Japanese"], ["hi", "Hindi"], ["it", "Italian"],
+  ["de", "German"], ["pt", "Portuguese"], ["zh", "Chinese"], ["sv", "Swedish"], ["da", "Danish"], ["no", "Norwegian"], ["tr", "Turkish"], ["th", "Thai"], ["ta", "Tamil"]];
+const SERVICES = [[8, "Netflix", "#b20710"], [9, "Prime Video", "#0f79af"], [337, "Disney+", "#0b2f8f"], [1899, "Max", "#1d2bd6"],
+  [15, "Hulu", "#118a4e"], [350, "Apple TV+", "#2a2f3a"], [531, "Paramount+", "#0050d0"], [386, "Peacock", "#3a2c6e"]];
+const thisYear = new Date().getFullYear();
+
+const tcache = new Map();
+async function tmdb(path, params) {
+  const k = keys().tmdb;
+  if (!k) { const e = new Error("No TMDB key yet"); e.code = "NOKEY"; throw e; }
+  const p = new URLSearchParams({ language: "en-US" });
+  for (const [a, b] of Object.entries(params || {})) if (b !== undefined && b !== null && b !== "") p.set(a, String(b));
+  const headers = {};
+  if (k.length > 40) headers.Authorization = "Bearer " + k; else p.set("api_key", k);
+  const url = TMDB + path + "?" + p.toString();
+  const c = tcache.get(url);
+  if (c && Date.now() - c.at < 600000) return c.data;
+  const r = await fetch(url, { headers });
+  if (!r.ok) throw new Error(r.status === 401 ? "The TMDB key was rejected." : "TMDB error " + r.status);
+  const data = await r.json();
+  tcache.set(url, { data, at: Date.now() });
+  if (tcache.size > 400) tcache.delete(tcache.keys().next().value);
+  return data;
+}
+function norm(o, forced) {
+  if (!o || o.adult === true) return null; // adult titles are never shown
+  const type = forced || o.media_type;
+  if (type !== "movie" && type !== "tv") return null;
+  const date = o.release_date || o.first_air_date || "";
+  const oc = (o.origin_country || o.production_countries || []).map((v) => (typeof v === "string" ? v : v && v.iso_3166_1)).filter(Boolean);
+  return {
+    id: o.id, type, name: o.title || o.name || "Untitled", overview: o.overview || "",
+    poster: o.poster_path || null, backdrop: o.backdrop_path || null, rating: o.vote_average || 0,
+    votes: o.vote_count || 0, year: date.slice(0, 4), date, oc, lang: o.original_language || "",
+  };
+}
+/** Mirrors Title.allowedByOrigin in Tmdb.kt. */
+function allowed(t) {
+  const f = origin();
+  if (f === "us") return t.oc.length ? t.oc.includes("US") : t.lang === "en";
+  if (f === "no_asia") return !t.oc.some((c) => ASIA_C.has(c)) && !ASIA_L.has(t.lang);
+  return true;
+}
+function toList(arr, forced, filter = true) { return (arr || []).map((o) => norm(o, forced)).filter(Boolean).filter((t) => !filter || allowed(t)); }
+const region = () => (usOnly() ? { region: "US" } : {});
+const today = () => new Date().toISOString().slice(0, 10);
+const api = {
+  trending: (type = "all", page = 1) => tmdb(`/trending/${type}/week`, { page }).then((d) => toList(d.results, type === "all" ? null : type)),
+  popular: (type, page = 1) => tmdb(`/${type}/popular`, { ...region(), page }).then((d) => toList(d.results, type)),
+  discover(type, params, page = 1, filter = true) {
+    const p = { sort_by: "popularity.desc", ...params, page, include_adult: "false" };
+    if (filter && origin() === "us" && !p.with_origin_country) p.with_origin_country = "US";
+    if (usOnly() && !p.watch_region) p.watch_region = "US";
+    return tmdb(`/discover/${type}`, p).then((d) => toList(d.results, type, filter));
+  },
+  top: (type, page = 1) => api.discover(type, {
+    sort_by: "vote_average.desc", "vote_count.gte": type === "movie" ? "2500" : "800", with_origin_country: "US",
+    ...(type === "movie" ? { certification_country: "US", certification: "G|PG|PG-13|R" } : {}),
+  }, page),
+  nowPlaying: (page = 1) => tmdb("/movie/now_playing", { ...region(), page }).then((d) => toList(d.results, "movie")),
+  newShows: (page = 1) => api.discover("tv", { sort_by: "first_air_date.desc", "first_air_date.lte": today(), "vote_count.gte": "20" }, page),
+  byYear: (type, y, page = 1) => api.discover(type, type === "movie" ? { primary_release_year: y } : { first_air_date_year: y }, page),
+  // Picking a language is an explicit choice, so no origin filter (as on the TV).
+  byLang: (type, lang, page = 1) => api.discover(type, { with_original_language: lang, "vote_count.gte": "20" }, page, false),
+  byGenre: (type, g, page = 1) => api.discover(type, { with_genres: g }, page),
+  byService: (type, prov, page = 1) => api.discover(type, { with_watch_providers: prov, watch_region: "US", with_watch_monetization_types: "flatrate" }, page),
+  async search(q) {
+    const d = await tmdb("/search/multi", { query: q, include_adult: "false" });
+    const res = d.results || [];
+    return {
+      titles: toList(res.filter((o) => o.media_type !== "person"), null),
+      people: res.filter((o) => o.media_type === "person" && !o.adult),
+    };
+  },
+  details: (type, id) => tmdb(`/${type}/${id}`, { append_to_response: "credits,similar,external_ids,videos,watch/providers" }),
+  lite: (type, id) => tmdb(`/${type}/${id}`),
+  season: (id, n) => tmdb(`/tv/${id}/season/${n}`),
+  person: (id) => tmdb(`/person/${id}`, { append_to_response: "combined_credits" }),
+};
+async function mapPool(items, n, fn) {
+  const out = new Array(items.length); let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) { const k = i++; try { out[k] = await fn(items[k], k); } catch { out[k] = null; } }
+  }));
+  return out;
+}
+/** List ids from the TV -> cards. The user's own lists are not origin-filtered. */
+async function refsToTitles(refs, cap) {
+  const got = await mapPool(refs.slice(0, cap), 6, async (r) => { const t = norm(await api.lite(r.type, r.id), r.type); if (t) t.ref = r; return t; });
+  return got.filter(Boolean);
+}
+async function mdbRatings(type, id) {
+  const k = keys().mdb; if (!k) return null;
+  try {
+    const r = await fetch(`https://mdblist.com/api/?apikey=${encodeURIComponent(k)}&tm=${id}&m=${type === "tv" ? "show" : "movie"}`);
+    if (!r.ok) return null;
+    const o = await r.json();
+    const num = (src) => { const x = (o.ratings || []).find((v) => v && v.source === src && v.value != null && +v.value > 0); return x ? +x.value : null; };
+    return { imdb: num("imdb"), rt: num("tomatoes"), aud: num("popcorn") || num("tomatoesaudience"), meta: num("metacritic") };
+  } catch { return null; }
+}
+
+// ---------- small render helpers ----------
+const typeLabel = (t) => (t === "tv" ? "Series" : "Movie");
+function imgTag(path, size, alt) { return path ? `<img loading="lazy" decoding="async" src="${IMG + size + path}" alt="${esc(alt || "")}" onerror="this.remove()">` : ""; }
+function fmtRuntime(m) { if (!m) return ""; const h = Math.floor(m / 60), r = m % 60; return h ? `${h}h${r ? " " + r + "m" : ""}` : `${r}m`; }
+function fmtDate(d) { if (!d) return ""; const x = new Date(d + "T12:00:00"); return isNaN(x) ? d : x.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); }
+function posterCard(t) {
+  const r = t.rating ? `<span class="badge"><span class="s">&#9733;</span> ${t.rating.toFixed(1)}</span>` : "";
+  const w = inWL(t.type, t.id) ? `<span class="wlmark" title="In your watchlist">&#10003;</span>` : "";
+  return `<a class="card" href="#/title/${t.type}/${t.id}" aria-label="${esc(t.name)}${t.year ? ", " + t.year : ""}">
+    <div class="poster">${t.poster ? "" : `<div class="ph">${esc(t.name)}</div>`}${imgTag(t.poster, "w342", "")}${r}${w}</div>
+    <div class="cap">${esc(t.name)}</div><div class="sub">${esc([t.year, typeLabel(t.type)].filter(Boolean).join(" · "))}</div></a>`;
+}
+function contCard(t) {
+  const r = t.ref || {};
+  const label = t.type === "tv" && r.season > 0 ? `S${r.season} E${r.episode}` : typeLabel(t.type);
+  const pct = Math.round(Math.max(0, Math.min(1, +r.progress || 0)) * 100);
+  return `<div class="wcard"><a href="#/title/${t.type}/${t.id}" aria-label="${esc(t.name)}, ${esc(label)}">
+    <div class="wimg">${imgTag(t.backdrop || t.poster, "w780", "")}<div class="prog"><i style="width:${pct}%"></i></div></div>
+    <div class="cap">${esc(t.name)}</div><div class="sub">${esc(label)}${pct ? " · " + pct + "% watched" : ""}</div></a>
+    <button class="miniplay" ${playAttrs(t, r.season, r.episode)} aria-label="Resume ${esc(t.name)} on TV" title="Resume on TV">&#9654;</button></div>`;
+}
+function personCard(p) {
+  const initials = String(p.name || "?").split(/\s+/).map((w) => w[0]).slice(0, 2).join("");
+  return `<a class="pcard" href="#/person/${p.id}" aria-label="${esc(p.name)}">
+    <div class="face">${p.profile_path ? imgTag(p.profile_path, "w185", "") : esc(initials)}</div>
+    <div class="cap">${esc(p.name)}</div><div class="sub">${esc(p.character || p.job || p.known_for_department || "")}</div></a>`;
+}
+function playAttrs(t, season, episode) {
+  let a = `data-act="play" data-type="${t.type}" data-id="${t.id}" data-name="${esc(t.name)}"`;
+  if (t.type === "tv" && season > 0 && episode > 0) a += ` data-season="${season}" data-episode="${episode}"`;
+  return a;
+}
+function wlButton(t) {
+  const on = inWL(t.type, t.id);
+  return `<button class="btn" data-act="wl" data-type="${t.type}" data-id="${t.id}" data-name="${esc(t.name)}" data-poster="${esc(t.poster || "")}" data-backdrop="${esc(t.backdrop || "")}" data-year="${esc(t.year || "")}" aria-pressed="${on}">${on ? "&#10003; In Watchlist" : "+ Watchlist"}</button>`;
+}
+function rowShell(id, title, href, wide) {
+  const sk = Array.from({ length: 8 }, () => `<div class="sk ${wide ? "sk-wide" : "sk-poster"}"></div>`).join("");
+  return `<section class="row" id="row-${id}"><div class="row-h"><h2>${esc(title)}</h2>${href ? `<a href="${href}">See all &#8250;</a>` : ""}</div>
+    <button class="arr l" aria-label="Scroll left" tabindex="-1">&#8249;</button><div class="scroller">${sk}</div><button class="arr r" aria-label="Scroll right" tabindex="-1">&#8250;</button></section>`;
+}
+async function fillRow(id, promise, cardFn, tok, emptyText) {
+  const row = document.getElementById("row-" + id); if (!row) return;
+  try {
+    const items = await promise;
+    if (tok !== routeTok || !row.isConnected) return;
+    if (!items || !items.length) { if (emptyText) row.querySelector(".scroller").outerHTML = `<div class="empty">${esc(emptyText)}</div>`; else row.classList.add("hidden"); return; }
+    row.querySelector(".scroller").innerHTML = items.map(cardFn).join("");
+  } catch (e) {
+    if (tok !== routeTok || !row.isConnected) return;
+    const sc = row.querySelector(".scroller");
+    if (sc) sc.outerHTML = `<div class="empty">${esc(e.message || "Couldn't load this row.")}</div>`;
+  }
+}
+function gridSkeleton(n) { return `<div class="grid">${Array.from({ length: n }, () => `<div class="sk sk-poster"></div>`).join("")}</div>`; }
+function noKeyHTML() {
+  if (S.link && S.status !== "offline") {
+    return `<div class="notice"><div class="spinner"></div><h2>Getting set up with your TV</h2><p class="muted">McD TV on the TV sends this app its TMDB key. Make sure McD TV is open on the TV.</p></div>`;
+  }
+  return `<div class="notice"><h2>Posters and info need a TMDB key</h2>
+    <p class="muted">${S.link ? "Your TV didn't answer. Open McD TV on the TV, or add a TMDB key in Settings." : "Link your TV, or add your own free TMDB key in Settings."}</p>
+    <div class="actions"><a class="btn primary" href="#/settings">Open Settings</a>${S.link ? `<button class="btn" data-act="retry">Try again</button>` : `<a class="btn" href="#/pair">Link your TV</a>`}</div></div>`;
+}
+
+// ---------- router ----------
+let routeTok = 0, heroTimer = 0, curHash = "";
+const scrollMem = new Map();
+function parseRoute() {
+  const h = location.hash.replace(/^#/, "");
+  if (!h.startsWith("/")) return { path: [], q: new URLSearchParams() };
+  const [p, qs] = h.slice(1).split("?");
+  return { path: p.split("/").filter(Boolean).map(decodeURIComponent), q: new URLSearchParams(qs || "") };
+}
+function setActive(name) {
+  $$("[data-nav]").forEach((a) => {
+    const on = a.dataset.nav === name;
+    a.classList.toggle("on", on);
+    if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
+}
+async function route() {
+  const l = parseLink(location.hash);
+  if (l) {
+    history.replaceState(null, "", location.pathname + location.search + "#/");
+    await pair(l);
+    toast("Linked to your TV", "ok");
+  }
+  if (curHash) scrollMem.set(curHash, window.scrollY);
+  curHash = location.hash || "#/";
+  clearInterval(heroTimer);
+  const tok = ++routeTok;
+  const v = $("#view");
+  const { path, q } = parseRoute();
+  const name = path[0] || "home";
+  setActive(name);
+  const needsKey = !["settings", "pair"].includes(name);
+  if (!S.link && !keys().tmdb && needsKey) { renderPair(v); setActive("settings"); return; }
+  window.scrollTo(0, 0);
+  if (needsKey && !keys().tmdb) { v.innerHTML = noKeyHTML(); return; }
+  switch (name) {
+    case "home": renderHome(v, tok); break;
+    case "browse": path[1] ? renderGrid(v, tok, path[1], q) : renderBrowse(v); break;
+    case "search": renderSearch(v, tok, q.get("q") || ""); break;
+    case "title": renderTitle(v, tok, path[1] === "tv" ? "tv" : "movie", +path[2] || 0); break;
+    case "person": renderPerson(v, tok, +path[1] || 0); break;
+    case "list": renderList(v, tok, q.get("tab") || "watchlist"); break;
+    case "settings": renderSettings(v); break;
+    case "pair": renderPair(v); break;
+    default: renderHome(v, tok);
+  }
+  const saved = scrollMem.get(curHash);
+  if (saved) { setTimeout(() => { if (tok === routeTok) window.scrollTo(0, saved); }, 60); setTimeout(() => { if (tok === routeTok && window.scrollY < saved - 4) window.scrollTo(0, saved); }, 900); }
+}
+
+// ---------- Home ----------
+function renderHome(v, tok) {
+  const L = lists();
+  v.innerHTML = `<section class="hero" id="hero"><div class="sk" style="position:absolute;inset:0;border-radius:0"></div></section>
+    ${rowShell("continue", "Continue Watching", "#/list?tab=continue", true)}
+    ${rowShell("watchlist", "My Watchlist", "#/list")}
+    ${rowShell("trending", "Trending This Week", "#/browse/trending")}
+    ${rowShell("pm", "Popular Movies", "#/browse/popular?type=movie")}
+    ${rowShell("ps", "Popular Shows", "#/browse/popular?type=tv")}
+    ${rowShell("top", "Top Rated", "#/browse/top?type=movie")}
+    ${rowShell("new", "New Releases", "#/browse/new?type=movie")}
+    <footer>Posters and info from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>`;
+  homeListRows(tok, L);
+  const trending = api.trending("all");
+  trending.then((items) => { if (tok === routeTok) renderHero(items.filter((t) => t.backdrop).slice(0, 6), tok); })
+    .catch((e) => { const h = $("#hero"); if (h && tok === routeTok) h.innerHTML = `<div class="notice" style="padding-top:120px"><h2>Couldn't load</h2><p class="muted">${esc(e.message)}</p><button class="btn" data-act="reload">Try again</button></div>`; });
+  fillRow("trending", trending, posterCard, tok);
+  fillRow("pm", api.popular("movie"), posterCard, tok);
+  fillRow("ps", api.popular("tv"), posterCard, tok);
+  fillRow("top", api.top("movie"), posterCard, tok);
+  fillRow("new", api.nowPlaying(), posterCard, tok);
+}
+function homeListRows(tok, L) {
+  const cr = $("#row-continue"), wr = $("#row-watchlist");
+  if (cr) { if (!L.cont.length) cr.classList.add("hidden"); else { cr.classList.remove("hidden"); fillRow("continue", refsToTitles(L.cont, 20), contCard, tok); } }
+  if (wr) { if (!L.watchlist.length) wr.classList.add("hidden"); else { wr.classList.remove("hidden"); fillRow("watchlist", refsToTitles(L.watchlist, 20), posterCard, tok); } }
+}
+function renderHero(items, tok) {
+  const h = $("#hero"); if (!h || !items.length) { if (h) h.remove(); return; }
+  h.innerHTML = items.map((t, i) => `<div class="slide${i ? "" : " on"}" aria-hidden="${i ? "true" : "false"}">
+      <div class="bd" style="background-image:url('${IMG}w1280${t.backdrop}')"></div><div class="shade"></div>
+      <div class="content"><div class="kicker">${i === 0 ? "#1 Trending this week" : "Trending " + typeLabel(t.type)}</div>
+        <h1>${esc(t.name)}</h1>
+        <div class="meta">${esc([typeLabel(t.type), t.year, t.rating ? "★ " + t.rating.toFixed(1) : ""].filter(Boolean).join("  ·  "))}</div>
+        <p>${esc(t.overview)}</p>
+        <div class="actions"><button class="btn primary" ${playAttrs(t)}>&#9654; Play on TV</button><a class="btn" href="#/title/${t.type}/${t.id}">More info</a></div>
+      </div></div>`).join("") +
+    `<div class="dots">${items.map((_, i) => `<button aria-label="Show item ${i + 1}" class="${i ? "" : "on"}" data-slide="${i}"></button>`).join("")}</div>`;
+  let cur = 0;
+  const show = (n) => {
+    const slides = $$(".slide", h), dots = $$(".dots button", h);
+    if (!slides.length) return;
+    cur = (n + slides.length) % slides.length;
+    slides.forEach((s, i) => { s.classList.toggle("on", i === cur); s.setAttribute("aria-hidden", i === cur ? "false" : "true"); });
+    dots.forEach((d, i) => d.classList.toggle("on", i === cur));
+  };
+  h.addEventListener("click", (e) => { const d = e.target.closest("[data-slide]"); if (d) { show(+d.dataset.slide); clearInterval(heroTimer); } });
+  if (items.length > 1 && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    heroTimer = setInterval(() => { if (tok !== routeTok) return clearInterval(heroTimer); if (!h.matches(":hover") && !h.contains(document.activeElement)) show(cur + 1); }, 8000);
+  }
+}
+function onListsChanged() {
+  const { path } = parseRoute();
+  const name = path[0] || "home";
+  if (name === "home" && $("#row-continue")) {
+    // Rebuild only the two list rows.
+    const c = $("#row-continue"), w = $("#row-watchlist");
+    if (c) c.outerHTML = rowShell("continue", "Continue Watching", "#/list?tab=continue", true);
+    if (w) w.outerHTML = rowShell("watchlist", "My Watchlist", "#/list");
+    homeListRows(routeTok, lists());
+  } else if (name === "list") route();
+  syncWL();
+}
+function syncWL() {
+  $$('[data-act="wl"]').forEach((b) => {
+    const on = inWL(b.dataset.type, b.dataset.id);
+    b.setAttribute("aria-pressed", String(on));
+    b.innerHTML = on ? "&#10003; In Watchlist" : "+ Watchlist";
+  });
+}
+
+// ---------- Browse ----------
+const KINDS = {
+  trending: { title: "Trending", types: ["all", "movie", "tv"], fetch: (ty, v, p) => api.trending(ty, p) },
+  popular: { title: "Popular", types: ["movie", "tv"], fetch: (ty, v, p) => api.popular(ty, p) },
+  top: { title: "Top Rated", types: ["movie", "tv"], fetch: (ty, v, p) => api.top(ty, p) },
+  new: { title: "New Releases", types: ["movie", "tv"], fetch: (ty, v, p) => (ty === "movie" ? api.nowPlaying(p) : api.newShows(p)) },
+  year: { title: "By Year", types: ["movie", "tv"], picker: "year", fetch: (ty, v, p) => api.byYear(ty, +v || thisYear, p) },
+  lang: { title: "By Language", types: ["movie", "tv"], picker: "lang", fetch: (ty, v, p) => api.byLang(ty, v || "en", p) },
+  genre: { title: "Genres", types: ["movie", "tv"], picker: "genre", fetch: (ty, v, p) => api.byGenre(ty, v || (ty === "tv" ? 10759 : 28), p) },
+  service: { title: "Streaming", types: ["movie", "tv"], picker: "service", fetch: (ty, v, p) => api.byService(ty, v || 8, p) },
+};
+function renderBrowse(v) {
+  const tile = (href, name, sub, glow) => `<a class="tile" href="${href}" style="${glow ? "--glow:" + glow : ""}">${esc(name)}<small>${esc(sub)}</small></a>`;
+  v.innerHTML = `<div class="page"><h1>Browse</h1>
+    <div class="tiles">
+      ${tile("#/browse/trending", "Trending", "Most watched this week")}
+      ${tile("#/browse/popular?type=movie", "Popular", "Movies and shows")}
+      ${tile("#/browse/top?type=movie", "Top Rated", "The best rated, US titles")}
+      ${tile("#/browse/new?type=movie", "New Releases", "In theaters and new series")}
+      ${tile("#/browse/year?type=movie&v=" + thisYear, "By Year", "Pick any year")}
+      ${tile("#/browse/lang?type=movie&v=en", "By Language", "Original language")}
+      ${tile("#/browse/genre?type=movie&v=28", "Genres", "Action, Comedy, Drama and more")}
+      ${tile("#/browse/service?type=movie&v=8", "Streaming Services", "What's on each service")}
+    </div>
+    <div class="section-h"><h2>Streaming services</h2></div>
+    <div class="tiles">${SERVICES.map(([id, n, c]) => `<a class="tile svc" href="#/browse/service?type=movie&v=${id}" style="background:linear-gradient(140deg,${c},#0b1220)">${esc(n)}<small style="color:#dfe6f3">Movies and shows</small></a>`).join("")}</div>
+    <div class="section-h"><h2>Movie genres</h2></div>
+    <div class="chips" style="flex-wrap:wrap">${MOVIE_GENRES.map(([id, n]) => `<a class="chip" href="#/browse/genre?type=movie&v=${id}">${esc(n)}</a>`).join("")}</div>
+    <div class="section-h"><h2>Show genres</h2></div>
+    <div class="chips" style="flex-wrap:wrap">${TV_GENRES.map(([id, n]) => `<a class="chip" href="#/browse/genre?type=tv&v=${id}">${esc(n)}</a>`).join("")}</div>
+    <div class="section-h"><h2>Languages</h2></div>
+    <div class="chips" style="flex-wrap:wrap">${LANGS.map(([c, n]) => `<a class="chip" href="#/browse/lang?type=movie&v=${c}">${esc(n)}</a>`).join("")}</div>
+  </div>`;
+}
+function renderGrid(v, tok, kind, q) {
+  const K = KINDS[kind] || KINDS.trending;
+  if (!KINDS[kind]) kind = "trending";
+  let type = q.get("type"); if (!K.types.includes(type)) type = K.types[0];
+  let val = q.get("v") || "";
+  if (K.picker === "genre") { const gl = type === "tv" ? TV_GENRES : MOVIE_GENRES; if (!gl.some(([id]) => String(id) === val)) val = String(gl[0][0]); }
+  const href = (ty, vv) => `#/browse/${kind}?type=${ty}${vv ? "&v=" + encodeURIComponent(vv) : ""}`;
+  let title = K.title, picker = "";
+  if (K.picker === "year") {
+    const y = +val || thisYear; title = "Released in " + y;
+    picker = `<select id="yearSel" aria-label="Year">${Array.from({ length: thisYear - 1949 + 1 }, (_, i) => thisYear + 1 - i).map((yy) => `<option ${yy === y ? "selected" : ""}>${yy}</option>`).join("")}</select>`;
+  } else if (K.picker === "lang") {
+    const cur = val || "en"; title = (LANGS.find(([c]) => c === cur) || [cur, cur])[1];
+    picker = `<div class="chips">${LANGS.map(([c, n]) => `<a class="chip${c === cur ? " on" : ""}" href="${href(type, c)}">${esc(n)}</a>`).join("")}</div>`;
+  } else if (K.picker === "genre") {
+    const gl = type === "tv" ? TV_GENRES : MOVIE_GENRES; title = (gl.find(([id]) => String(id) === val) || [0, "Genres"])[1];
+    picker = `<div class="chips">${gl.map(([id, n]) => `<a class="chip${String(id) === val ? " on" : ""}" href="${href(type, id)}">${esc(n)}</a>`).join("")}</div>`;
+  } else if (K.picker === "service") {
+    const cur = +val || 8; title = (SERVICES.find(([id]) => id === cur) || [0, "Streaming"])[1];
+    picker = `<div class="chips">${SERVICES.map(([id, n]) => `<a class="chip${id === cur ? " on" : ""}" href="${href(type, id)}">${esc(n)}</a>`).join("")}</div>`;
+  }
+  const tl = { all: "All", movie: "Movies", tv: "Shows" };
+  const typeSwitch = K.types.length > 1 ? `<div class="seg" role="tablist">${K.types.map((t) => {
+    let vv = val;
+    if (K.picker === "genre" && t !== type) { const gl = t === "tv" ? TV_GENRES : MOVIE_GENRES; if (!gl.some(([id]) => String(id) === val)) vv = String(gl[0][0]); }
+    return `<button role="tab" aria-selected="${t === type}" class="${t === type ? "on" : ""}" data-href="${href(t, vv)}">${tl[t]}</button>`;
+  }).join("")}</div>` : "";
+  v.innerHTML = `<div class="page"><a class="muted" href="#/browse" style="font-size:13px;font-weight:600">&#8249; Browse</a><h1>${esc(title)}</h1>
+    <div class="toolbar">${typeSwitch}${K.picker === "year" ? picker : ""}</div>
+    ${K.picker && K.picker !== "year" ? picker : ""}
+    <div id="gridWrap">${gridSkeleton(18)}</div>
+    <div class="more"><button class="btn hidden" id="moreBtn">Load more</button></div></div>`;
+  $$(".seg button", v).forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.href; }));
+  const ys = $("#yearSel", v); if (ys) ys.addEventListener("change", () => { location.hash = href(type, ys.value); });
+  let page = 0, busy = false, done = false; const seen = new Set();
+  const wrap = $("#gridWrap", v), more = $("#moreBtn", v);
+  async function load() {
+    if (busy || done) return; busy = true; more.textContent = "Loading…";
+    try {
+      const items = await K.fetch(type, val, page + 1);
+      if (tok !== routeTok) return;
+      page++;
+      const fresh = items.filter((t) => { const k = t.type + ":" + t.id; if (seen.has(k)) return false; seen.add(k); return true; });
+      if (page === 1) wrap.innerHTML = `<div class="grid" id="grid"></div>`;
+      $("#grid", wrap).insertAdjacentHTML("beforeend", fresh.map(posterCard).join(""));
+      if (page === 1 && !fresh.length) wrap.innerHTML = `<p class="muted">Nothing here with your current settings.</p>`;
+      if (!items.length || page >= 30) done = true;
+      more.classList.toggle("hidden", done); more.textContent = "Load more";
+      // Short pages (origin filter removed many): keep the screen full.
+      if (!done && document.documentElement.scrollHeight < window.innerHeight * 1.6) { busy = false; return load(); }
+    } catch (e) {
+      if (tok !== routeTok) return;
+      if (page === 0) wrap.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+      more.textContent = "Try again"; more.classList.remove("hidden");
+    } finally { busy = false; }
+  }
+  more.addEventListener("click", load);
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((es) => { if (tok !== routeTok) return io.disconnect(); if (es.some((e) => e.isIntersecting)) load(); }, { rootMargin: "600px" });
+    io.observe(more.parentElement);
+  }
+  load();
+}
+
+// ---------- Search ----------
+let searchTimer = 0;
+function renderSearch(v, tok, q0) {
+  v.innerHTML = `<div class="page"><h1>Search</h1>
+    <div class="searchbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="Movies, shows and people" autocomplete="off" enterkeyhint="search" value="${esc(q0)}" aria-label="Search"></div>
+    <div id="results"></div></div>`;
+  const input = $("#q", v), out = $("#results", v);
+  let qtok = 0;
+  async function run(q) {
+    const my = ++qtok;
+    history.replaceState(null, "", "#/search" + (q ? "?q=" + encodeURIComponent(q) : ""));
+    curHash = location.hash;
+    if (!q.trim()) {
+      out.innerHTML = rowShell("sugg", "Trending searches", "#/browse/trending").replace('class="row"', 'class="row" style="margin:0 calc(-1*var(--gut))"');
+      fillRow("sugg", api.trending("all"), posterCard, tok);
+      return;
+    }
+    out.innerHTML = gridSkeleton(12);
+    try {
+      const r = await api.search(q.trim());
+      if (my !== qtok || tok !== routeTok) return;
+      if (!r.titles.length && !r.people.length) { out.innerHTML = `<p class="muted">No results for "${esc(q)}".</p>`; return; }
+      out.innerHTML = (r.people.length ? `<div class="section-h" style="margin-top:4px"><h2>People</h2></div><div class="scroller" style="margin:0 calc(-1*var(--gut));padding-top:4px">${r.people.slice(0, 20).map(personCard).join("")}</div>` : "") +
+        (r.titles.length ? `<div class="section-h"><h2>Movies and shows</h2></div><div class="grid">${r.titles.map(posterCard).join("")}</div>` : "");
+    } catch (e) { if (my === qtok) out.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+  }
+  input.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => run(input.value), 350); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { clearTimeout(searchTimer); run(input.value); input.blur(); } });
+  run(q0);
+  if (matchMedia("(min-width:900px)").matches || !q0) setTimeout(() => input.focus({ preventScroll: true }), 30);
+}
+
+// ---------- Title page ----------
+function pickTrailer(arr) {
+  const vids = (arr || []).filter((x) => x && /youtube/i.test(x.site || "") && x.key);
+  const tr = vids.filter((x) => x.type === "Trailer");
+  const p = tr.find((x) => x.official) || tr[0] || vids.find((x) => x.type === "Teaser");
+  return p ? p.key : null;
+}
+async function renderTitle(v, tok, type, id) {
+  v.innerHTML = `<div class="tp"><div class="tp-bd sk" style="border-radius:0"></div><div class="tp-inner"><div class="tp-info">
+    <div class="sk sk-line" style="width:60%;height:38px"></div><div class="sk sk-line" style="width:40%"></div><div class="sk sk-line" style="width:90%"></div><div class="sk sk-line" style="width:80%"></div></div></div></div>`;
+  let d;
+  try { d = await api.details(type, id); } catch (e) {
+    if (tok === routeTok) v.innerHTML = `<div class="notice"><h2>Couldn't load this title</h2><p class="muted">${esc(e.message)}</p><button class="btn" data-act="reload">Try again</button></div>`;
+    return;
+  }
+  if (tok !== routeTok) return;
+  const t = norm(d, type);
+  if (!t) { v.innerHTML = `<div class="notice"><h2>Not available</h2></div>`; return; }
+  document.title = t.name + " | McD TV";
+  const genres = (d.genres || []).map((g) => g.name);
+  const runtime = type === "movie" ? d.runtime : (d.episode_run_time || [])[0];
+  const seasons = (d.seasons || []).filter((s) => s.season_number > 0);
+  const trailer = pickTrailer(d.videos && d.videos.results);
+  const cast = ((d.credits && d.credits.cast) || []).slice(0, 24);
+  const directors = ((d.credits && d.credits.crew) || []).filter((c) => c.job === "Director").map((c) => c.name).slice(0, 2);
+  const creators = (d.created_by || []).map((c) => c.name).slice(0, 2);
+  const similar = toList(d.similar && d.similar.results, type);
+  const prov = (((d["watch/providers"] || {}).results || {}).US || {}).flatrate || [];
+  const cont = contFor(type, id);
+  const resumeLabel = cont && type === "tv" && cont.season > 0 ? `&#9654; Resume S${cont.season} E${cont.episode} on TV` : cont ? "&#9654; Resume on TV" : "&#9654; Play on TV";
+  const meta = [t.year, type === "tv" ? (seasons.length ? seasons.length + (seasons.length === 1 ? " season" : " seasons") : "Series") : "Movie",
+    fmtRuntime(runtime), genres.slice(0, 3).join(", ")].filter(Boolean);
+  v.innerHTML = `<div class="tp">
+    <div class="tp-bd" style="${t.backdrop ? `background-image:url('${IMG}w1280${t.backdrop}')` : ""}"></div>
+    <div class="tp-inner">
+      <div class="tp-poster">${imgTag(t.poster, "w342", t.name)}</div>
+      <div class="tp-info">
+        <h1>${esc(t.name)}</h1>
+        <div class="tp-meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</div>
+        <div class="scores">${t.rating ? `<span class="score"><span class="k">TMDB</span>${t.rating.toFixed(1)}</span>` : ""}<span id="mdbScores"></span></div>
+      </div>
+    </div>
+    <div class="page" style="padding-top:4px">
+      ${d.tagline ? `<p class="tagline">${esc(d.tagline)}</p>` : ""}
+      <p class="overview">${esc(t.overview || "No description yet.")}</p>
+      <div class="actions">
+        <button class="btn primary" ${playAttrs(t, cont && cont.season, cont && cont.episode)}>${resumeLabel}</button>
+        <button class="btn" data-act="open" data-type="${type}" data-id="${id}" data-name="${esc(t.name)}">Open on TV</button>
+        ${wlButton(t)}
+        ${trailer ? `<button class="btn" data-act="trailer">Trailer</button>` : ""}
+      </div>
+      ${prov.length ? `<div class="prov">Streaming on ${prov.slice(0, 6).map((p) => `<b>${esc(p.provider_name)}</b>`).join(", ")}</div>` : ""}
+      ${directors.length ? `<div class="prov">Directed by <b>${esc(directors.join(", "))}</b></div>` : creators.length ? `<div class="prov">Created by <b>${esc(creators.join(", "))}</b></div>` : ""}
+      ${trailer ? `<div class="section-h" id="trailerH"><h2>Trailer</h2></div><button class="trailer" id="trailerBox" data-yt="${esc(trailer)}" aria-label="Play trailer">
+        <img loading="lazy" src="https://i.ytimg.com/vi/${encodeURIComponent(trailer)}/hqdefault.jpg" alt=""><span class="pb">&#9654;</span></button>` : ""}
+      ${type === "tv" && seasons.length ? `<div class="section-h"><h2>Episodes</h2></div><div class="chips" id="seasonChips">${seasons.map((s) => `<button class="chip" data-season="${s.season_number}">${esc(s.name || "Season " + s.season_number)}</button>`).join("")}</div><div class="eps" id="eps"></div>` : ""}
+    </div>
+    ${cast.length ? `<section class="row"><div class="row-h"><h2>Cast</h2></div><button class="arr l" tabindex="-1" aria-label="Scroll left">&#8249;</button><div class="scroller">${cast.map(personCard).join("")}</div><button class="arr r" tabindex="-1" aria-label="Scroll right">&#8250;</button></section>` : ""}
+    ${similar.length ? `<section class="row"><div class="row-h"><h2>More Like This</h2></div><button class="arr l" tabindex="-1" aria-label="Scroll left">&#8249;</button><div class="scroller">${similar.map(posterCard).join("")}</div><button class="arr r" tabindex="-1" aria-label="Scroll right">&#8250;</button></section>` : ""}
+  </div>`;
+  // MDBList scores (IMDb, Rotten Tomatoes) when a key exists.
+  mdbRatings(type, id).then((r) => {
+    const el = $("#mdbScores"); if (!r || !el || tok !== routeTok) return;
+    el.outerHTML = [r.imdb ? `<span class="score imdb"><span class="k">IMDb</span>${r.imdb.toFixed(1)}</span>` : "",
+      r.rt ? `<span class="score rt"><span class="k">RT</span>${Math.round(r.rt)}%</span>` : "",
+      r.aud ? `<span class="score rt"><span class="k">Audience</span>${Math.round(r.aud)}%</span>` : "",
+      r.meta ? `<span class="score"><span class="k">Metacritic</span>${Math.round(r.meta)}</span>` : ""].join("");
+  });
+  if (type === "tv" && seasons.length) {
+    const start = cont && seasons.some((s) => s.season_number === cont.season) ? cont.season : seasons[0].season_number;
+    const chips = $("#seasonChips", v);
+    chips.addEventListener("click", (e) => { const b = e.target.closest("[data-season]"); if (b) loadSeason(+b.dataset.season); });
+    async function loadSeason(n) {
+      $$("[data-season]", chips).forEach((b) => b.classList.toggle("on", +b.dataset.season === n));
+      const eps = $("#eps", v);
+      eps.innerHTML = Array.from({ length: 3 }, () => `<div class="sk" style="height:96px"></div>`).join("");
+      try {
+        const s = await api.season(id, n);
+        if (tok !== routeTok) return;
+        const list = s.episodes || [];
+        eps.innerHTML = list.length ? list.map((e) => {
+          const isResume = cont && cont.season === n && cont.episode === e.episode_number;
+          return `<div class="ep${isResume ? " resume" : ""}"><div class="still">${imgTag(e.still_path, "w300", "")}</div>
+            <div class="body"><div class="t">${e.episode_number}. ${esc(e.name || "Episode " + e.episode_number)}</div>
+            <div class="d">${esc([fmtDate(e.air_date), e.runtime ? e.runtime + "m" : ""].filter(Boolean).join(" · "))}${isResume ? ` · <span style="color:var(--bright)">Up next for you</span>` : ""}</div>
+            <p class="o">${esc(e.overview || "")}</p>
+            <button class="btn small${isResume ? " blue" : ""}" ${playAttrs(t, n, e.episode_number)}>&#9654; ${isResume ? "Resume" : "Play"} on TV</button></div></div>`;
+        }).join("") : `<p class="muted">No episodes listed yet.</p>`;
+      } catch (err) { if (tok === routeTok) eps.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
+    }
+    loadSeason(start);
+  }
+}
+function playTrailer() {
+  const box = $("#trailerBox"); if (!box) return;
+  box.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (box.querySelector("iframe")) return;
+  const k = encodeURIComponent(box.dataset.yt);
+  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${k}?autoplay=1&rel=0&playsinline=1" title="Trailer" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+}
+
+// ---------- Person page ----------
+async function renderPerson(v, tok, id) {
+  v.innerHTML = `<div class="page"><div class="pp"><div class="ph sk"></div><div class="info"><div class="sk sk-line" style="width:50%;height:32px"></div><div class="sk sk-line" style="width:30%"></div><div class="sk sk-line"></div><div class="sk sk-line" style="width:85%"></div></div></div></div>`;
+  let o;
+  try { o = await api.person(id); } catch (e) {
+    if (tok === routeTok) v.innerHTML = `<div class="notice"><h2>Couldn't load</h2><p class="muted">${esc(e.message)}</p></div>`;
+    return;
+  }
+  if (tok !== routeTok) return;
+  if (o.adult) { v.innerHTML = `<div class="notice"><h2>Not available</h2></div>`; return; }
+  document.title = (o.name || "Person") + " | McD TV";
+  const cr = o.combined_credits || {};
+  // Their whole catalogue, like the TV's person page (not origin-filtered; adult titles still removed).
+  const acting = [];
+  const seenA = new Set();
+  for (const j of cr.cast || []) {
+    const t = norm(j, null); if (!t) continue;
+    if (t.type === "tv" && /self/i.test(j.character || "") && (j.episode_count || 0) <= 1) continue;
+    const k = t.type + ":" + t.id; if (seenA.has(k)) continue; seenA.add(k);
+    t.votes = j.vote_count || 0; acting.push(t);
+  }
+  const crewMap = new Map();
+  for (const j of cr.crew || []) {
+    const t = norm(j, null); if (!t) continue;
+    const k = t.type + ":" + t.id;
+    if (!crewMap.has(k)) { t.jobs = []; crewMap.set(k, t); }
+    const e = crewMap.get(k); if (j.job && !e.jobs.includes(j.job)) e.jobs.push(j.job);
+  }
+  const crew = Array.from(crewMap.values());
+  const byYear = (a, b) => (b.year || "0000").localeCompare(a.year || "0000");
+  acting.sort(byYear); crew.sort(byYear);
+  const known = (o.known_for_department === "Acting" ? acting : crew.length ? crew : acting).slice().sort((a, b) => b.votes - a.votes).slice(0, 16);
+  const facts = [o.known_for_department, o.birthday ? "Born " + fmtDate(o.birthday) + (o.deathday ? ", died " + fmtDate(o.deathday) : "") : "", o.place_of_birth].filter(Boolean);
+  const tabs = [["acting", "Acting", acting], ["crew", "Behind the camera", crew]].filter((x) => x[2].length);
+  v.innerHTML = `<div class="page"><div class="pp"><div class="ph">${imgTag(o.profile_path, "w342", o.name)}</div>
+    <div class="info"><h1 style="margin-top:0">${esc(o.name)}</h1><div class="muted" style="margin-bottom:10px">${esc(facts.join("  ·  "))}</div>
+    ${o.biography ? `<div class="bio clamp" id="bio">${esc(o.biography)}</div><button class="linkbtn" id="bioMore">Read more</button>` : ""}</div></div></div>
+    ${known.length ? `<section class="row"><div class="row-h"><h2>Known For</h2></div><button class="arr l" tabindex="-1" aria-label="Scroll left">&#8249;</button><div class="scroller">${known.map(posterCard).join("")}</div><button class="arr r" tabindex="-1" aria-label="Scroll right">&#8250;</button></section>` : ""}
+    <div class="page" style="padding-top:0">
+      <div class="section-h"><h2>Filmography</h2>${tabs.length > 1 ? `<div class="seg" id="ftabs">${tabs.map((x, i) => `<button class="${i ? "" : "on"}" data-tab="${x[0]}">${x[1]} (${x[2].length})</button>`).join("")}</div>` : ""}</div>
+      <div id="filmo"></div></div>`;
+  const filmo = $("#filmo", v);
+  const card = (t) => { const c = posterCard(t); return t.jobs ? c.replace(/<div class="sub">[^<]*<\/div>/, `<div class="sub">${esc(t.jobs.join(", "))}</div>`) : c; };
+  const showTab = (k) => {
+    const tb = tabs.find((x) => x[0] === k) || tabs[0];
+    filmo.innerHTML = tb ? `<div class="grid">${tb[2].map(card).join("")}</div>` : `<p class="muted">No credits listed.</p>`;
+    $$("#ftabs button", v).forEach((b) => b.classList.toggle("on", tb && b.dataset.tab === tb[0]));
+  };
+  showTab(tabs[0] ? tabs[0][0] : "");
+  const ft = $("#ftabs", v); if (ft) ft.addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); });
+  const bm = $("#bioMore", v);
+  if (bm) {
+    const bio = $("#bio", v);
+    requestAnimationFrame(() => { if (bio.scrollHeight <= bio.clientHeight + 4) bm.remove(); });
+    bm.addEventListener("click", () => { const c = bio.classList.toggle("clamp"); bm.textContent = c ? "Read more" : "Show less"; });
+  }
+}
+
+// ---------- My List ----------
+async function renderList(v, tok, tab) {
+  const L = lists();
+  const tabs = [["watchlist", "Watchlist", L.watchlist], ["favorites", "Favorites", L.favorites], ["continue", "Continue Watching", L.cont]];
+  if (!tabs.some((x) => x[0] === tab)) tab = "watchlist";
+  const cur = tabs.find((x) => x[0] === tab);
+  v.innerHTML = `<div class="page"><h1>My List</h1>
+    <div class="toolbar"><div class="seg">${tabs.map((x) => `<button class="${x[0] === tab ? "on" : ""}" data-href="#/list?tab=${x[0]}">${x[1]} (${x[2].length})</button>`).join("")}</div>
+    ${S.link ? `<button class="btn small" data-act="retry">Refresh from TV</button>` : ""}</div>
+    <div id="listWrap">${cur[2].length ? (tab === "continue" ? `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--ww)),1fr))">${cur[2].slice(0, 6).map(() => `<div class="sk sk-wide" style="width:auto"></div>`).join("")}</div>` : gridSkeleton(Math.min(cur[2].length, 18))) : ""}</div></div>`;
+  $$(".seg button", v).forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.href; }));
+  const wrap = $("#listWrap", v);
+  if (!S.link && !S.init) { wrap.innerHTML = `<p class="muted">Link your TV to see your lists here. <a href="#/pair" style="color:var(--bright)">How to link</a></p>`; return; }
+  if (!cur[2].length) {
+    wrap.innerHTML = `<p class="muted">${tab === "watchlist" ? "Nothing in your watchlist yet. Tap + Watchlist on any title." : tab === "favorites" ? "No favorites yet. Add favorites on the TV." : "Nothing to continue. Start something on the TV."}</p>`;
+    return;
+  }
+  const items = await refsToTitles(cur[2], 60);
+  if (tok !== routeTok) return;
+  wrap.innerHTML = tab === "continue"
+    ? `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--ww)),1fr))">${items.map((t) => contCard(t).replace('class="wcard"', 'class="wcard" style="width:auto"')).join("")}</div>`
+    : `<div class="grid">${items.map(posterCard).join("")}</div>`;
+}
+
+// ---------- Settings ----------
+function statusHTML() {
+  if (!S.link) return `<span class="pill no">Not linked</span>`;
+  const m = { online: ["ok", "TV online"], connecting: ["", "Connecting"], offline: ["no", "TV not answering"], none: ["no", "Not linked"] }[S.status] || ["", S.status];
+  return `<span class="pill ${m[0]}">${m[1]}</span>`;
+}
+function renderSettings(v) {
+  const k = keys();
+  const o = S.init && S.init.origin_filter;
+  const oname = { no_asia: "Hide Asian-made titles", us: "Made in the US only", all: "All countries" };
+  v.innerHTML = `<div class="page"><h1>Settings</h1>
+    <div class="panel"><h2>Your TV</h2>
+      <p><span id="setStatus">${statusHTML()}</span></p>
+      ${S.link ? `<p class="muted">This browser is linked to your McD TV. Play on TV, Open on TV and Watchlist are sent to the TV encrypted, through the same relay as the Control page.</p>
+        <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="retry">Refresh from TV</button><a class="btn small" href="../#${S.link.id}.${S.link.key}">Control page</a><button class="btn small" data-act="copylink">Copy link</button><button class="btn small" data-act="unpair">Unlink this browser</button></div>`
+      : `<p class="muted">Not linked. <a href="#/pair" style="color:var(--bright)">How to link your TV</a></p>`}
+      <label for="pasteLink">${S.link ? "Link a different TV: paste its link" : "Paste a McD TV link"}</label>
+      <div class="rowf"><input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off"><button class="btn small primary" data-act="paste">Link</button></div>
+    </div>
+    <div class="panel"><h2>TMDB key</h2>
+      <p>${k.fromTv ? `<span class="pill ok">Using the TV's key</span>` : S.manualTmdb ? `<span class="pill ok">Using the key saved here</span>` : `<span class="pill no">No key</span>`}</p>
+      <p class="muted">The TV sends its key automatically. If the TV is off, you can paste your own free key from themoviedb.org (Settings, API). It stays in this browser.</p>
+      <label for="tmdbIn">TMDB API key or read access token</label>
+      <div class="rowf"><input id="tmdbIn" type="password" placeholder="${S.manualTmdb ? "Saved. Paste to replace" : "Paste key"}" autocomplete="off"><button class="btn small primary" data-act="savetmdb">Save</button>${S.manualTmdb ? `<button class="btn small" data-act="cleartmdb">Remove</button>` : ""}</div>
+      <label for="mdbIn">MDBList key (IMDb and Rotten Tomatoes scores, optional)</label>
+      <div class="rowf"><input id="mdbIn" type="password" placeholder="${k.mdb ? "Set. Paste to replace" : "Paste key"}" autocomplete="off"><button class="btn small primary" data-act="savemdb">Save</button></div>
+    </div>
+    <div class="panel"><h2>Titles shown</h2>
+      <label for="originSel">Countries</label>
+      <select id="originSel">
+        <option value="">Same as the TV${o ? " (" + esc(oname[o] || o) + ")" : ""}</option>
+        <option value="no_asia">Hide Asian-made titles</option><option value="us">Made in the US only</option><option value="all">All countries</option>
+      </select>
+      <p class="muted" style="margin-top:10px">Adult titles are never shown.</p>
+    </div>
+    <div class="panel"><h2>About</h2><p class="muted">McD TV web app. Browse on your phone or computer and send titles to your TV. Posters and info from TMDB.</p></div>
+  </div>`;
+  $("#originSel", v).value = S.originPref || "";
+  $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
+  $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
+}
+async function doPaste() {
+  const inp = $("#pasteLink"); const l = parseLink(inp && inp.value);
+  if (!l) { toast("That doesn't look like a McD TV link.", "warn"); return; }
+  await pair(l); toast("Linked to your TV", "ok"); location.hash = "#/";
+  route();
+}
+
+// ---------- Pairing screen ----------
+function renderPair(v) {
+  v.innerHTML = `<div class="page"><h1>Link your TV</h1>
+    <div class="panel"><h2>Three steps</h2>
+      <ol class="steps">
+        <li>On the TV, open McD TV and go to <b>Settings &gt; Phone &amp; Computer Setup</b>.</li>
+        <li>Scan the QR code with your phone's camera. The McD TV Control page opens.</li>
+        <li>On the Control page, tap <b>Open McD TV web app</b>. This app opens linked to your TV, and remembers it next time.</li>
+      </ol>
+      <p class="muted">On a computer: on the Control page tap <b>Copy link</b>, then paste it here.</p>
+      <label for="pasteLink">McD TV link</label>
+      <div class="rowf"><input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off"><button class="btn small primary" data-act="paste">Link</button></div>
+    </div>
+    <div class="panel"><h2>No TV nearby?</h2><p class="muted">You can browse with your own free TMDB key. Play on TV needs a linked TV.</p>
+      <a class="btn small" href="#/settings">Add a TMDB key</a></div></div>`;
+  $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
+}
+
+// ---------- global actions ----------
+document.addEventListener("click", async (e) => {
+  const arr = e.target.closest(".arr");
+  if (arr) { const sc = arr.parentElement.querySelector(".scroller"); if (sc) sc.scrollBy({ left: (arr.classList.contains("r") ? 1 : -1) * sc.clientWidth * 0.85, behavior: "smooth" }); return; }
+  const tr = e.target.closest("#trailerBox"); if (tr) { playTrailer(); return; }
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  e.preventDefault();
+  const d = b.dataset, type = d.type, id = +d.id;
+  switch (d.act) {
+    case "play": {
+      const cmd = { cmd: "play", type, id, name: d.name || "" };
+      if (d.season) { cmd.season = +d.season; cmd.episode = +d.episode; }
+      remote(cmd, "Sending to your TV…");
+      break;
+    }
+    case "open": remote({ cmd: "open", type, id, name: d.name || "" }, "Opening on your TV…"); break;
+    case "wl": {
+      if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return; }
+      const on = !inWL(type, id);
+      if (!S.init) S.init = {};
+      const wl = (S.init.watchlist || []).filter((r) => !(r.type === type && +r.id === id));
+      if (on) wl.unshift({ type, id });
+      S.init.watchlist = wl; saveInit(); syncWL(); // optimistic
+      remote({ cmd: "watchlist", type, id, on, name: d.name || "", poster: d.poster || "", backdrop: d.backdrop || "", year: d.year || "" });
+      break;
+    }
+    case "trailer": playTrailer(); break;
+    case "retry": askInit(); toast("Asking your TV…"); setStatus(S.link ? "connecting" : "none"); setTimeout(() => { if (!keys().tmdb) route(); }, 8500); break;
+    case "reload": route(); break;
+    case "paste": doPaste(); break;
+    case "unpair": if (confirm("Unlink this browser from your TV?")) { unpair(); toast("Unlinked"); location.hash = "#/pair"; } break;
+    case "copylink": {
+      const url = location.origin + location.pathname + "#" + S.link.id + "." + S.link.key;
+      try { await navigator.clipboard.writeText(url); toast("Link copied. Open it on your other device.", "ok"); } catch { prompt("Copy this link:", url); }
+      break;
+    }
+    case "savetmdb": {
+      const val = $("#tmdbIn").value.trim(); if (!val) return;
+      S.manualTmdb = val; LS.set("mcdtv_web_tmdb", val); tcache.clear(); toast("TMDB key saved", "ok"); renderSettings($("#view")); break;
+    }
+    case "cleartmdb": S.manualTmdb = ""; LS.del("mcdtv_web_tmdb"); tcache.clear(); renderSettings($("#view")); break;
+    case "savemdb": {
+      const val = $("#mdbIn").value.trim(); if (!val) return;
+      S.manualMdb = val; LS.set("mcdtv_web_mdb", val); toast("MDBList key saved", "ok"); renderSettings($("#view")); break;
+    }
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && S.link && Date.now() - S.lastInitAsk > 60000) askInit();
+});
+window.addEventListener("hashchange", () => { document.title = "McD TV"; route(); });
+
+// ---------- start ----------
+(async function start() {
+  const fromHash = parseLink(location.hash);
+  const stored = parseLink(LS.get(LINK_KEY));
+  if (fromHash) { history.replaceState(null, "", location.pathname + location.search + "#/"); await pair(fromHash); }
+  else if (stored) await pair(stored);
+  else setStatus("none");
+  route();
+})();
+</script>
+</body>
+</html>

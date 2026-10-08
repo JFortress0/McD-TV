@@ -39,6 +39,8 @@ li:last-child{border-bottom:0}
 .msg{color:var(--muted)}.err{color:#ff6b6b}.good{color:#5fd38a}
 .hint{color:var(--muted);font-size:13px}
 .hidden{display:none}
+a.btnlink{display:inline-block;background:#fff;color:#05070D;border-radius:999px;padding:10px 16px;font-weight:700;font-size:14px;text-decoration:none}
+a.btnlink:hover{box-shadow:0 0 0 2px var(--accent2),0 0 16px rgba(110,160,255,.35)}a.btnlink:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -57,6 +59,10 @@ li:last-child{border-bottom:0}
 </main>
 
 <main id="app" class="hidden">
+  <div class="card row" style="margin-bottom:16px">
+    <div class="grow"><div class="name">Browse on your phone or computer</div><div class="hint">Posters, trailers and cast. Tap Play on TV and the TV starts it.</div></div>
+    <a class="btnlink" id="webAppLink" href="app/">Open McD TV web app</a>
+  </div>
   <p class="hint">Adding or removing an addon or website saves to the TV right away. For the other boxes, tap <b>Save to TV</b>. Changes are sent to your TV over the internet, encrypted end to end. McD TV must be open on the TV to receive them, or they apply the next time it opens (within 12 hours).</p>
 
   <h2>Addons (sources)</h2>
@@ -280,6 +286,7 @@ async function copyLink() {
   if (!location.hash) history.replaceState(null, "", "#" + link.id + "." + link.key);
   localStorageSet("mcdtv_link", link.id + "." + link.key);
   key = await crypto.subtle.importKey("raw", b64u.dec(link.key), "AES-GCM", false, ["encrypt", "decrypt"]);
+  $("webAppLink").href = "app/#" + link.id + "." + link.key; // same link: the web app pairs itself
   $("app").classList.remove("hidden"); $("bar").classList.remove("hidden");
   connect();
 })();
