@@ -223,7 +223,7 @@ fun LiveTvScreen(nav: Nav) {
     var group by remember { mutableStateOf<String?>(null) }
     TabPage(nav, NavTab.Live) {
         when (val r = res) {
-            is Load.Loading -> StatusText("Loading playlist…", Modifier.padding(start = 48.dp))
+            is Load.Loading -> StatusText("Loading your channels… big playlists can take up to a minute the first time.", Modifier.padding(start = 48.dp))
             is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
             is Load.Ok -> if (r.value.isEmpty()) {
                 Column(Modifier.padding(horizontal = 48.dp)) {
@@ -232,13 +232,13 @@ fun LiveTvScreen(nav: Nav) {
                 }
             } else {
                 val groups = remember(r.value) { r.value.map { it.group }.distinct() }
-                val shown = r.value.filter { group == null || it.group == group }
+                val shown = remember(r.value, group) { r.value.filter { group == null || it.group == group }.take(500) }
                 LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { ActionButton("All (${r.value.size})", { group = null }, primary = group == null) }
                     items(groups) { gname -> ActionButton(gname, { group = gname }, primary = gname == group) }
                 }
                 LazyColumn(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(shown.take(500)) { ch -> ChannelRow(ch) { nav.push(Screen.Player(ch.url, ch.name)) } }
+                    items(shown) { ch -> ChannelRow(ch) { nav.push(Screen.Player(ch.url, ch.name)) } }
                 }
             }
         }

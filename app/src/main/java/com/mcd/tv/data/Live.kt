@@ -1,5 +1,6 @@
 package com.mcd.tv.data
 
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -13,12 +14,19 @@ object M3u {
     private val attr = Regex("([a-zA-Z-]+)=\"([^\"]*)\"")
 
     /** Parses a standard #EXTM3U playlist. */
-    fun parse(text: String): List<Channel> {
-        val out = mutableListOf<Channel>()
+    fun parse(text: String): List<Channel> = parseLines(text.lineSequence())
+
+    /**
+     * Parses line by line, so very large playlists (100k+ entries) never sit in memory as one string.
+     * Movie and series entries (Xtream-style /movie/ and /series/ links) are skipped: Live TV shows channels only.
+     */
+    fun parseLines(lines: Sequence<String>, max: Int = 25_000): List<Channel> {
+        val out = ArrayList<Channel>()
         var pendingName: String? = null
         var logo: String? = null
         var group = "Other"
-        text.lineSequence().map { it.trim() }.forEach { line ->
+        for (raw in lines) {
+            val line = raw.trim()
             when {
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
                     val attrs = attr.findAll(line).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
@@ -27,18 +35,44 @@ object M3u {
                     pendingName = line.substringAfterLast(",").trim().ifBlank { attrs["tvg-name"] ?: "Channel" }
                 }
                 line.isNotEmpty() && !line.startsWith("#") && pendingName != null -> {
-                    out += Channel(pendingName!!, logo, group, line)
+                    val vod = line.contains("/movie/") || line.contains("/series/")
+                    if (!vod) out += Channel(pendingName!!, logo, group, line)
                     pendingName = null
+                    if (out.size >= max) break
                 }
             }
         }
         return out
     }
 
-    suspend fun load(): List<Channel> {
+    private var cacheUrl = ""
+    private var cacheAt = 0L
+    private var cache: List<Channel> = emptyList()
+    private val lock = kotlinx.coroutines.sync.Mutex()
+
+    /** Downloads and parses off the main thread; shared by Live TV and Sports, refreshed every 6 hours. */
+    suspend fun load(force: Boolean = false): List<Channel> {
         val url = Prefs.m3uUrl
         if (url.isBlank()) return emptyList()
-        return parse(Http.get(url))
+        return lock.withLock {
+            val fresh = url == cacheUrl && System.currentTimeMillis() - cacheAt < 6 * 3600_000L
+            if (fresh && !force && cache.isNotEmpty()) return@withLock cache
+            val list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                try {
+                    c.connectTimeout = 20_000
+                    c.readTimeout = 90_000
+                    c.instanceFollowRedirects = true
+                    c.setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20")
+                    val code = c.responseCode
+                    if (code !in 200..299) throw Exception("Playlist server answered $code. Check the link, or the account may be expired or in use on another screen.")
+                    c.inputStream.bufferedReader().useLines { parseLines(it) }
+                } finally { c.disconnect() }
+            }
+            if (list.isEmpty()) throw Exception("The playlist loaded but had no live channels in it.")
+            cache = list; cacheUrl = url; cacheAt = System.currentTimeMillis()
+            list
+        }
     }
 
     /** Channels whose name or group mentions this game's teams, league or network. */
