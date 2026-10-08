@@ -35,13 +35,13 @@ import com.mcd.tv.R
 import kotlinx.coroutines.delay
 
 /*
- * McD TV intro: a pre-rendered 4.4 s video (res/raw/intro_video.mp4) with its own original
- * music sting and the "This is McD TV" voiceover. Rendered offline so it can use bloom,
- * motion blur and light effects that would be too heavy to draw live on a Fire TV Stick.
+ * Jarvis intro: a pre-rendered 5.6 s HUD boot sequence (res/raw/intro_video.mp4) with an
+ * original synth sting and the "All systems online" voiceover. Rendered offline so it can use
+ * bloom and glow effects that would be too heavy to draw live on a Fire TV Stick.
  * Any remote button skips straight to the home screen. If the video cannot play, the
  * intro ends at once instead of showing a black screen.
  */
-private const val INTRO_MAX_MS = 7_000L // safety net: never hold the user here longer than this
+private const val INTRO_MAX_MS = 8_000L // safety net: never hold the user here longer than this
 
 @OptIn(UnstableApi::class)
 @Composable

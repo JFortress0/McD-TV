@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,7 +64,7 @@ private data class HomeData(
 
 /**
  * Home: at most 8 rows. Continue Watching, Live TV favorites (when a playlist is set), Suggested for You, Trending This Week, Popular on <service>,
- * Top Rated, New Releases, then a small "More" row (Browse, Sports scores, Background Noise).
+ * Top Rated, New Releases, then a small "More" row (Ask Jarvis, Browse, Sports scores, Background Noise).
  * Everything else lives under Browse. Each catalog row ends in a "See all" tile that opens its full grid.
  */
 @Composable
@@ -131,7 +130,7 @@ fun HomeScreen(nav: Nav) {
     val heroOnTop = continueWatching.isEmpty()
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(ScreenBackground),
+        modifier = Modifier.fillMaxSize().hudBackground(),
         contentPadding = PaddingValues(bottom = 48.dp),
     ) {
         item(key = "top") {
@@ -195,6 +194,7 @@ private fun MoreRow(nav: Nav) {
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            item { CompactTile("Ask Jarvis", "Describe it, Jarvis finds it", { nav.push(Screen.AskJarvis()) }) }
             item { CompactTile("Browse", "Genres, years, languages, services", { nav.tab(NavTab.Browse) }) }
             item { CompactTile("Live TV", "Your channels and favorites", { nav.tab(NavTab.Live) }) }
             item { CompactTile("Sports scores", "Live scores and schedules", { nav.push(Screen.Sports) }) }
@@ -236,8 +236,11 @@ private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true, underN
             contentDescription = t.name,
             contentScale = ContentScale.Crop,
             alignment = Alignment.TopCenter,
+            colorFilter = HudDuotone,
             modifier = Modifier.fillMaxSize(),
         )
+        // Duotone: darken, then a faint cyan wash and scanlines over the backdrop.
+        Box(Modifier.fillMaxSize().background(McdColors.Ink.copy(alpha = 0.25f)).background(McdColors.Accent.copy(alpha = 0.15f)).hudScanlines())
         // Left: solid page color fading to clear, so the text always reads.
         Box(
             Modifier.fillMaxSize().background(
@@ -253,7 +256,7 @@ private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true, underN
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
-                    0f to McdColors.Navy.copy(alpha = if (underNav) 0.55f else 0.9f),
+                    0f to McdColors.Navy.copy(alpha = if (underNav) 0.6f else 0.9f),
                     0.25f to Color.Transparent,
                     0.60f to Color.Transparent,
                     0.85f to McdColors.Navy.copy(alpha = 0.8f),
@@ -261,20 +264,31 @@ private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true, underN
                 ),
             ),
         )
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 22.dp).width(560.dp)) {
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 22.dp).width(580.dp)) {
             Text(
-                if (t.type == "tv") "FEATURED SERIES" else "FEATURED MOVIE",
-                color = McdColors.RedBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp,
+                if (t.type == "tv") "▸ FEATURED SERIES" else "▸ FEATURED MOVIE",
+                style = hudLabelStyle(10.sp, McdColors.Accent),
             )
-            Spacer(Modifier.height(4.dp))
-            Text(t.name, style = broadcastStyle(36.sp).copy(lineHeight = 40.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    t.name.uppercase(),
+                    style = broadcastStyle(34.sp).copy(lineHeight = 34.sp),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (t.rating > 0) {
+                    Spacer(Modifier.width(14.dp))
+                    HudGauge((t.rating / 10.0).toFloat(), "%.1f".format(t.rating), "TMDB")
+                }
+            }
             Spacer(Modifier.height(6.dp))
             Text(
-                listOfNotNull(t.year.ifBlank { null }, if (t.rating > 0) "★ %.1f".format(t.rating) else null, if (t.type == "tv") "Series" else "Movie").joinToString("  •  "),
-                color = McdColors.Muted, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                listOfNotNull(t.year.ifBlank { null }, if (t.type == "tv") "Series" else "Movie").joinToString("  ▪  ").uppercase(),
+                color = McdColors.Muted, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
             )
-            Spacer(Modifier.height(8.dp))
-            Text(t.overview, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+            Text(t.overview, color = McdColors.White.copy(alpha = 0.9f), fontSize = 15.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ActionButton("▶  Play", { paused = true; nav.push(Screen.Detail(t.type, t.id)) }, Modifier.focusRequester(playFocus), primary = true)
@@ -284,9 +298,8 @@ private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true, underN
         Row(Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 30.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items.indices.forEach { i ->
                 Box(
-                    Modifier.width(if (i == index) 20.dp else 6.dp).height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(if (i == index) Color.White else Color.White.copy(alpha = 0.35f)),
+                    Modifier.width(if (i == index) 22.dp else 8.dp).height(3.dp)
+                        .background(if (i == index) McdColors.Accent else McdColors.Line),
                 )
             }
         }

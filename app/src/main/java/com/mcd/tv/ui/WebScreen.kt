@@ -267,14 +267,14 @@ fun WebScreen(startUrl: String, onPlayVideo: (url: String, headers: Map<String, 
                 lineTo(cursor.x + 26f, cursor.y + 23f)
                 close()
             }
-            drawPath(p, Color.White)
+            drawPath(p, McdColors.White)
             drawPath(p, Color.Black, style = Stroke(width = 3f))
             drawCircle(McdColors.Red, radius = 4f, center = cursor)
         }
 
         // Title strip.
         Text(
-            title, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            title, color = McdColors.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
                 .padding(horizontal = 12.dp, vertical = 3.dp),
         )
@@ -282,26 +282,26 @@ fun WebScreen(startUrl: String, onPlayVideo: (url: String, headers: Map<String, 
         // First-open help.
         if (showHelp && !showBar) {
             Text(
-                "Arrows: move  •  OK: click  •  ⏪ ⏩: page up/down  •  ⏯: watch the page's video in the McD TV player  •  ≡ Menu: toolbar  •  Back: previous page",
-                color = Color.White, fontSize = 15.sp,
+                "Arrows: move  •  OK: click  •  ⏪ ⏩: page up/down  •  ⏯: watch the page's video in the Jarvis player  •  ≡ Menu: toolbar  •  Back: previous page",
+                color = McdColors.White, fontSize = 15.sp,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
-                    .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(10.dp)).padding(horizontal = 18.dp, vertical = 10.dp),
+                    .background(Color.Black.copy(alpha = 0.8f), HudShape).padding(horizontal = 18.dp, vertical = 10.dp),
             )
         }
 
         if (found.isNotEmpty() && !showBar) {
             Text(
-                "▶  Video found: press ⏯ Play/Pause to watch it in the McD TV player (or ≡ Menu)",
-                color = Color.White, fontSize = 15.sp,
+                "▶  Video found: press ⏯ Play/Pause to watch it in the Jarvis player (or ≡ Menu)",
+                color = McdColors.Ink, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
-                    .background(McdColors.Red, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 10.dp),
+                    .background(McdColors.Red, HudShape).padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }
 
         if (toast.isNotBlank()) {
             Text(
-                toast, color = Color.White, fontSize = 16.sp,
-                modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(10.dp))
+                toast, color = McdColors.White, fontSize = 16.sp,
+                modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.8f), HudShape)
                     .padding(horizontal = 18.dp, vertical = 10.dp),
             )
         }
@@ -314,7 +314,7 @@ fun WebScreen(startUrl: String, onPlayVideo: (url: String, headers: Map<String, 
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (found.isNotEmpty()) {
-                        ActionButton("▶ Play video in McD TV player", {
+                        ActionButton("▶ Play video in Jarvis player", {
                             showBar = false
                             found.firstOrNull()?.let { onPlayVideo(it.first, it.second, title) }
                         }, Modifier.focusRequester(barFocus), primary = true)

@@ -194,6 +194,13 @@ object Relay {
             "rd_token" -> runCatching { publishRdToken(cmd.optString("req"), cmd.optBoolean("force", false)) }
             // Progress from "Play here", so Continue Watching on the TV stays in sync.
             "progress" -> runCatching { recordWebProgress(cmd) }
+            // Ask Jarvis from the web app. The key stays on the TV; the answer can take up to 30 s,
+            // so it runs on its own and doesn't hold up other commands.
+            "ask" -> {
+                val ts = cmd.optLong("ts", 0L)
+                if (ts > 0L && System.currentTimeMillis() - ts > 2 * 60_000L) return // the page stopped waiting long ago
+                scope.launch { runCatching { publishAsk(cmd.optString("req"), cmd.optString("q")) } }
+            }
             "open" -> {
                 val type = cmd.optString("type")
                 val id = cmd.optInt("id")
@@ -331,7 +338,7 @@ object Relay {
             }
             msg = build()
         }
-        status = "Connected to the McD TV web app"
+        status = "Connected to the Jarvis web app"
         Http.postText(BASE + outTopic, msg)
         if (!withAddons) publishAddons(req, addons)
     }
@@ -365,6 +372,36 @@ object Relay {
         }
         if (cur.isNotEmpty()) chunks.add(cur)
         chunks.forEachIndexed { i, c -> Http.postText(BASE + outTopic, build(c, i, chunks.size)) }
+    }
+
+    /**
+     * Reply to "ask": {type:"ask", req, ts, guesses:[{type, id, why, confidence}], clarify, error}.
+     * TMDB ids only (the web app loads posters itself), so the message stays small.
+     */
+    private suspend fun publishAsk(req: String, q: String) {
+        val o = JSONObject()
+            .put("type", "ask")
+            .put("req", req)
+            .put("ts", System.currentTimeMillis())
+        try {
+            val a = Jarvis.ask(q.take(600))
+            val arr = JSONArray()
+            a.matches.take(6).forEach { m ->
+                arr.put(
+                    JSONObject()
+                        .put("type", m.title.type)
+                        .put("id", m.title.id)
+                        .put("why", m.why.take(160))
+                        .put("confidence", m.confidence),
+                )
+            }
+            o.put("guesses", arr).put("clarify", a.clarify.take(200)).put("error", "")
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            o.put("guesses", JSONArray()).put("clarify", "")
+                .put("error", (if (e is JarvisException) e.message else null) ?: "Jarvis could not answer. Try again.")
+        }
+        Http.postText(BASE + outTopic, encrypt(o.toString()))
     }
 
     /** Reply to "rd_token": a fresh Real-Debrid access token for the web app's "Play here". */
@@ -425,6 +462,7 @@ object Relay {
         if (d.has("custom_stream_url")) Prefs.customUrl = d.optString("custom_stream_url")
         d.optString("tmdb_key").takeIf { it.isNotBlank() }?.let { Prefs.tmdbKey = it }
         d.optString("mdblist_key").takeIf { it.isNotBlank() }?.let { Prefs.mdblistKey = it }
+        d.optString("jarvis_key").takeIf { it.isNotBlank() }?.let { Prefs.jarvisKey = it }
         d.optString("origin_filter").takeIf { it.isNotBlank() }?.let { k ->
             OriginFilter.entries.firstOrNull { it.key == k }?.let { Prefs.origin = it }
         }
@@ -448,6 +486,7 @@ object Relay {
             .put("custom_stream_url", Prefs.customUrl)
             .put("tmdb_set", Prefs.tmdbKey.isNotBlank())
             .put("mdblist_set", Prefs.mdblistKey.isNotBlank())
+            .put("jarvis_set", Prefs.jarvisKey.isNotBlank())
             .put("origin_filter", Prefs.origin.key)
             .put("us_only", Prefs.usOnly)
             .put("slow_connection", Prefs.slowConnection)

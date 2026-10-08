@@ -98,8 +98,9 @@ private fun MenuRow(title: String, subtitle: String, onClick: () -> Unit) {
         Row(
             Modifier.fillMaxWidth()
                 .onFocusChanged { focused = it.isFocused }
-                .clip(RoundedCornerShape(6.dp))
-                .background(if (focused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                .hudBrackets(focused, McdColors.AccentBright, inset = 0.dp, arm = 7.dp, stroke = 1.5.dp)
+                .clip(HudShapeSmall)
+                .background(if (focused) McdColors.Accent.copy(alpha = 0.12f) else Color.Transparent)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -108,7 +109,7 @@ private fun MenuRow(title: String, subtitle: String, onClick: () -> Unit) {
             Spacer(Modifier.width(12.dp))
             Text(
                 title,
-                color = if (focused) Color.White else Color.White.copy(alpha = 0.78f),
+                color = if (focused) McdColors.AccentBright else McdColors.White.copy(alpha = 0.82f),
                 fontSize = 17.sp,
                 fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
@@ -116,7 +117,7 @@ private fun MenuRow(title: String, subtitle: String, onClick: () -> Unit) {
             )
             Text(subtitle, color = McdColors.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.width(14.dp))
-            Text("›", color = if (focused) Color.White else McdColors.Muted, fontSize = 20.sp)
+            Text("›", color = if (focused) McdColors.Accent else McdColors.Muted, fontSize = 20.sp)
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(McdColors.Line))
     }

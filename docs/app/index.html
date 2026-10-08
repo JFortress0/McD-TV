@@ -4,12 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta name="theme-color" content="#05070D">
-<title>McD TV</title>
+<meta name="theme-color" content="#02060A">
+<title>Jarvis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#05070D;--nav1:#0A1430;--nav2:#070B18;--card:#111827;--raised:#1A2335;--accent:#3D7BFF;--bright:#6EA0FF;
@@ -287,11 +290,157 @@ body.playmode header.top,body.playmode nav.tabbar{display:none}
 .pl-bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:12px 16px 18px}
 .btn.big{font-size:17px;padding:14px 26px;min-height:52px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- Jarvis HUD skin ---------- */
+:root{--bg:#02060A;--nav1:#031018;--nav2:#02080D;--card:rgba(6,23,34,.85);--raised:#0A2230;--accent:#00E5FF;--bright:#7DF9FF;--muted:#8FB8C4;--line:#0E6A7A;--ok:#00E5FF;--warn:#FFB300;--bad:#FF4D6D;--ink:#02060A;--white:#EAFBFF;
+  --font:Rajdhani,"Arial Narrow",Arial,sans-serif;--disp:Orbitron,Rajdhani,Arial,sans-serif;
+  --cut:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);--cut-s:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+body{color:var(--white);font-size:16px;
+  background:linear-gradient(rgba(0,229,255,.04) 1px,transparent 1px) 0 0/40px 40px,linear-gradient(90deg,rgba(0,229,255,.04) 1px,transparent 1px) 0 0/40px 40px,
+  radial-gradient(ellipse at 50% 35%,transparent 55%,rgba(0,0,0,.55)) fixed,linear-gradient(180deg,var(--nav1) 0,var(--nav2) 280px,var(--bg) 680px) no-repeat,var(--bg)}
+:focus-visible{outline:2px solid var(--accent);border-radius:0}
+h1,h2,h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:1.5px}
+header.top{background:linear-gradient(180deg,rgba(2,6,10,.85),rgba(2,6,10,.55));border-bottom:1px solid rgba(14,106,122,.6)}
+.logo{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:3px;color:var(--white);text-shadow:0 0 12px rgba(0,229,255,.75)}
+.logo .ring{flex:0 0 auto;filter:drop-shadow(0 0 4px rgba(0,229,255,.6))}
+nav.links a{font-family:var(--disp);font-size:11px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;border-radius:0;position:relative}
+nav.links a:hover{color:var(--bright)}
+nav.links a.on{color:var(--accent);background:transparent}
+nav.links a.on::after{content:"";position:absolute;left:14px;right:14px;bottom:2px;height:1.5px;background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.tvpill{border-radius:0;clip-path:var(--cut-s);background:rgba(6,23,34,.85);border-color:var(--line);font-family:var(--disp);font-size:10px;letter-spacing:1px;text-transform:uppercase}
+.dot.online{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.iconbtn{color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.iconbtn:hover{color:var(--ink);background:var(--accent)}
+nav.tabbar{background:rgba(2,6,10,.94);border-top-color:var(--line)}
+nav.tabbar a{font-family:var(--disp);font-size:9px;letter-spacing:1px;text-transform:uppercase}
+nav.tabbar a.on{color:var(--accent)}nav.tabbar a.on svg{color:var(--accent);filter:drop-shadow(0 0 4px rgba(0,229,255,.7))}
+
+/* buttons: chamfered, uppercase */
+.btn{border-radius:0;clip-path:var(--cut-s);background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1px rgba(0,229,255,.75);
+  font-family:var(--font);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+.btn:hover,.btn:focus-visible{background:var(--accent);color:var(--ink);box-shadow:none;outline:none}
+.btn.primary{background:var(--accent);color:var(--ink);box-shadow:none}
+.btn.primary:hover,.btn.primary:focus-visible{background:var(--bright);color:var(--ink);box-shadow:none}
+.btn.blue{background:var(--accent);color:var(--ink)}.btn.blue:hover{background:var(--bright)}
+.btn[aria-pressed="true"]{background:rgba(0,229,255,.18);color:var(--bright)}
+.chip{border-radius:0;clip-path:var(--cut-s);font-family:var(--font);text-transform:uppercase;letter-spacing:.8px}
+.chip:hover{color:var(--bright);border-color:var(--accent)}
+.chip.on{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+.seg{border-radius:0;clip-path:var(--cut-s)}.seg button{border-radius:0;text-transform:uppercase;letter-spacing:.8px}
+.seg button.on{background:var(--accent);color:var(--ink)}
+.linkbtn{color:var(--accent)}
+
+/* headings */
+.page h1{font-size:22px;font-weight:700}
+@media (min-width:900px){.page h1{font-size:28px}}
+.section-h h2,.row-h h2,.panel h2{font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px}
+@media (min-width:900px){.row-h h2{font-size:14px}}
+.section-h h2::before,.row-h h2::before,.panel h2::before{content:"\25B8";color:var(--accent)}
+.row-h h2::after,.section-h h2::after{content:"";width:40px;height:1px;background:var(--accent)}
+.row-h a{font-family:var(--disp);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent)}
+
+/* hero and title page: duotone backdrop with scanlines */
+.hero .bd,.tp-bd{filter:saturate(.35)}
+.hero .bd::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(125,249,255,.04) 0 1px,transparent 1px 3px),rgba(0,229,255,.15)}
+.tp-bd::before{content:"";position:absolute;inset:0;z-index:1;background:repeating-linear-gradient(0deg,rgba(125,249,255,.04) 0 1px,transparent 1px 3px),rgba(0,229,255,.12)}
+.hero .kicker{font-family:var(--disp);font-weight:500;font-size:10px;letter-spacing:2px;color:var(--accent)}
+.hero .kicker::before{content:"\25B8  "}
+.hero h1{font-size:clamp(24px,4.4vw,44px);font-weight:700;letter-spacing:1px;line-height:1.08;text-shadow:0 0 20px rgba(0,229,255,.35)}
+.tp-info h1{font-size:clamp(22px,3.8vw,40px);font-weight:700;letter-spacing:1px;line-height:1.1}
+.hero .meta,.tp-meta{color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600}
+.hero p,.overview,.bio{color:#cfe9f0}
+.hero .dots button{border-radius:0;height:3px;background:var(--line)}.hero .dots button.on{background:var(--accent)}
+.tagline{color:var(--accent)}
+
+/* cards: chamfered with a hairline, corner brackets and a cyan glow on hover / focus */
+.poster,.wimg,.tile,.ep,.src,.panel,.trailer,.tp-poster,.pp .ph,.ep .still,.score,.badge,.pill,.sk,.pl-msg,#toast,.searchbox input{border-radius:0;clip-path:var(--cut)}
+.score,.badge,.pill,.ep .still{clip-path:var(--cut-s)}
+.poster,.wimg{box-shadow:none}
+.poster::after,.wimg::after,.tile::after,.panel::after{content:"";position:absolute;inset:0;pointer-events:none;border:1px solid rgba(14,106,122,.85);transition:border-color .15s}
+.panel{position:relative}
+.panel::after{background:linear-gradient(var(--bright),var(--bright)) left 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/2px 12px no-repeat;opacity:.55}
+.poster::after,.wimg::after,.tile::after{background:linear-gradient(var(--bright),var(--bright)) left 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/2px 12px no-repeat;background-size:0 0;}
+@media (hover:hover){
+  .card:hover .poster,.wcard:hover .wimg{transform:scale(1.05);box-shadow:none}
+  .card:hover,.wcard:hover,.tile:hover{filter:drop-shadow(0 0 8px rgba(0,229,255,.45))}
+  .card:hover .poster::after,.wcard:hover .wimg::after,.tile:hover::after{border:1.5px solid var(--accent);background-size:12px 2px,2px 12px,12px 2px,2px 12px,12px 2px,2px 12px,12px 2px,2px 12px}
+  .tile:hover{border-color:var(--accent);box-shadow:none}
+}
+.card:focus-visible{filter:drop-shadow(0 0 8px rgba(0,229,255,.45))}
+.card:focus-visible .poster{transform:scale(1.05);box-shadow:none}
+.wcard a:focus-visible .wimg{box-shadow:none}
+.card:focus-visible .poster::after,.wcard a:focus-visible .wimg::after{border:1.5px solid var(--accent);background-size:12px 2px,2px 12px,12px 2px,2px 12px,12px 2px,2px 12px,12px 2px,2px 12px}
+.cap{font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.badge{background:rgba(2,6,10,.8);border:1px solid var(--line)}
+.wlmark{background:rgba(2,6,10,.8);color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.prog{background:rgba(14,106,122,.5)}.prog i{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.miniplay{color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}.miniplay:hover{background:var(--accent);color:var(--ink)}
+.pcard .face{box-shadow:0 0 0 1px var(--line)}
+@media (hover:hover){.pcard:hover .face{box-shadow:0 0 0 2px var(--accent),0 0 14px rgba(0,229,255,.5)}}
+.pcard:focus-visible .face{box-shadow:0 0 0 2px var(--accent),0 0 14px rgba(0,229,255,.5)}
+.tile{background:linear-gradient(140deg,var(--raised),rgba(6,23,34,.85));border-color:var(--line);font-family:var(--disp);font-size:13px;letter-spacing:1px;text-transform:uppercase}
+.tile small{font-family:var(--font);text-transform:none;letter-spacing:0;font-size:13px}
+.tile::before{background:radial-gradient(var(--glow,rgba(0,229,255,.3)),transparent 70%)}
+.score{background:rgba(2,6,10,.7);border-color:var(--line);font-family:var(--disp);font-size:11px;letter-spacing:.5px}
+.score .k{color:var(--accent)}
+.ep{background:var(--card);border-color:var(--line)}
+.ep.resume{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ep .t{text-transform:uppercase;letter-spacing:.5px}
+.trailer .pb{background:var(--accent);color:var(--ink);box-shadow:0 0 18px rgba(0,229,255,.6)}
+.panel{background:var(--card);border-color:var(--line)}
+.pill{background:var(--raised)}.pill.ok{background:rgba(0,229,255,.18);color:var(--accent)}.pill.no{background:rgba(255,77,109,.15);color:#FF4D6D}
+select,input[type=text],input[type=search],input[type=password]{border-radius:0;clip-path:var(--cut-s);background:rgba(2,6,10,.7);color:var(--white);border-color:var(--line)}
+select:focus-visible,input:focus-visible{outline:none;border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.searchbox svg{color:var(--accent)}
+.sk{background:linear-gradient(90deg,#061722 0,#0A2230 45%,#061722 90%);background-size:220% 100%}
+
+/* loading: two arcs turning in opposite directions */
+.spinner{position:relative;border:2px solid transparent;border-top-color:var(--accent);border-bottom-color:rgba(0,229,255,.35)}
+.spinner::after{content:"";position:absolute;inset:5px;border:2px solid transparent;border-left-color:var(--bright);border-right-color:var(--bright);border-radius:50%;animation:spin 1.1s linear infinite reverse}
+
+#toast{background:rgba(6,23,34,.95);border-color:var(--accent);font-family:var(--font);letter-spacing:.5px}
+#toast.ok{border-color:var(--accent)}#toast.warn{border-color:var(--warn)}
+footer{color:var(--muted)}
+
+.src{background:var(--card);border-color:var(--line)}
+.src:hover,.src:focus-visible{background:var(--raised);border-color:var(--accent)}
+.src .st,.src .in{color:var(--accent)}.src .st i{color:rgba(234,251,255,.18)}
+.src .bdg{background:var(--raised);border-radius:0;box-shadow:inset 0 0 0 1px var(--line)}.src .bdg.hi{background:#0B5F6E}
+.srcstatus{color:var(--accent)}
+.pl-back{border-radius:0;clip-path:var(--cut-s);color:var(--accent);background:transparent;box-shadow:inset 0 0 0 1px var(--accent);text-transform:uppercase;letter-spacing:1px}
+.pl-back:hover{background:var(--accent);color:var(--ink)}
+.pl-msg{background:rgba(6,23,34,.95);border-color:var(--accent)}
+/* Ask Jarvis (Search page) */
+.search-h{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.search-h h1{margin-bottom:10px}
+.askp{max-width:none;margin-bottom:18px}
+.ask-h{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.ask-h h2{font-family:var(--font);text-transform:uppercase;letter-spacing:2px;font-size:18px;margin:0;color:var(--white)}
+.ask-h p{margin:2px 0 0;font-size:14px}
+.ask-h svg{flex:0 0 auto}
+.ask-row{display:flex;gap:10px}
+.ask-row input{flex:1 1 auto;min-width:0}
+.askex{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.askex .chip{white-space:normal;text-align:left;text-transform:none;letter-spacing:0}
+.ask-line{margin:14px 0 6px;font-size:16px}.ask-line b{color:var(--accent);font-family:var(--font);letter-spacing:1.5px;font-size:13px;margin-right:4px}
+.ask-think{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:16px 0}
+.ask-think .spinner{margin:0}
+.ask-lbl{font-family:var(--font);letter-spacing:2px;text-transform:uppercase;color:var(--accent);font-size:13px}
+.ask-scan{position:relative;width:min(360px,100%);height:3px;background:rgba(14,106,122,.5);overflow:hidden}
+.ask-scan i{position:absolute;top:0;bottom:0;width:22%;background:linear-gradient(90deg,transparent,var(--bright),transparent);animation:askscan 1.6s linear infinite}
+@keyframes askscan{from{left:-22%}to{left:100%}}
+@media (prefers-reduced-motion:reduce){.ask-scan i{animation:none;left:39%}}
+.ask-grid{margin-top:12px}
+.ask-why{display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px;color:var(--muted);line-height:1.3}
+.ask-conf{--c:0;position:relative;flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) calc(var(--c) * 1%),var(--line) 0)}
+.ask-conf.lo{background:conic-gradient(var(--warn) calc(var(--c) * 1%),var(--line) 0)}
+.ask-conf::before{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--bg)}
+.ask-conf b{position:relative;font-family:var(--font);font-size:11px;color:var(--white)}
 </style>
 </head>
 <body>
 <header class="top">
-  <a class="logo" href="#/" aria-label="McD TV home">McD <b>TV</b></a>
+  <a class="logo" href="#/" aria-label="Jarvis home"><svg class="ring" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-opacity=".25" stroke-width="4"/><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-width="1.4"/><path d="M28.80 16.00L31.60 16.00M27.60 22.70L29.51 23.80M22.70 27.60L23.80 29.51M16.00 28.80L16.00 31.60M9.30 27.60L8.20 29.51M4.40 22.70L2.49 23.80M3.20 16.00L0.40 16.00M4.40 9.30L2.49 8.20M9.30 4.40L8.20 2.49M16.00 3.20L16.00 0.40M22.70 4.40L23.80 2.49M27.60 9.30L29.51 8.20" stroke="#00E5FF" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="#00E5FF" fill-opacity=".25"/><circle cx="16" cy="16" r="2" fill="#7DF9FF"/></svg>JARVIS</a>
   <nav class="links" aria-label="Main">
     <a href="#/" data-nav="home">Home</a>
     <a href="#/browse" data-nav="browse">Browse</a>
@@ -319,7 +468,7 @@ body.playmode header.top,body.playmode nav.tabbar{display:none}
 <script>
 "use strict";
 // =====================================================================================
-// McD TV web app. Talks to the TV through the same encrypted ntfy.sh relay as the
+// Jarvis web app. Talks to the TV through the same encrypted ntfy.sh relay as the
 // Control page (docs/index.html): link "#<relayId>.<base64urlKey>", topics
 // mcdtv-<id>-in / mcdtv-<id>-out, messages "v1:" + base64url(iv(12) || AES-256-GCM(deflate-raw(JSON))).
 // The key never leaves this browser.
@@ -387,6 +536,7 @@ const S = {
 };
 const rdWait = new Map(); // "rd_token" req id -> reply handler
 const pending = new Map(); // req id -> timeout
+const askWait = new Map(); // "ask" req id -> reply handler
 function keys() {
   const i = S.init || {};
   return { tmdb: i.tmdb_key || S.manualTmdb || "", mdb: i.mdblist_key || S.manualMdb || "", fromTv: !!i.tmdb_key };
@@ -426,6 +576,10 @@ async function onRelay(raw, live) {
   else if (m.type === "rd_token") {
     const w = rdWait.get(m.req);
     if (w) w(m); else if (m.rd_token) setRd(m.rd_token, +m.rd_expires_at || 0);
+  }
+  else if (m.type === "ask") {
+    const w = askWait.get(m.req);
+    if (w) w(m);
   }
   else if (m.type === "ack" && live) {
     const t = pending.get(m.req);
@@ -498,7 +652,7 @@ async function remote(cmd, sending) {
   if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return false; }
   const req = newReq();
   cmd.req = req; cmd.ts = Date.now();
-  pending.set(req, setTimeout(() => { pending.delete(req); toast("TV didn't answer (is McD TV open?)", "warn"); }, 8000));
+  pending.set(req, setTimeout(() => { pending.delete(req); toast("TV didn't answer (is Jarvis open?)", "warn"); }, 8000));
   if (sending) toast(sending);
   try { await relaySend(cmd); return true; }
   catch (e) { clearTimeout(pending.get(req)); pending.delete(req); toast("Couldn't reach the relay. Check your internet.", "warn"); return false; }
@@ -705,10 +859,10 @@ async function fillRow(id, promise, cardFn, tok, emptyText) {
 function gridSkeleton(n) { return `<div class="grid">${Array.from({ length: n }, () => `<div class="sk sk-poster"></div>`).join("")}</div>`; }
 function noKeyHTML() {
   if (S.link && S.status !== "offline") {
-    return `<div class="notice"><div class="spinner"></div><h2>Getting set up with your TV</h2><p class="muted">McD TV on the TV sends this app its TMDB key. Make sure McD TV is open on the TV.</p></div>`;
+    return `<div class="notice"><div class="spinner"></div><h2>Getting set up with your TV</h2><p class="muted">Jarvis on the TV sends this app its TMDB key. Make sure Jarvis is open on the TV.</p></div>`;
   }
   return `<div class="notice"><h2>Posters and info need a TMDB key</h2>
-    <p class="muted">${S.link ? "Your TV didn't answer. Open McD TV on the TV, or add a TMDB key in Settings." : "Link your TV, or add your own free TMDB key in Settings."}</p>
+    <p class="muted">${S.link ? "Your TV didn't answer. Open Jarvis on the TV, or add a TMDB key in Settings." : "Link your TV, or add your own free TMDB key in Settings."}</p>
     <div class="actions"><a class="btn primary" href="#/settings">Open Settings</a>${S.link ? `<button class="btn" data-act="retry">Try again</button>` : `<a class="btn" href="#/pair">Link your TV</a>`}</div></div>`;
 }
 
@@ -939,7 +1093,14 @@ function renderGrid(v, tok, kind, q) {
 // ---------- Search ----------
 let searchTimer = 0;
 function renderSearch(v, tok, q0) {
-  v.innerHTML = `<div class="page"><h1>Search</h1>
+  v.innerHTML = `<div class="page"><div class="search-h"><h1>Search</h1>
+    <button class="btn primary small" id="askToggle" type="button" aria-expanded="false" aria-controls="askPanel">&#10022; Ask Jarvis</button></div>
+    <div class="panel askp hidden" id="askPanel">
+      <div class="ask-h">${ASK_RING}<div><h2>Ask Jarvis</h2><p class="muted">Describe a movie or show. Plot, actors, a scene, anything you remember.</p></div></div>
+      <form class="ask-row" id="askForm"><input id="askq" type="text" placeholder="That movie where&#8230;" autocomplete="off" enterkeyhint="search" maxlength="600" aria-label="Describe a movie or show"><button class="btn primary" type="submit">Ask</button></form>
+      <div class="askex" id="askEx">${ASK_EXAMPLES.map((e) => `<button class="chip" type="button" data-ex="${esc(e)}">${esc(e)}</button>`).join("")}</div>
+      <div id="askOut" aria-live="polite"></div>
+    </div>
     <div class="searchbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <input id="q" type="search" placeholder="Movies, shows and people" autocomplete="off" enterkeyhint="search" value="${esc(q0)}" aria-label="Search"></div>
     <div id="results"></div></div>`;
@@ -958,15 +1119,78 @@ function renderSearch(v, tok, q0) {
     try {
       const r = await api.search(q.trim());
       if (my !== qtok || tok !== routeTok) return;
-      if (!r.titles.length && !r.people.length) { out.innerHTML = `<p class="muted">No results for "${esc(q)}".</p>`; return; }
+      if (!r.titles.length && !r.people.length) {
+        out.innerHTML = `<p class="muted">No results for "${esc(q)}".</p><button class="btn small" type="button" id="tryAsk">&#10022; Try Ask Jarvis</button>`;
+        $("#tryAsk", out).addEventListener("click", () => openAsk(q.trim(), true));
+        return;
+      }
       out.innerHTML = (r.people.length ? `<div class="section-h" style="margin-top:4px"><h2>People</h2></div><div class="scroller" style="margin:0 calc(-1*var(--gut));padding-top:4px">${r.people.slice(0, 20).map(personCard).join("")}</div>` : "") +
         (r.titles.length ? `<div class="section-h"><h2>Movies and shows</h2></div><div class="grid">${r.titles.map(posterCard).join("")}</div>` : "");
     } catch (e) { if (my === qtok) out.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   }
   input.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => run(input.value), 350); });
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") { clearTimeout(searchTimer); run(input.value); input.blur(); } });
+  // ---- Ask Jarvis: the question goes to the TV (the key stays there); the TV answers with TMDB ids ----
+  const panel = $("#askPanel", v), toggle = $("#askToggle", v), askq = $("#askq", v), askOut = $("#askOut", v);
+  function openAsk(text, go) {
+    panel.classList.remove("hidden"); toggle.setAttribute("aria-expanded", "true");
+    if (text != null) askq.value = text;
+    if (go && askq.value.trim()) runAsk(askq.value, askOut, tok); else askq.focus();
+    panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  toggle.addEventListener("click", () => {
+    if (panel.classList.contains("hidden")) openAsk(null, false);
+    else { panel.classList.add("hidden"); toggle.setAttribute("aria-expanded", "false"); }
+  });
+  $("#askForm", v).addEventListener("submit", (e) => { e.preventDefault(); askq.blur(); runAsk(askq.value, askOut, tok); });
+  $$("#askEx .chip", v).forEach((b) => b.addEventListener("click", () => openAsk(b.dataset.ex, true)));
   run(q0);
   if (matchMedia("(min-width:900px)").matches || !q0) setTimeout(() => input.focus({ preventScroll: true }), 30);
+}
+
+// ---------- Ask Jarvis ----------
+const ASK_EXAMPLES = [
+  "Robert Downey Jr plays a genius inventor who builds a suit",
+  "Space movie where they travel through a wormhole to save humanity",
+  "Show about a chemistry teacher who starts making drugs",
+];
+const ASK_RING = `<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-opacity=".25" stroke-width="4"/><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="#00E5FF" fill-opacity=".25"/><circle cx="16" cy="16" r="2" fill="#7DF9FF"/></svg>`;
+const ASK_OFF = "Your TV needs to be on for Ask Jarvis.";
+let askTok = 0;
+/** Sends {cmd:"ask"} to the TV and waits up to 20 s for its {type:"ask"} reply. */
+function askTv(q) {
+  return new Promise((resolve, reject) => {
+    if (!S.link) { reject(new Error("Link your TV first: open Settings in this app.")); return; }
+    const req = newReq();
+    const t = setTimeout(() => { askWait.delete(req); reject(new Error(ASK_OFF)); }, 20000);
+    askWait.set(req, (m) => { clearTimeout(t); askWait.delete(req); resolve(m); });
+    relaySend({ cmd: "ask", req, ts: Date.now(), q: q.slice(0, 600) })
+      .catch(() => { clearTimeout(t); askWait.delete(req); reject(new Error("Couldn't reach the relay. Check your internet.")); });
+  });
+}
+const askLine = (text) => `<p class="ask-line"><b>JARVIS:</b> ${esc(text)}</p>`;
+function askCard(t, g) {
+  const c = Math.max(0, Math.min(100, Math.round(+g.confidence || 0)));
+  return `<div class="askcard">${posterCard(t)}<div class="ask-why"><span class="ask-conf${c < 50 ? " lo" : ""}" style="--c:${c}" title="Match ${c}%"><b>${c}</b></span><span>${esc(g.why || "")}</span></div></div>`;
+}
+async function runAsk(q, out, tok) {
+  q = String(q || "").trim(); if (!q) return;
+  const my = ++askTok;
+  out.innerHTML = `<div class="ask-think"><div class="spinner"></div><div class="ask-lbl">Analyzing&#8230;</div><div class="ask-scan"><i></i></div></div>`;
+  try {
+    const m = await askTv(q);
+    if (my !== askTok || tok !== routeTok) return;
+    if (m.error) { out.innerHTML = askLine(m.error); return; }
+    const head = m.clarify ? askLine(m.clarify) : "";
+    const gs = (Array.isArray(m.guesses) ? m.guesses : []).filter((g) => g && (g.type === "movie" || g.type === "tv") && +g.id > 0).slice(0, 6);
+    if (!gs.length) { out.innerHTML = head || askLine("I couldn't place that one. Add a detail: an actor, a year, a scene."); return; }
+    out.innerHTML = head + gridSkeleton(gs.length);
+    // Not origin-filtered: the user asked for these by description.
+    const got = await mapPool(gs, 6, async (g) => { const t = norm(await api.lite(g.type, g.id), g.type); return t ? { t, g } : null; });
+    if (my !== askTok || tok !== routeTok) return;
+    const ok = got.filter(Boolean);
+    out.innerHTML = head + (ok.length ? `<div class="grid ask-grid">${ok.map(({ t, g }) => askCard(t, g)).join("")}</div>` : `<p class="muted">Couldn't load those titles. Try again.</p>`);
+  } catch (e) { if (my === askTok && tok === routeTok) out.innerHTML = askLine(e.message || ASK_OFF); }
 }
 
 // ---------- Title page ----------
@@ -987,7 +1211,7 @@ async function renderTitle(v, tok, type, id) {
   if (tok !== routeTok) return;
   const t = norm(d, type);
   if (!t) { v.innerHTML = `<div class="notice"><h2>Not available</h2></div>`; return; }
-  document.title = t.name + " | McD TV";
+  document.title = t.name + " | Jarvis";
   const genres = (d.genres || []).map((g) => g.name);
   const runtime = type === "movie" ? d.runtime : (d.episode_run_time || [])[0];
   const seasons = (d.seasons || []).filter((s) => s.season_number > 0);
@@ -1530,7 +1754,7 @@ async function renderSources(v, tok, type, id, q) {
   const runtimeMin = type === "movie" ? d.runtime || 0 : (d.episode_run_time || [])[0] || 0;
   const meta = { type, id, name: t.name, poster: t.poster, backdrop: t.backdrop, season, episode, runtimeMin,
     label: type === "tv" ? `${t.name}  S${season} E${episode}` : t.name };
-  document.title = meta.label + " | McD TV";
+  document.title = meta.label + " | Jarvis";
   const back = `#/title/${type}/${id}`;
   const head = `<a class="muted" href="${back}" style="font-size:13px;font-weight:600">&#8249; ${esc(t.name)}</a>
     <div class="srchead"><h1 style="margin-bottom:0">Play here</h1><div class="lbl">${esc(meta.label)}${siOpts().slow ? " · Slow connection: smaller files first" : ""}</div></div>`;
@@ -1617,7 +1841,7 @@ function renderPlayer(v, tok, type, id, q) {
     return;
   }
   const m = P.meta;
-  document.title = m.label + " | McD TV";
+  document.title = m.label + " | Jarvis";
   const bd = m.backdrop ? ` poster="${IMG}w1280${esc(m.backdrop)}"` : "";
   v.innerHTML = `<div class="player">
     <div class="pl-top"><a class="pl-back" href="${esc(P.back)}" aria-label="Back to sources">&#8249; Back</a>
@@ -1715,7 +1939,7 @@ async function renderPerson(v, tok, id) {
   }
   if (tok !== routeTok) return;
   if (o.adult) { v.innerHTML = `<div class="notice"><h2>Not available</h2></div>`; return; }
-  document.title = (o.name || "Person") + " | McD TV";
+  document.title = (o.name || "Person") + " | Jarvis";
   const cr = o.combined_credits || {};
   // Their whole catalogue, like the TV's person page (not origin-filtered; adult titles still removed).
   const acting = [];
@@ -1800,10 +2024,10 @@ function renderSettings(v) {
   v.innerHTML = `<div class="page"><h1>Settings</h1>
     <div class="panel"><h2>Your TV</h2>
       <p><span id="setStatus">${statusHTML()}</span></p>
-      ${S.link ? `<p class="muted">This browser is linked to your McD TV. Play on TV, Open on TV and Watchlist are sent to the TV encrypted, through the same relay as the Control page.</p>
+      ${S.link ? `<p class="muted">This browser is linked to your Jarvis TV. Play on TV, Open on TV and Watchlist are sent to the TV encrypted, through the same relay as the Control page.</p>
         <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="retry">Refresh from TV</button><a class="btn small" href="../#${S.link.id}.${S.link.key}">Control page</a><button class="btn small" data-act="copylink">Copy link</button><button class="btn small" data-act="unpair">Unlink this browser</button></div>`
       : `<p class="muted">Not linked. <a href="#/pair" style="color:var(--bright)">How to link your TV</a></p>`}
-      <label for="pasteLink">${S.link ? "Link a different TV: paste its link" : "Paste a McD TV link"}</label>
+      <label for="pasteLink">${S.link ? "Link a different TV: paste its link" : "Paste a Jarvis link"}</label>
       <div class="rowf"><input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off"><button class="btn small primary" data-act="paste">Link</button></div>
     </div>
     <div class="panel"><h2>TMDB key</h2>
@@ -1822,7 +2046,7 @@ function renderSettings(v) {
       </select>
       <p class="muted" style="margin-top:10px">Adult titles are never shown.</p>
     </div>
-    <div class="panel"><h2>About</h2><p class="muted">McD TV web app. Browse on your phone or computer and send titles to your TV. Posters and info from TMDB.</p></div>
+    <div class="panel"><h2>About</h2><p class="muted">Jarvis web app. Browse on your phone or computer and send titles to your TV. Posters and info from TMDB.</p></div>
   </div>`;
   $("#originSel", v).value = S.originPref || "";
   $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
@@ -1830,7 +2054,7 @@ function renderSettings(v) {
 }
 async function doPaste() {
   const inp = $("#pasteLink"); const l = parseLink(inp && inp.value);
-  if (!l) { toast("That doesn't look like a McD TV link.", "warn"); return; }
+  if (!l) { toast("That doesn't look like a Jarvis link.", "warn"); return; }
   await pair(l); toast("Linked to your TV", "ok"); location.hash = "#/";
   route();
 }
@@ -1840,12 +2064,12 @@ function renderPair(v) {
   v.innerHTML = `<div class="page"><h1>Link your TV</h1>
     <div class="panel"><h2>Three steps</h2>
       <ol class="steps">
-        <li>On the TV, open McD TV and go to <b>Settings &gt; Phone &amp; Computer Setup</b>.</li>
-        <li>Scan the QR code with your phone's camera. The McD TV Control page opens.</li>
-        <li>On the Control page, tap <b>Open McD TV web app</b>. This app opens linked to your TV, and remembers it next time.</li>
+        <li>On the TV, open Jarvis and go to <b>Settings &gt; Phone &amp; Computer Setup</b>.</li>
+        <li>Scan the QR code with your phone's camera. The Jarvis Control page opens.</li>
+        <li>On the Control page, tap <b>Open Jarvis web app</b>. This app opens linked to your TV, and remembers it next time.</li>
       </ol>
       <p class="muted">On a computer: on the Control page tap <b>Copy link</b>, then paste it here.</p>
-      <label for="pasteLink">McD TV link</label>
+      <label for="pasteLink">Jarvis link</label>
       <div class="rowf"><input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off"><button class="btn small primary" data-act="paste">Link</button></div>
     </div>
     <div class="panel"><h2>No TV nearby?</h2><p class="muted">You can browse with your own free TMDB key. Play on TV needs a linked TV.</p>
@@ -1908,7 +2132,7 @@ document.addEventListener("click", async (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && S.link && Date.now() - S.lastInitAsk > 60000) askInit();
 });
-window.addEventListener("hashchange", () => { document.title = "McD TV"; route(); });
+window.addEventListener("hashchange", () => { document.title = "Jarvis"; route(); });
 
 // ---------- start ----------
 (async function start() {

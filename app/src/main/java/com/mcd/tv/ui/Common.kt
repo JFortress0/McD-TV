@@ -1,23 +1,9 @@
 package com.mcd.tv.ui
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,31 +19,40 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Border
-import androidx.tv.material3.Button
-import androidx.tv.material3.ButtonDefaults
-import androidx.tv.material3.Card
-import androidx.tv.material3.CardDefaults
-import androidx.tv.material3.Glow
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.Ratings
 import com.mcd.tv.data.RatingsSource
@@ -87,25 +82,28 @@ fun <T> rememberLoad(vararg keys: Any?, block: suspend () -> T): State<Load<T>> 
         }
     }
 
+/** Status line. Text that ends in "…" (Loading…, Searching…) is a busy state and gets the HUD spinner. */
 @Composable
 fun StatusText(text: String, modifier: Modifier = Modifier) {
-    Text(text = text, color = McdColors.Muted, fontSize = 16.sp, modifier = modifier.padding(vertical = 12.dp))
+    val busy = text.endsWith("…")
+    Row(modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (busy) {
+            HudSpinner(diameter = 22.dp)
+            Spacer(Modifier.width(10.dp))
+        }
+        Text(
+            text = if (busy) text.uppercase() else text,
+            color = if (busy) McdColors.Accent else McdColors.Muted,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = if (busy) 1.5.sp else 0.sp,
+        )
+    }
 }
 
 // ---------------- Cards ----------------
 
-private val CardShape = RoundedCornerShape(6.dp)
-private val cardShape @Composable get() = CardDefaults.shape(shape = CardShape)
-private val cardBorder @Composable get() = CardDefaults.border(
-    focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = CardShape),
-)
-private val cardColors @Composable get() = CardDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight)
-private val cardGlow @Composable get() = CardDefaults.glow(
-    focusedGlow = Glow(elevationColor = McdColors.RedBright.copy(alpha = 0.45f), elevation = 10.dp),
-)
-
 private val ImdbYellow = Color(0xFFF5C518)
-private val TmdbTeal = Color(0xFF01B4E4)
 
 /** True if [date] ("yyyy-MM-dd") is between [days] days ago and today. */
 private fun releasedWithinDays(date: String, days: Int): Boolean {
@@ -116,106 +114,98 @@ private fun releasedWithinDays(date: String, days: Int): Boolean {
 }
 
 /**
- * Portrait poster. Scores sit in a small dark pill along the bottom (TMDB always; IMDb and Rotten Tomatoes
- * when an MDBList key is set, loaded lazily per visible card). "IN CINEMA" on movies released in the last
- * 45 days, a check mark on watched movies. The title shows only while focused.
- * Focus: white ring, slight lift and a soft blue glow. [badges] = false hides all of that (e.g. collection tiles).
+ * Portrait poster on a chamfered HUD card. Scores sit in a small dark tag along the bottom (TMDB always;
+ * IMDb and Rotten Tomatoes when an MDBList key is set, loaded lazily per visible card). "IN CINEMA" on
+ * movies released in the last 45 days, a check mark on watched movies. The title shows only while focused.
+ * [badges] = false hides all of that (e.g. collection tiles).
  */
 @Composable
 fun PosterCard(t: Title, onClick: () -> Unit, modifier: Modifier = Modifier, width: Dp = 140.dp, badges: Boolean = true) {
-    var focused by remember { mutableStateOf(false) }
     val ratings by produceState<Ratings?>(if (badges) RatingsSource.cachedTmdb(t.type, t.id) else null, t.type, t.id, badges) {
         if (badges && value == null && RatingsSource.configured) value = RatingsSource.forTmdb(t.type, t.id)
     }
     val watched = remember(t.type, t.id, badges) { badges && Library.isWatched(t.type, t.id) }
     val inCinema = remember(t.type, t.releaseDate, badges) { badges && t.type == "movie" && releasedWithinDays(t.releaseDate, 45) }
-    Card(
-        onClick = onClick,
-        modifier = modifier.onFocusChanged { focused = it.isFocused }.width(width).height(width * 1.5f),
-        shape = cardShape,
-        colors = cardColors,
-        border = cardBorder,
-        glow = cardGlow,
-        scale = CardDefaults.scale(focusedScale = 1.06f),
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = Tmdb.img(t.poster),
-                contentDescription = t.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+    HudCard(onClick = onClick, modifier = modifier.width(width).height(width * 1.5f)) { focused ->
+        AsyncImage(
+            model = Tmdb.img(t.poster),
+            contentDescription = t.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        if (t.poster == null) {
+            Text(t.name, style = broadcastStyle(14.sp), modifier = Modifier.align(Alignment.Center).padding(8.dp))
+        }
+        if (inCinema) {
+            Text(
+                "IN CINEMA",
+                style = hudLabelStyle(7.sp, McdColors.Ink),
+                modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
+                    .background(McdColors.Accent, HudShapeTiny)
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
             )
-            if (t.poster == null) {
-                Text(t.name, style = broadcastStyle(15.sp), modifier = Modifier.align(Alignment.Center).padding(8.dp))
+        }
+        if (watched) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).clip(CircleShape)
+                    .background(McdColors.Ink.copy(alpha = 0.75f)).border(1.5.dp, McdColors.Accent, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("✓", color = McdColors.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            if (inCinema) {
+        }
+        val r = ratings
+        val imdb = if (badges) r?.imdb else null
+        val rt = if (badges) r?.rtCritics else null
+        val scores = buildAnnotatedString {
+            var first = true
+            fun sep() {
+                if (!first) withStyle(SpanStyle(color = McdColors.Line)) { append("  ▪  ") }
+                first = false
+            }
+            if (imdb != null) {
+                sep()
+                withStyle(SpanStyle(color = ImdbYellow, fontWeight = FontWeight.Bold)) { append("IMDb") }
+                append(" %.1f".format(imdb))
+            }
+            if (rt != null) {
+                sep()
+                withStyle(SpanStyle(color = McdColors.Coral, fontWeight = FontWeight.Bold)) { append("RT") }
+                append(" $rt%")
+            }
+            if (badges && imdb == null && t.rating > 0) {
+                sep()
+                withStyle(SpanStyle(color = McdColors.Accent, fontWeight = FontWeight.Bold)) { append("TMDB") }
+                append(" %.1f".format(t.rating))
+            }
+        }
+        Column(
+            Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                .then(
+                    if (focused) Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, McdColors.Ink.copy(alpha = 0.9f))))
+                    else Modifier,
+                )
+                .padding(start = 6.dp, end = 6.dp, bottom = 6.dp, top = if (focused) 18.dp else 0.dp),
+        ) {
+            if (focused) {
                 Text(
-                    "IN CINEMA",
-                    color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp,
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
-                        .background(McdColors.Red, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                    t.name.uppercase(), color = McdColors.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, lineHeight = 13.sp,
+                    letterSpacing = 0.6.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
-            if (watched) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).clip(CircleShape).background(McdColors.Red),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("✓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            val r = ratings
-            val imdb = if (badges) r?.imdb else null
-            val rt = if (badges) r?.rtCritics else null
-            val scores = buildAnnotatedString {
-                var first = true
-                fun sep() {
-                    if (!first) withStyle(SpanStyle(color = Color.White.copy(alpha = 0.5f))) { append(" · ") }
-                    first = false
-                }
-                if (imdb != null) {
-                    sep()
-                    withStyle(SpanStyle(color = ImdbYellow, fontWeight = FontWeight.Bold)) { append("IMDb") }
-                    append(" %.1f".format(imdb))
-                }
-                if (rt != null) {
-                    sep()
-                    append("🍅 $rt%")
-                }
-                if (badges && imdb == null && t.rating > 0) {
-                    sep()
-                    withStyle(SpanStyle(color = TmdbTeal, fontWeight = FontWeight.Bold)) { append("TMDB") }
-                    append(" %.1f".format(t.rating))
-                }
-            }
-            Column(
-                Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .then(
-                        if (focused) Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
-                        else Modifier,
-                    )
-                    .padding(start = 6.dp, end = 6.dp, bottom = 6.dp, top = if (focused) 18.dp else 0.dp),
-            ) {
-                if (focused) {
-                    Text(
-                        t.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 4.dp),
-                    )
-                }
-                if (scores.isNotEmpty()) {
-                    Text(
-                        scores,
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Clip,
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.68f), RoundedCornerShape(50))
-                            .padding(horizontal = 6.dp, vertical = 1.dp),
-                    )
-                }
+            if (scores.isNotEmpty()) {
+                Text(
+                    scores,
+                    color = McdColors.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier
+                        .background(McdColors.Ink.copy(alpha = 0.78f), HudShapeTiny)
+                        .border(1.dp, McdColors.Line, HudShapeTiny)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
             }
         }
     }
@@ -224,20 +214,10 @@ fun PosterCard(t: Title, onClick: () -> Unit, modifier: Modifier = Modifier, wid
 /** Poster-sized "See all" tile at the end of a row: opens the full grid for that row. */
 @Composable
 fun SeeAllCard(onClick: () -> Unit, modifier: Modifier = Modifier, height: Dp = 210.dp) {
-    Card(
-        onClick = onClick,
-        modifier = modifier.width(100.dp).height(height),
-        shape = cardShape,
-        colors = cardColors,
-        border = cardBorder,
-        glow = cardGlow,
-        scale = CardDefaults.scale(focusedScale = 1.06f),
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("See all", style = broadcastStyle(15.sp))
-                Text("›", color = McdColors.RedBright, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            }
+    HudCard(onClick = onClick, modifier = modifier.width(100.dp).height(height)) { focused ->
+        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("SEE ALL", style = hudLabelStyle(10.sp, if (focused) McdColors.AccentBright else McdColors.White))
+            Text("›", color = McdColors.Accent, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -254,28 +234,21 @@ fun WideCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(280.dp)) {
-        Card(
+        HudCard(
             onClick = onClick,
             modifier = modifier.onFocusChanged { focused = it.isFocused }.width(280.dp).height(158.dp),
-            shape = cardShape,
-            colors = cardColors,
-            border = cardBorder,
-            glow = cardGlow,
-            scale = CardDefaults.scale(focusedScale = 1.06f),
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                AsyncImage(model = image, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                if (progress != null) {
-                    Box(
-                        Modifier.fillMaxWidth().height(40.dp).align(Alignment.BottomStart)
-                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))),
-                    )
-                    Box(
-                        Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)
-                            .height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.25f)),
-                    ) {
-                        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp).background(McdColors.Red))
-                    }
+        ) { _ ->
+            AsyncImage(model = image, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            if (progress != null) {
+                Box(
+                    Modifier.fillMaxWidth().height(40.dp).align(Alignment.BottomStart)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, McdColors.Ink.copy(alpha = 0.75f)))),
+                )
+                Box(
+                    Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)
+                        .height(3.dp).background(McdColors.Line.copy(alpha = 0.6f)),
+                ) {
+                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(3.dp).background(McdColors.Accent))
                 }
             }
         }
@@ -283,9 +256,9 @@ fun WideCard(
         Box(Modifier.padding(top = 8.dp).height(36.dp)) {
             if (focused) {
                 Column {
-                    Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(title, color = McdColors.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (subtitle.isNotBlank()) {
-                        Text(subtitle, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(subtitle, color = McdColors.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -315,47 +288,48 @@ fun TitleRail(label: String, items: List<Title>, onSeeAll: (() -> Unit)?, onOpen
 }
 
 /**
- * Pill button (about 40dp tall).
- * Primary: white with near-black text; focused adds a bright blue ring and a soft glow.
- * Secondary: translucent white with white text; focused turns solid white with black text.
+ * Chamfered HUD button (about 40dp tall), uppercase Rajdhani SemiBold.
+ * Primary: cyan fill with near-black text; focused turns bright cyan with a glow and corner brackets.
+ * Secondary: transparent with a cyan hairline and cyan text; focused fills cyan with dark text.
  * Focus also scales it up slightly.
  */
 @Composable
 fun ActionButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = false) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(50)
+    val shape = HudShapeSmall
     val solid = primary || focused
+    val fill = when {
+        primary && focused -> McdColors.AccentBright
+        solid -> McdColors.Accent
+        else -> Color.Transparent
+    }
     Box(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .graphicsLayer { val s = if (focused) 1.05f else 1f; scaleX = s; scaleY = s }
-            .drawBehind {
-                if (focused) {
-                    // Soft blue glow: a few rounded outlines fading outward (works on every Android version).
-                    for (i in 1..4) {
-                        val g = i * 2.5f
-                        drawRoundRect(
-                            color = McdColors.RedBright.copy(alpha = 0.10f * (5 - i) / 4f),
-                            topLeft = androidx.compose.ui.geometry.Offset(-g, -g),
-                            size = androidx.compose.ui.geometry.Size(size.width + 2 * g, size.height + 2 * g),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2 + g),
-                        )
-                    }
-                }
-            }
+            .hudGlow(focused, shape, McdColors.Accent)
+            .hudBrackets(focused, McdColors.AccentBright, inset = (-4).dp, arm = 7.dp, stroke = 1.5.dp)
             .clip(shape)
-            .background(if (solid) Color.White else Color.White.copy(alpha = 0.12f))
-            .then(if (primary && focused) Modifier.border(2.dp, McdColors.RedBright, shape) else Modifier)
+            .background(fill)
+            .border(1.dp, if (solid) Color.Transparent else McdColors.Accent.copy(alpha = 0.75f), shape)
             .clickable(onClick = onClick)
             .heightIn(min = 40.dp)
-            .padding(horizontal = 22.dp, vertical = 8.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (solid) Color(0xFF05070D) else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(
+            text.uppercase(),
+            color = if (solid) McdColors.Ink else McdColors.Accent,
+            fontFamily = HudText,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.sp,
+            maxLines = 1,
+        )
     }
 }
 
-/** Round cast photo. Focusable and clickable when [onClick] is given (opens the person's page). */
+/** Round cast photo in a thin cyan ring. Focusable and clickable when [onClick] is given (opens the person's page). */
 @Composable
 fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)? = null) {
     var focused by remember { mutableStateOf(false) }
@@ -365,23 +339,31 @@ fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)
             .width(104.dp)
             .onFocusChanged { focused = it.isFocused }
             .graphicsLayer { val sc = if (focused) 1.06f else 1f; scaleX = sc; scaleY = sc }
-            .then(if (onClick != null) Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.clip(HudShape).clickable(onClick = onClick) else Modifier)
             .padding(4.dp),
     ) {
-        AsyncImage(
-            model = Tmdb.img(photo, "w185"),
-            contentDescription = name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(84.dp).clip(CircleShape).background(McdColors.Card)
-                .border(2.dp, if (focused) Color.White else Color.Transparent, CircleShape),
+        Box(
+            Modifier.size(90.dp).hudGlow(focused, CircleShape, McdColors.Accent, layers = 3),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = Tmdb.img(photo, "w185"),
+                contentDescription = name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(84.dp).clip(CircleShape).background(McdColors.Card)
+                    .border(if (focused) 2.dp else 1.dp, if (focused) McdColors.Accent else McdColors.Line, CircleShape),
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            name, fontSize = 13.sp, color = if (focused) McdColors.AccentBright else McdColors.White.copy(alpha = 0.9f),
+            fontWeight = if (focused) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(4.dp))
-        Text(name, fontSize = 12.sp, color = if (focused) Color.White else Color.White.copy(alpha = 0.9f), fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(role, fontSize = 11.sp, color = McdColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(role, fontSize = 12.sp, color = McdColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-/** Top navigation: plain text tabs (current one white with a blue underline) and a profile/settings circle. */
+/** Top navigation: wordmark, uppercase Orbitron tabs (current one cyan with an underline and dot), clock, profile ring. */
 enum class NavTab(val label: String) { Home("Home"), Search("Search"), Browse("Browse"), Library("My List"), Genres("Genres"), Sports("Sports"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
 
 /** Tabs shown in the bar, in order. Genres, Sports, Services and Background Noise live under Browse. */
@@ -400,25 +382,42 @@ private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit, modif
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(50))
-            .background(if (focused) Color.White.copy(alpha = 0.16f) else Color.Transparent)
+            .hudBrackets(focused, McdColors.AccentBright, inset = 0.dp, arm = 6.dp, stroke = 1.5.dp)
+            .clip(HudShapeSmall)
+            .background(if (focused) McdColors.Accent.copy(alpha = 0.14f) else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Text(
-            label,
-            color = if (selected || focused) Color.White else McdColors.Muted,
-            fontSize = 14.sp,
-            fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium,
+            label.uppercase(),
+            style = hudLabelStyle(
+                11.sp,
+                when {
+                    focused -> McdColors.AccentBright
+                    selected -> McdColors.Accent
+                    else -> McdColors.Muted
+                },
+            ),
+            fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
         )
-        Box(
-            Modifier.padding(top = 4.dp).width(if (selected) 20.dp else 0.dp).height(2.dp)
-                .clip(RoundedCornerShape(1.dp)).background(McdColors.Red),
-        )
+        Row(Modifier.padding(top = 4.dp).height(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (selected) {
+                Box(Modifier.width(14.dp).height(1.5.dp).background(McdColors.Accent))
+                Spacer(Modifier.width(3.dp))
+                Box(
+                    Modifier.size(4.dp)
+                        .drawBehind { drawCircle(McdColors.Accent.copy(alpha = 0.35f), radius = size.minDimension * 1.1f) }
+                        .clip(CircleShape).background(McdColors.AccentBright),
+                )
+                Spacer(Modifier.width(3.dp))
+                Box(Modifier.width(14.dp).height(1.5.dp).background(McdColors.Accent))
+            }
+        }
     }
 }
 
+/** Profile / settings button: a thin cyan ring with a person glyph. */
 @Composable
 private fun ProfileCircle(selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
@@ -426,34 +425,28 @@ private fun ProfileCircle(selected: Boolean, onClick: () -> Unit, modifier: Modi
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .graphicsLayer { val sc = if (focused) 1.08f else 1f; scaleX = sc; scaleY = sc }
-            .size(38.dp)
+            .size(36.dp)
+            .hudGlow(focused || selected, CircleShape, McdColors.Accent, layers = 3)
             .clip(CircleShape)
-            .background(Brush.linearGradient(listOf(McdColors.RedBright, McdColors.RedDark)))
-            .border(
-                2.dp,
-                when {
-                    focused -> Color.White
-                    selected -> McdColors.RedBright.copy(alpha = 0.9f)
-                    else -> Color.Transparent
-                },
-                CircleShape,
-            )
+            .background(if (focused) McdColors.Accent.copy(alpha = 0.18f) else McdColors.Ink.copy(alpha = 0.4f))
             .clickable(onClick = onClick),
     ) {
-        // Simple person glyph: head and shoulders.
         Canvas(Modifier.fillMaxSize()) {
-            val c = Color.White.copy(alpha = 0.92f)
-            drawCircle(c, radius = size.minDimension * 0.17f, center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height * 0.38f))
+            val ring = if (focused) McdColors.AccentBright else McdColors.Accent
+            val sw = (if (focused) 2.dp else 1.5.dp).toPx()
+            drawCircle(ring, radius = size.minDimension / 2f - sw / 2f, style = Stroke(sw))
+            val c = ring.copy(alpha = 0.95f)
+            drawCircle(c, radius = size.minDimension * 0.13f, center = Offset(size.width / 2, size.height * 0.39f))
             drawArc(
                 c, startAngle = 180f, sweepAngle = 180f, useCenter = true,
-                topLeft = androidx.compose.ui.geometry.Offset(size.width * 0.22f, size.height * 0.60f),
-                size = androidx.compose.ui.geometry.Size(size.width * 0.56f, size.height * 0.42f),
+                topLeft = Offset(size.width * 0.27f, size.height * 0.58f),
+                size = Size(size.width * 0.46f, size.height * 0.34f),
             )
         }
     }
 }
 
-/** Transparent top bar (it floats over hero backdrops): wordmark, text tabs, profile circle. */
+/** Transparent top bar (it floats over hero backdrops): wordmark, text tabs, clock, profile ring. */
 @Composable
 fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier, autoFocus: Boolean = false) {
     val currentFocus = remember { FocusRequester() }
@@ -468,11 +461,13 @@ fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Mod
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         McdLogo(scale = 0.7f)
-        Spacer(Modifier.width(24.dp))
+        Spacer(Modifier.width(22.dp))
         BarTabs.forEach { tab ->
             NavItem(tab.label, tab == shown, { onSelect(tab) }, if (tab == shown) Modifier.focusRequester(currentFocus) else Modifier)
         }
         Spacer(Modifier.weight(1f))
+        HudClock()
+        Spacer(Modifier.width(14.dp))
         ProfileCircle(current == NavTab.Settings, { onSelect(NavTab.Settings) }, if (current == NavTab.Settings) Modifier.focusRequester(currentFocus) else Modifier)
     }
 }

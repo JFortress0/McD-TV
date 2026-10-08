@@ -197,7 +197,7 @@ private fun ChannelOverlay(
     Column(
         modifier
             .width(540.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(HudShape)
             .background(McdColors.Card.copy(alpha = 0.93f))
             .padding(18.dp),
     ) {
@@ -218,7 +218,7 @@ private fun ChannelOverlay(
                 color = McdColors.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
-            Box(Modifier.fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.2f))) {
+            Box(Modifier.fillMaxWidth().height(3.dp).background(McdColors.White.copy(alpha = 0.2f))) {
                 Box(Modifier.fillMaxWidth(programmeProgress(cur, now)).height(3.dp).background(McdColors.Red))
             }
             if (cur.desc.isNotBlank()) {

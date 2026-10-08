@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -46,6 +45,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -140,7 +142,7 @@ private class FocusedChannel {
     var name by mutableStateOf("")
 }
 
-private val InkOnWhite = Color(0xFF05070D)
+private val InkOnWhite = McdColors.Ink
 private val StarGold = Color(0xFFFFC94D)
 
 private fun countText(n: Int): String = "%,d".format(n)
@@ -311,6 +313,7 @@ private fun LiveRail(
 @Composable
 private fun RailItem(label: String, count: Int?, selected: Boolean, requester: FocusRequester, onFocus: () -> Unit, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    val lit = focused || selected
     Row(
         Modifier
             .fillMaxWidth()
@@ -319,38 +322,50 @@ private fun RailItem(label: String, count: Int?, selected: Boolean, requester: F
                 focused = it.isFocused
                 if (it.isFocused) onFocus()
             }
-            .clip(RoundedCornerShape(8.dp))
+            .hudBrackets(focused, McdColors.AccentBright, inset = 0.dp, arm = 6.dp, stroke = 1.5.dp)
+            .clip(HudShapeSmall)
             .background(
                 when {
-                    focused -> Color.White
-                    selected -> McdColors.NavyLight
+                    focused -> McdColors.Accent.copy(alpha = 0.16f)
+                    selected -> McdColors.Raised.copy(alpha = 0.7f)
                     else -> Color.Transparent
                 },
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Left glowing bar on the picked / focused entry.
         Box(
-            Modifier.width(3.dp).height(14.dp).clip(RoundedCornerShape(2.dp))
-                .background(if (selected && !focused) McdColors.Red else Color.Transparent),
+            Modifier.width(3.dp).height(16.dp)
+                .then(
+                    if (lit) Modifier.drawBehind {
+                        val g = 3.dp.toPx()
+                        drawRect(McdColors.Accent.copy(alpha = 0.3f), topLeft = Offset(-g / 2f, -g / 2f), size = Size(size.width + g, size.height + g))
+                    } else Modifier,
+                )
+                .background(if (lit) McdColors.Accent else Color.Transparent),
         )
         Spacer(Modifier.width(8.dp))
         Text(
             label,
             color = when {
-                focused -> InkOnWhite
-                selected -> Color.White
+                focused -> McdColors.AccentBright
+                selected -> McdColors.Accent
                 else -> McdColors.Muted
             },
-            fontSize = 14.sp,
-            fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium,
+            fontSize = 15.sp,
+            fontWeight = if (lit) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         if (count != null) {
-            Text(countText(count), color = if (focused) Color(0xFF3A4255) else McdColors.Muted, fontSize = 12.sp, maxLines = 1)
+            Text(countText(count), color = if (lit) McdColors.Accent.copy(alpha = 0.8f) else McdColors.Muted.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1)
+        }
+        if (lit) {
+            Spacer(Modifier.width(4.dp))
+            Text("›", color = McdColors.Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -379,7 +394,7 @@ private fun SectionPane(
     val shown = current?.items ?: base
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
-            Text(title, style = broadcastStyle(20.sp))
+            Text(title.uppercase(), style = broadcastStyle(18.sp))
             Spacer(Modifier.width(10.dp))
             Text("${countText(shown.size)} channels", color = McdColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 2.dp))
         }
@@ -441,7 +456,7 @@ private fun SearchPane(
                 }
             },
             modifier = Modifier.padding(top = 4.dp, end = 32.dp, bottom = 8.dp).fillMaxWidth()
-                .background(McdColors.Card, RoundedCornerShape(8.dp)).border(2.dp, McdColors.Cyan, RoundedCornerShape(8.dp))
+                .background(McdColors.Card, HudShape).border(1.5.dp, McdColors.Accent, HudShape)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         )
         val q = query.trim()
@@ -501,7 +516,7 @@ private fun ChannelGrid(
     }
 }
 
-private val LiveCardShape = RoundedCornerShape(8.dp)
+private val LiveCardShape = HudShape
 
 /**
  * Channel card: logo centered on a dark tile, clean name and what's on now underneath, a thin progress bar
@@ -521,7 +536,7 @@ private fun LiveChannelCard(
 ) {
     val cur = remember(guide, ch.url, now) { Epg.nowNext(Epg.keyOf(ch), guide, now).first }
     Column(modifier) {
-        Card(
+        HudCard(
             onClick = onClick,
             onLongClick = onMenu,
             modifier = Modifier
@@ -536,14 +551,7 @@ private fun LiveChannelCard(
                         false
                     }
                 },
-            shape = CardDefaults.shape(shape = LiveCardShape),
-            colors = CardDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight),
-            border = CardDefaults.border(
-                border = Border(border = BorderStroke(1.dp, McdColors.Line), shape = LiveCardShape),
-                focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = LiveCardShape),
-            ),
-            scale = CardDefaults.scale(focusedScale = 1.06f),
-        ) {
+        ) { _ ->
             Box(Modifier.fillMaxSize()) {
                 if (ch.logo != null) {
                     AsyncImage(
@@ -563,19 +571,20 @@ private fun LiveChannelCard(
                     )
                 }
                 if (favorite) {
-                    Text("★", color = StarGold, fontSize = 14.sp, modifier = Modifier.align(Alignment.TopEnd).padding(horizontal = 6.dp, vertical = 2.dp))
+                    Text("★", color = StarGold, fontSize = 14.sp, modifier = Modifier.align(Alignment.TopEnd).padding(horizontal = 8.dp, vertical = 3.dp))
                 }
+                if (cur != null) LiveBadge(Modifier.align(Alignment.TopStart).padding(7.dp))
                 if (cur != null) {
-                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.15f))) {
-                        Box(Modifier.fillMaxWidth(programmeProgress(cur, now)).height(3.dp).background(McdColors.Red))
+                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(McdColors.Line.copy(alpha = 0.5f))) {
+                        Box(Modifier.fillMaxWidth(programmeProgress(cur, now)).height(3.dp).background(McdColors.Accent))
                     }
                 }
             }
         }
         Text(
             name,
-            color = Color.White,
-            fontSize = 13.sp,
+            color = McdColors.White,
+            fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -597,12 +606,12 @@ private fun LiveChannelCard(
 private fun HintBar(hint: FocusedChannel, favSet: Set<String>) {
     val ch = hint.channel
     Row(
-        Modifier.fillMaxWidth().height(30.dp).background(Color.Black.copy(alpha = 0.35f)).padding(start = 32.dp, end = 32.dp),
+        Modifier.fillMaxWidth().height(30.dp).background(McdColors.Ink.copy(alpha = 0.6f)).drawBehind { drawLine(McdColors.Line, Offset(0f, 0f), Offset(size.width, 0f), 1f) }.padding(start = 32.dp, end = 32.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (ch != null) {
             val fav = ch.url in favSet
-            Text(hint.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(hint.name, color = McdColors.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             KeyHint("OK", "Play")
             Spacer(Modifier.width(18.dp))
             KeyHint("☰", if (fav) "★ Favorite (press to remove)" else "☆ Add to favorites")
@@ -621,7 +630,7 @@ private fun KeyHint(keyLabel: String, action: String) {
         Text(
             keyLabel,
             color = InkOnWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color.White).padding(horizontal = 6.dp, vertical = 1.dp),
+            modifier = Modifier.clip(HudShapeTiny).background(McdColors.Accent).padding(horizontal = 6.dp, vertical = 1.dp),
         )
         Spacer(Modifier.width(6.dp))
         Text(action, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
@@ -660,17 +669,10 @@ private fun LiveWideCard(ch: Channel, guide: Map<String, List<Programme>>, onCli
     val now = System.currentTimeMillis()
     val cur = remember(guide, ch.url, now / 60_000L) { Epg.nowNext(Epg.keyOf(ch), guide, now).first }
     Column(Modifier.width(220.dp)) {
-        Card(
+        HudCard(
             onClick = onClick,
             modifier = Modifier.width(220.dp).height(124.dp),
-            shape = CardDefaults.shape(shape = LiveCardShape),
-            colors = CardDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight),
-            border = CardDefaults.border(
-                border = Border(border = BorderStroke(1.dp, McdColors.Line), shape = LiveCardShape),
-                focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = LiveCardShape),
-            ),
-            scale = CardDefaults.scale(focusedScale = 1.06f),
-        ) {
+        ) { _ ->
             Box(Modifier.fillMaxSize()) {
                 if (ch.logo != null) {
                     AsyncImage(
@@ -685,19 +687,15 @@ private fun LiveWideCard(ch: Channel, guide: Map<String, List<Programme>>, onCli
                         modifier = Modifier.align(Alignment.Center).padding(10.dp),
                     )
                 }
-                Text(
-                    "LIVE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
-                        .background(McdColors.LiveRed, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
-                )
+                LiveBadge(Modifier.align(Alignment.TopStart).padding(7.dp))
                 if (cur != null) {
-                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.15f))) {
-                        Box(Modifier.fillMaxWidth(programmeProgress(cur, now)).height(3.dp).background(McdColors.Red))
+                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(McdColors.Line.copy(alpha = 0.5f))) {
+                        Box(Modifier.fillMaxWidth(programmeProgress(cur, now)).height(3.dp).background(McdColors.Accent))
                     }
                 }
             }
         }
-        Text(name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+        Text(name, color = McdColors.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
         Text(if (cur != null) "Now: ${cur.title}" else "", color = McdColors.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -735,7 +733,8 @@ private fun LiveItemRow(item: LiveItem, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         colors = ClickableSurfaceDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(HudShape),
+        border = hudSurfaceBorder(),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(item.poster, item.name, contentScale = ContentScale.Fit, modifier = Modifier.size(width = 64.dp, height = 40.dp))
@@ -753,7 +752,7 @@ private fun LiveItemRow(item: LiveItem, onClick: () -> Unit) {
 fun LiveChannelScreen(nav: Nav, item: LiveItem) {
     val res by rememberLoad(item) { Addons.liveStreams(item) }
     Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp)) {
-        Text(item.name.uppercase(), style = broadcastStyle(28.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(item.name.uppercase(), style = broadcastStyle(30.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (item.info.isNotBlank()) Text(item.info, color = McdColors.Muted, fontSize = 14.sp)
         Spacer(Modifier.size(12.dp))
         when (val r = res) {
@@ -767,7 +766,8 @@ fun LiveChannelScreen(nav: Nav, item: LiveItem) {
                         modifier = Modifier.fillMaxWidth(),
                         colors = ClickableSurfaceDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight),
                         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
-                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                        shape = ClickableSurfaceDefaults.shape(HudShape),
+        border = hudSurfaceBorder(),
                     ) {
                         Column(Modifier.padding(12.dp)) {
                             Text(s.name, style = broadcastStyle(16.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)

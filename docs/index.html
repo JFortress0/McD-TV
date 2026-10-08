@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>McD TV Control</title>
+<title>Jarvis Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#05070D;--bg2:#0A1430;--bg3:#070B18;--card:#111827;--raised:#1A2335;--line:#1F2937;--accent:#3D7BFF;--accent2:#6EA0FF;--red:var(--accent);--muted:#A3ADC2;--ok:#1f9d55;--cyan:#6EA0FF}
 *{box-sizing:border-box}
@@ -41,18 +44,51 @@ li:last-child{border-bottom:0}
 .hidden{display:none}
 a.btnlink{display:inline-block;background:#fff;color:#05070D;border-radius:999px;padding:10px 16px;font-weight:700;font-size:14px;text-decoration:none}
 a.btnlink:hover{box-shadow:0 0 0 2px var(--accent2),0 0 16px rgba(110,160,255,.35)}a.btnlink:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+
+/* ---------- Jarvis HUD skin ---------- */
+:root{--bg:#02060A;--bg2:#031018;--bg3:#02080D;--card:rgba(6,23,34,.85);--raised:#0A2230;--line:#0E6A7A;--accent:#00E5FF;--accent2:#7DF9FF;--bright:#7DF9FF;--red:var(--accent);--muted:#8FB8C4;--ok:#00E5FF;--cyan:#00E5FF;--ink:#02060A;--white:#EAFBFF;
+  --disp:Orbitron,Rajdhani,Arial,sans-serif;--cut:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);--cut-s:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+body{color:var(--white);font-family:Rajdhani,"Arial Narrow",Arial,sans-serif;font-size:17px;
+  background:linear-gradient(rgba(0,229,255,.04) 1px,transparent 1px) 0 0/40px 40px,linear-gradient(90deg,rgba(0,229,255,.04) 1px,transparent 1px) 0 0/40px 40px,
+  radial-gradient(ellipse at 50% 35%,transparent 55%,rgba(0,0,0,.55)),linear-gradient(var(--bg2),var(--bg3) 240px,var(--bg) 560px) no-repeat,var(--bg)}
+header{border-bottom:1px solid rgba(14,106,122,.6);background:rgba(2,6,10,.6)}
+.logo{display:flex;align-items:center;gap:9px;font:700 20px var(--disp);letter-spacing:3px;color:var(--white);text-shadow:0 0 12px rgba(0,229,255,.75)}
+.logo .ring{flex:0 0 auto;filter:drop-shadow(0 0 4px rgba(0,229,255,.6))}
+.tag{font:500 11px var(--disp);letter-spacing:2px;color:var(--accent)}
+h1,h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:1.5px}
+h1{font-size:22px;font-weight:700}
+h2{font-size:14px;font-weight:500;color:var(--white);display:flex;align-items:center;gap:8px}
+h2::before{content:"\25B8";color:var(--accent)}
+h2::after{content:"";width:40px;height:1px;background:var(--accent);box-shadow:4px 0 0 -0px transparent}
+.card{position:relative;background:var(--card);border:1px solid var(--line);border-radius:0;clip-path:var(--cut)}
+.card::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.55;background:linear-gradient(var(--bright),var(--bright)) left 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/2px 12px no-repeat}
+input,select{border-radius:0;border:1px solid var(--line);background:rgba(2,6,10,.7);color:var(--white);font-family:inherit;clip-path:var(--cut-s)}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+button,a.btnlink,.tabs a{border-radius:0!important;clip-path:var(--cut-s);background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1px rgba(0,229,255,.75);border:0;
+  font-family:Rajdhani,Arial,sans-serif;font-weight:600;text-transform:uppercase;letter-spacing:1px}
+button:hover,button:focus-visible,a.btnlink:hover,a.btnlink:focus-visible,.tabs a:hover,.tabs a:focus-visible{background:var(--accent);color:var(--ink);box-shadow:none;outline:none}
+button.primary,a.btnlink{background:var(--accent);color:var(--ink);box-shadow:none;border:0}
+button.primary:hover,button.primary:focus-visible,a.btnlink:hover,a.btnlink:focus-visible{background:var(--bright);color:var(--ink);box-shadow:none}
+code,.big{border-radius:0;background:rgba(2,6,10,.7);border-color:var(--line);color:var(--bright)}
+.big{clip-path:var(--cut);font-family:var(--disp);letter-spacing:1px;font-size:18px}
+.pill{border-radius:0;clip-path:var(--cut-s);background:var(--raised)}.pill.ok{background:rgba(0,229,255,.18);color:var(--accent)}.pill.no{background:rgba(255,77,109,.15);color:#FF4D6D}
+.dot.on{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.bar{background:rgba(2,6,10,.94);border-top:1px solid var(--line)}
+li{border-bottom-color:rgba(14,106,122,.45)}
+.err{color:#FF4D6D}.good{color:var(--accent)}.no{color:#FF4D6D}
+a{color:var(--accent)}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">McD <b>TV</b></div><div class="tag">CONTROL</div>
+  <div class="logo"><svg class="ring" viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-opacity=".25" stroke-width="4"/><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-width="1.4"/><path d="M28.80 16.00L31.60 16.00M27.60 22.70L29.51 23.80M22.70 27.60L23.80 29.51M16.00 28.80L16.00 31.60M9.30 27.60L8.20 29.51M4.40 22.70L2.49 23.80M3.20 16.00L0.40 16.00M4.40 9.30L2.49 8.20M9.30 4.40L8.20 2.49M16.00 3.20L16.00 0.40M22.70 4.40L23.80 2.49M27.60 9.30L29.51 8.20" stroke="#00E5FF" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="#00E5FF" fill-opacity=".25"/><circle cx="16" cy="16" r="2" fill="#7DF9FF"/></svg>JARVIS</div><div class="tag">CONTROL</div>
   <div class="status" id="tvStatus"><span class="dot" id="dot"></span>Connecting to your TV…</div>
 </header>
 
 <main id="noLink" class="hidden">
   <h2>Link your TV</h2>
   <div class="card">
-    <p>On the TV, open McD TV, go to the profile circle (top right), then <b>Phone &amp; Computer Setup</b>. Scan the code with your phone's camera.</p>
+    <p>On the TV, open Jarvis, go to the profile circle (top right), then <b>Phone &amp; Computer Setup</b>. Scan the code with your phone's camera.</p>
     <p class="hint">To use this page on a computer: open it from the QR code on your phone, tap <b>Copy link</b>, and open that link on the computer. You can also paste the link here:</p>
     <div class="row"><input id="pasteLink" placeholder="https://jfortress0.github.io/McD-TV/#…"><button class="primary" onclick="usePasted()">Open</button></div>
   </div>
@@ -61,9 +97,9 @@ a.btnlink:hover{box-shadow:0 0 0 2px var(--accent2),0 0 16px rgba(110,160,255,.3
 <main id="app" class="hidden">
   <div class="card row" style="margin-bottom:16px">
     <div class="grow"><div class="name">Browse on your phone or computer</div><div class="hint">Posters, trailers and cast. Tap Play on TV and the TV starts it.</div></div>
-    <a class="btnlink" id="webAppLink" href="app/">Open McD TV web app</a>
+    <a class="btnlink" id="webAppLink" href="app/">Open Jarvis web app</a>
   </div>
-  <p class="hint">Adding or removing an addon or website saves to the TV right away. For the other boxes, tap <b>Save to TV</b>. Changes are sent to your TV over the internet, encrypted end to end. McD TV must be open on the TV to receive them, or they apply the next time it opens (within 12 hours).</p>
+  <p class="hint">Adding or removing an addon or website saves to the TV right away. For the other boxes, tap <b>Save to TV</b>. Changes are sent to your TV over the internet, encrypted end to end. Jarvis must be open on the TV to receive them, or they apply the next time it opens (within 12 hours).</p>
 
   <h2>Addons (sources)</h2>
   <div class="card">
@@ -101,6 +137,9 @@ a.btnlink:hover{box-shadow:0 0 0 2px var(--accent2),0 0 16px rgba(110,160,255,.3
     <label>TMDB key (posters and info). Leave blank to keep the current one.</label><input id="tmdb" type="password" placeholder="Paste to replace">
     <div style="margin-top:12px"><span id="mdbState"></span></div>
     <label>MDBList key (IMDb and Rotten Tomatoes critic and audience scores). Free at mdblist.com.</label><input id="mdb" type="password" placeholder="Paste to replace">
+    <div style="margin-top:12px"><span id="jarvisState"></span></div>
+    <label>Jarvis key</label><input id="jarvisKey" type="password" placeholder="Paste to replace" autocomplete="off">
+    <p class="hint">Powers Ask Jarvis. Create a key at console.anthropic.com &gt; API keys, then paste it here.</p>
   </div>
 
   <h2>Preferences</h2>
@@ -113,7 +152,7 @@ a.btnlink:hover{box-shadow:0 0 0 2px var(--accent2),0 0 16px rgba(110,160,255,.3
     </select>
     <label class="toggle"><input type="checkbox" id="usOnly"> Use US release dates</label>
     <label class="toggle"><input type="checkbox" id="slow"> Slow connection (smaller files first)</label>
-    <label class="toggle"><input type="checkbox" id="intro"> Play the intro when McD TV opens</label>
+    <label class="toggle"><input type="checkbox" id="intro"> Play the intro when Jarvis opens</label>
   </div>
 
   <h2>This link</h2>
@@ -143,7 +182,7 @@ function parseLink(h) {
 }
 function usePasted() {
   const l = parseLink($("pasteLink").value);
-  if (!l) return alert("That doesn't look like a McD TV link.");
+  if (!l) return alert("That doesn't look like a Jarvis link.");
   location.hash = l.id + "." + l.key; location.reload();
 }
 
@@ -197,7 +236,7 @@ async function connect() {
   const es = new EventSource(RELAY + "mcdtv-" + link.id + "-out/sse");
   es.onmessage = (e) => { try { const ev = JSON.parse(e.data); if (ev.event === "message") onMessage(ev.message); } catch {} };
   await send({ cmd: "hello" }).catch(() => {});
-  setTimeout(() => { if (!state) $("tvStatus").lastChild.textContent = "Waiting for the TV. Make sure McD TV is open."; }, 8000);
+  setTimeout(() => { if (!state) $("tvStatus").lastChild.textContent = "Waiting for the TV. Make sure Jarvis is open."; }, 8000);
 }
 
 // ---------- page ----------
@@ -210,6 +249,7 @@ function render() {
   $("rd").innerHTML = state.rd_connected ? '<span class="pill ok">Connected</span>' : '<span class="pill no">Not connected</span>';
   $("tmdbState").innerHTML = state.tmdb_set ? '<span class="pill ok">TMDB key set</span>' : '<span class="pill no">No TMDB key</span>';
   $("mdbState").innerHTML = state.mdblist_set ? '<span class="pill ok">MDBList key set</span>' : '<span class="pill no">No MDBList key</span>';
+  $("jarvisState").innerHTML = state.jarvis_set ? '<span class="pill ok">Jarvis key set</span>' : '<span class="pill no">No Jarvis key</span>';
   $("m3u").value = state.m3u_url || ""; $("stream").value = state.custom_stream_url || "";
   $("origin").value = state.origin_filter || "no_asia";
   $("usOnly").checked = !!state.us_only; $("slow").checked = !!state.slow_connection; $("intro").checked = state.play_intro !== false;
@@ -250,13 +290,13 @@ function removeSite(i) { sites.splice(i, 1); drawSites(); dirty(true); save(); }
 function dirty(on) { dirtyFlag = on; $("saveBtn").disabled = !on; if (on) { $("saveMsg").className = "msg"; $("saveMsg").textContent = "Unsaved changes"; } }
 $("siteUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") addSite(); });
 $("addonIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addAddon(); });
-["m3u", "stream", "tmdb", "mdb"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
+["m3u", "stream", "tmdb", "mdb", "jarvisKey"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
 ["origin", "usOnly", "slow", "intro"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
 
 async function save() {
   if ($("siteUrl").value.trim()) { addSite(); return; }
   if ($("addonIn").value.trim()) { addAddon(); return; }
-  if (!state) { $("saveMsg").className = "err"; $("saveMsg").textContent = "Waiting for the TV first. Open McD TV on the TV."; return; }
+  if (!state) { $("saveMsg").className = "err"; $("saveMsg").textContent = "Waiting for the TV first. Open Jarvis on the TV."; return; }
   const data = {
     addon_urls: addons.map((a) => a.url), websites: sites,
     m3u_url: $("m3u").value.trim(), custom_stream_url: $("stream").value.trim(),
@@ -264,9 +304,10 @@ async function save() {
   };
   if ($("tmdb").value.trim()) data.tmdb_key = $("tmdb").value.trim();
   if ($("mdb").value.trim()) data.mdblist_key = $("mdb").value.trim();
+  if ($("jarvisKey").value.trim()) data.jarvis_key = $("jarvisKey").value.trim();
   try {
     await send({ cmd: "set", data });
-    $("tmdb").value = ""; $("mdb").value = ""; dirtyFlag = false; $("saveBtn").disabled = true;
+    $("tmdb").value = ""; $("mdb").value = ""; $("jarvisKey").value = ""; dirtyFlag = false; $("saveBtn").disabled = true;
     $("saveMsg").className = "msg"; $("saveMsg").textContent = "Sent. Waiting for the TV to confirm…";
   } catch (e) { $("saveMsg").className = "err"; $("saveMsg").textContent = e.message; }
 }

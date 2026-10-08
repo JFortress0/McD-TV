@@ -1,6 +1,7 @@
 package com.mcd.tv.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -108,11 +109,11 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
         }
     }
 
-    Column(Modifier.fillMaxSize().background(ScreenBackground).padding(horizontal = 48.dp, vertical = 27.dp)) {
+    Column(Modifier.fillMaxSize().hudBackground().padding(horizontal = 48.dp, vertical = 27.dp)) {
         Text("SELECT SOURCE", style = broadcastStyle(30.sp))
         Text(meta.label, color = McdColors.Muted, fontSize = 16.sp)
         if (Prefs.slowConnection) Text("Slow connection mode: smaller files listed first", color = McdColors.Muted, fontSize = 13.sp)
-        if (status.isNotBlank()) Text(status, color = McdColors.Red, fontSize = 15.sp, modifier = Modifier.padding(top = 8.dp))
+        if (status.isNotBlank()) Text(status, color = McdColors.Amber, fontSize = 15.sp, modifier = Modifier.padding(top = 8.dp))
 
         when (l) {
             is Load.Loading -> StatusText("Asking your addons…")
@@ -151,8 +152,8 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
 @Composable
 private fun Badge(text: String, color: Color) {
     Text(
-        text, color = Color.White, fontSize = 12.sp,
-        modifier = Modifier.background(color, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
+        text, color = McdColors.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.background(color, HudShapeTiny).border(1.dp, McdColors.Line, HudShapeTiny).padding(horizontal = 8.dp, vertical = 2.dp),
     )
 }
 
@@ -160,7 +161,7 @@ private fun Badge(text: String, color: Color) {
 private fun stars(n: Int): AnnotatedString = buildAnnotatedString {
     val k = n.coerceIn(0, 5)
     withStyle(SpanStyle(color = McdColors.RedBright)) { append("★".repeat(k)) }
-    withStyle(SpanStyle(color = Color.White.copy(alpha = 0.18f))) { append("★".repeat(5 - k)) }
+    withStyle(SpanStyle(color = McdColors.White.copy(alpha = 0.18f))) { append("★".repeat(5 - k)) }
 }
 
 /** One clean line: stars, resolution, HDR, audio, size, Instant / Download, then the addon name. */
@@ -175,7 +176,8 @@ private fun SourceRow(r: RankedStream, onClick: () -> Unit, modifier: Modifier =
             focusedContainerColor = McdColors.NavyLight,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(HudShape),
+        border = hudSurfaceBorder(),
     ) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
@@ -183,11 +185,11 @@ private fun SourceRow(r: RankedStream, onClick: () -> Unit, modifier: Modifier =
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(stars(info.stars), fontSize = 13.sp, maxLines = 1)
-            if (info.resolution.isNotBlank()) Badge(info.resolution, if (info.resolution == "4K" || info.resolution == "1080p") McdColors.RedDark else Color(0xFF3A4466))
-            info.hdr.forEach { Badge(it, Color(0xFF2A3550)) }
-            if (info.audio.isNotBlank()) Badge(info.audio, Color(0xFF2A3550))
+            if (info.resolution.isNotBlank()) Badge(info.resolution, if (info.resolution == "4K" || info.resolution == "1080p") McdColors.RedDark else McdColors.Raised)
+            info.hdr.forEach { Badge(it, McdColors.Raised) }
+            if (info.audio.isNotBlank()) Badge(info.audio, McdColors.Raised)
             if (info.source.isNotBlank()) Text(info.source, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
-            if (info.sizeLabel.isNotBlank()) Text(info.sizeLabel, color = Color.White, fontSize = 13.sp, maxLines = 1)
+            if (info.sizeLabel.isNotBlank()) Text(info.sizeLabel, color = McdColors.White, fontSize = 13.sp, maxLines = 1)
             when {
                 info.instant -> Text("⚡ Instant", color = McdColors.RedBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 info.download -> Text("⏳ Download", color = McdColors.Muted, fontSize = 13.sp, maxLines = 1)
@@ -209,7 +211,8 @@ private fun ShowHiddenRow(count: Int, onClick: () -> Unit, modifier: Modifier = 
             focusedContainerColor = McdColors.NavyLight,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(HudShape),
+        border = hudSurfaceBorder(),
     ) {
         Text(
             "Show $count hidden source${if (count == 1) "" else "s"}  (CAM releases, files over the size limit)",

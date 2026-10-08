@@ -329,6 +329,26 @@ object Tmdb {
     suspend fun nowPlaying(page: Int = 1) = list("/movie/now_playing", "movie", region() + ("page" to page.toString()))
     suspend fun search(q: String) = list("/search/multi", null, mapOf("query" to q, "include_adult" to "false"))
 
+    /**
+     * Best TMDB match for one title of a known [type] ("movie"/"tv"), used by Ask Jarvis.
+     * Prefers an exact [year] match, then the closest year, then TMDB's first result. The origin setting
+     * is NOT applied (the user asked for this title by name); adult titles are always skipped.
+     */
+    suspend fun findTitle(type: String, name: String, year: Int?): Title? {
+        if ((type != "movie" && type != "tv") || name.isBlank()) return null
+        val arr = get("/search/$type", mapOf("query" to name, "include_adult" to "false")).optJSONArray("results") ?: return null
+        val found = (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            if (o.optBoolean("adult", false)) null else parse(o, type)
+        }
+        if (found.isEmpty()) return null
+        if (year == null || year <= 0) return found.first()
+        found.firstOrNull { it.year.toIntOrNull() == year }?.let { return it }
+        // Closest year among the top few (TMDB ranks by relevance; don't reach for a far-down obscure match).
+        return found.take(5).filter { it.year.toIntOrNull() != null }
+            .minByOrNull { kotlin.math.abs(it.year.toInt() - year) } ?: found.first()
+    }
+
     suspend fun discover(type: String, params: Map<String, String>, page: Int = 1): List<Title> {
         val p = params.toMutableMap()
         p["page"] = page.toString()

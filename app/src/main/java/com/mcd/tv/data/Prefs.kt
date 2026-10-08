@@ -62,6 +62,17 @@ object Prefs {
         get() = str("mdblist_key").ifBlank { com.mcd.tv.BuildConfig.MDBLIST_KEY }
         set(v) = put("mdblist_key", v)
 
+    // ---- Ask Jarvis ----
+    /** API key for Ask Jarvis (Anthropic Messages API). This TV only: never synced, never sent to the web pages. */
+    var jarvisKey: String
+        get() = str("jarvis_key")
+        set(v) = put("jarvis_key", v)
+
+    /** Model id for Ask Jarvis. Blank = the default in [Jarvis]. */
+    var jarvisModel: String
+        get() = str("jarvis_model").ifBlank { "claude-sonnet-5-5" }
+        set(v) = put("jarvis_model", v)
+
     // ---- Live TV ----
     var m3uUrl: String
         get() = str("m3u_url")
@@ -188,7 +199,7 @@ object Prefs {
         set(v) = sp.edit().putLong("last_sync_at", v).apply()
 
     /** Keys that belong to this TV only and never sync to the account. */
-    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode")
+    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String

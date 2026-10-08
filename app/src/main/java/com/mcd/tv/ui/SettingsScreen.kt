@@ -6,10 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -47,78 +47,85 @@ fun SettingsScreen(nav: Nav) {
 
     TabPage(nav, NavTab.Settings) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 48.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 48.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            RailHeader("Phone setup")
-            Text(
-                "Paste your TMDB key, addon links, playlist and stream links from your phone instead of typing with the remote.",
-                color = McdColors.Muted, fontSize = 15.sp,
-            )
-            ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
-
-            Spacer(Modifier.height(6.dp))
-            RailHeader("Account")
-            Text(
-                if (com.mcd.tv.data.Account.signedIn) "Signed in as ${Prefs.accountName}" else "Not signed in. Optional: sign in to sync across TVs.",
-                color = McdColors.White, fontSize = 16.sp,
-            )
-            ActionButton("Account", { nav.push(Screen.AccountPage) })
-
-            Spacer(Modifier.height(6.dp))
-            RailHeader("Real-Debrid")
-            Text(
-                when (val r = rd) { is Load.Ok -> r.value; is Load.Err -> "Error: ${r.message}"; else -> "Checking…" },
-                color = McdColors.White, fontSize = 16.sp,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton(if (RealDebrid.connected) "Reconnect Real-Debrid" else "Connect Real-Debrid", { nav.push(Screen.RdConnect) }, primary = !RealDebrid.connected)
-                if (RealDebrid.connected) ActionButton("Disconnect", { Prefs.clearRealDebrid(); nav.replace(Screen.Settings) })
+            HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Phone setup")
+                Text(
+                    "Paste your TMDB key, addon links, playlist and stream links from your phone instead of typing with the remote.",
+                    color = McdColors.Muted, fontSize = 16.sp,
+                )
+                ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
             }
 
-            Spacer(Modifier.height(6.dp))
-            RailHeader("Sources")
-            Text(
-                "TMDB: " + (if (Prefs.tmdbKey.isNotBlank()) "connected" else "add a key in Phone setup") +
-                    "\nAddons: " + when (val a = addons) { is Load.Ok -> a.value.joinToString(", ").ifBlank { "none" }; else -> "…" } +
-                    "\nLive TV playlist: " + (if (Prefs.m3uUrl.isNotBlank()) "set" else "none") +
-                    "\nWebsites: " + Prefs.websites.joinToString(", ") { it.first }.ifBlank { "none" } +
-                    "\nControl page link: " + com.mcd.tv.data.Relay.status,
-                color = McdColors.White, fontSize = 15.sp,
-            )
-
-            Spacer(Modifier.height(6.dp))
-            RailHeader("Preferences")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("Titles: ${origin.label}", {
-                    val all = com.mcd.tv.data.OriginFilter.entries
-                    origin = all[(all.indexOf(origin) + 1) % all.size]
-                    Prefs.origin = origin
-                }, primary = true)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("US release dates: ${if (usOnly) "ON" else "OFF"}", { usOnly = !usOnly; Prefs.usOnly = usOnly })
-                ActionButton("Slow connection: ${if (slow) "ON" else "OFF"}", { slow = !slow; Prefs.slowConnection = slow })
-                ActionButton("Intro on launch: ${if (intro) "ON" else "OFF"}", { intro = !intro; Prefs.playIntro = intro })
-                ActionButton("Replay intro", { nav.push(Screen.Intro) })
-            }
-            // Source list hides bigger files (a "Show hidden" row reveals them). 0 = no limit.
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("Movie size limit: ${sizeLimitLabel(maxMovie)}", {
-                    maxMovie = nextLimit(maxMovie, listOf(20, 40, 60, 0))
-                    Prefs.maxMovieGb = maxMovie
-                })
-                ActionButton("Episode size limit: ${sizeLimitLabel(maxEpisode)}", {
-                    maxEpisode = nextLimit(maxEpisode, listOf(4, 8, 12, 20, 0))
-                    Prefs.maxEpisodeGb = maxEpisode
-                })
+            HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Account")
+                Text(
+                    if (com.mcd.tv.data.Account.signedIn) "Signed in as ${Prefs.accountName}" else "Not signed in. Optional: sign in to sync across TVs.",
+                    color = McdColors.White, fontSize = 16.sp,
+                )
+                ActionButton("Account", { nav.push(Screen.AccountPage) })
             }
 
-            Spacer(Modifier.height(6.dp))
-            RailHeader("Player test")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("Play test stream", { nav.push(Screen.Player(PLAYER_TEST_URL, "Player test")) })
-                if (Prefs.customUrl.isNotBlank()) ActionButton("Play My Stream", { nav.push(Screen.Player(Prefs.customUrl, "My Stream")) })
+            HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Real-Debrid")
+                Text(
+                    when (val r = rd) { is Load.Ok -> r.value; is Load.Err -> "Error: ${r.message}"; else -> "Checking…" },
+                    color = McdColors.White, fontSize = 16.sp,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionButton(if (RealDebrid.connected) "Reconnect Real-Debrid" else "Connect Real-Debrid", { nav.push(Screen.RdConnect) }, primary = !RealDebrid.connected)
+                    if (RealDebrid.connected) ActionButton("Disconnect", { Prefs.clearRealDebrid(); nav.replace(Screen.Settings) })
+                }
+            }
+
+            HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Sources")
+                Text(
+                    "TMDB: " + (if (Prefs.tmdbKey.isNotBlank()) "connected" else "add a key in Phone setup") +
+                        "\nAddons: " + when (val a = addons) { is Load.Ok -> a.value.joinToString(", ").ifBlank { "none" }; else -> "…" } +
+                        "\nLive TV playlist: " + (if (Prefs.m3uUrl.isNotBlank()) "set" else "none") +
+                        "\nWebsites: " + Prefs.websites.joinToString(", ") { it.first }.ifBlank { "none" } +
+                        "\nControl page link: " + com.mcd.tv.data.Relay.status,
+                    color = McdColors.White, fontSize = 16.sp,
+                )
+            }
+
+            HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Preferences")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionButton("Titles: ${origin.label}", {
+                        val all = com.mcd.tv.data.OriginFilter.entries
+                        origin = all[(all.indexOf(origin) + 1) % all.size]
+                        Prefs.origin = origin
+                    }, primary = true)
+                    ActionButton("Replay intro", { nav.push(Screen.Intro) })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionButton("US release dates: ${if (usOnly) "ON" else "OFF"}", { usOnly = !usOnly; Prefs.usOnly = usOnly })
+                    ActionButton("Slow connection: ${if (slow) "ON" else "OFF"}", { slow = !slow; Prefs.slowConnection = slow })
+                    ActionButton("Intro on launch: ${if (intro) "ON" else "OFF"}", { intro = !intro; Prefs.playIntro = intro })
+                }
+                // Source list hides bigger files (a "Show hidden" row reveals them). 0 = no limit.
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionButton("Movie size limit: ${sizeLimitLabel(maxMovie)}", {
+                        maxMovie = nextLimit(maxMovie, listOf(20, 40, 60, 0))
+                        Prefs.maxMovieGb = maxMovie
+                    })
+                    ActionButton("Episode size limit: ${sizeLimitLabel(maxEpisode)}", {
+                        maxEpisode = nextLimit(maxEpisode, listOf(4, 8, 12, 20, 0))
+                        Prefs.maxEpisodeGb = maxEpisode
+                    })
+                }
+            }
+
+            HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Player test")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionButton("Play test stream", { nav.push(Screen.Player(PLAYER_TEST_URL, "Player test")) })
+                    if (Prefs.customUrl.isNotBlank()) ActionButton("Play My Stream", { nav.push(Screen.Player(Prefs.customUrl, "My Stream")) })
+                }
             }
             Spacer(Modifier.height(40.dp))
         }
@@ -150,12 +157,12 @@ fun PhoneSetupScreen(nav: Nav) {
         onDispose { view.keepScreenOn = false }
     }
     Row(
-        Modifier.fillMaxSize().background(ScreenBackground).padding(48.dp),
+        Modifier.fillMaxSize().hudBackground().padding(48.dp),
         horizontalArrangement = Arrangement.spacedBy(48.dp),
     ) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             McdLogo()
-            Text("MCD TV CONTROL", style = broadcastStyle(36.sp))
+            Text("JARVIS CONTROL", style = broadcastStyle(36.sp))
             Text("1.  Point your phone's camera at the code and tap the link.", fontSize = 20.sp, color = McdColors.White)
             Text("2.  Add addons, websites and keys, then tap Save.", fontSize = 20.sp, color = McdColors.White)
             Text(
@@ -175,9 +182,12 @@ fun PhoneSetupScreen(nav: Nav) {
             )
             Text(LocalWeb.error?.let { "Home page error: $it" } ?: LocalWeb.lastMessage, fontSize = 13.sp, color = McdColors.Muted)
         }
-        Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-            QrCode(link, 300.dp)
-            Text("Scan to open McD TV Control", fontSize = 14.sp, color = McdColors.Muted, modifier = Modifier.padding(top = 10.dp))
+        HudPanel(padding = 16.dp) {
+            QrCode(link, 280.dp)
+            Text(
+                "SCAN TO OPEN JARVIS CONTROL", style = hudLabelStyle(9.sp, McdColors.Accent),
+                modifier = Modifier.padding(top = 2.dp).align(androidx.compose.ui.Alignment.CenterHorizontally),
+            )
         }
     }
 }
@@ -208,15 +218,15 @@ fun RdConnectScreen(nav: Nav) {
             status = "Error: ${e.message}"
         }
     }
-    Column(Modifier.fillMaxSize().background(ScreenBackground).padding(48.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxSize().hudBackground().padding(48.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         McdLogo()
         Text("CONNECT REAL-DEBRID", style = broadcastStyle(36.sp))
         Text("1.  On your phone or computer, open  real-debrid.com/device", fontSize = 20.sp, color = McdColors.White)
         Text("2.  Sign in to Real-Debrid and enter this code:", fontSize = 20.sp, color = McdColors.White)
         Text(
             code?.userCode ?: "……",
-            style = broadcastStyle(64.sp),
-            modifier = Modifier.background(McdColors.Red, RoundedCornerShape(8.dp)).padding(horizontal = 28.dp, vertical = 8.dp),
+            style = hudDisplayStyle(44.sp, McdColors.Ink, 6.sp),
+            modifier = Modifier.hudGlow(true, HudShape).background(McdColors.Accent, HudShape).padding(horizontal = 28.dp, vertical = 8.dp),
         )
         Text(status, fontSize = 18.sp, color = McdColors.Muted)
     }

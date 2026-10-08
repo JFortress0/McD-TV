@@ -2,6 +2,7 @@ package com.mcd.tv.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -97,7 +98,7 @@ private fun UpNextCard(meta: PlayMeta, onNext: () -> Unit, onCancel: () -> Unit)
         Column(
             Modifier
                 .align(Alignment.Center)
-                .background(McdColors.Card.copy(alpha = 0.92f), RoundedCornerShape(12.dp))
+                .background(McdColors.Card.copy(alpha = 0.92f), HudShape).border(1.dp, McdColors.Line, HudShape)
                 .padding(horizontal = 40.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

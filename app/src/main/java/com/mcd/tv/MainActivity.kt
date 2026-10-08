@@ -23,6 +23,7 @@ import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
 import com.mcd.tv.ui.AccountScreen
+import com.mcd.tv.ui.AskJarvisScreen
 import com.mcd.tv.ui.BrowseGridScreen
 import com.mcd.tv.ui.BrowseScreen
 import com.mcd.tv.ui.GenresScreen
@@ -52,6 +53,8 @@ sealed interface Screen {
     data object Intro : Screen
     data object Home : Screen
     data object Search : Screen
+    /** Ask Jarvis: describe a title in plain words. [initial] is asked right away when not blank. */
+    data class AskJarvis(val initial: String = "") : Screen
     data object Library : Screen
     /** Catalog menu: Trending, Top Rated, New Releases, By Year, By Language, Genres, Collections, services, Sports, Noise. */
     data object Browse : Screen
@@ -120,6 +123,8 @@ class MainActivity : ComponentActivity() {
         }
         // QA hook: "--es screen settings" opens a screen directly (used by the automated emulator test).
         val screenExtra = intent?.getStringExtra("screen") ?: ""
+        // "--es screen ask --es ask 'that movie where…'" opens Ask Jarvis and asks right away.
+        val askExtra = intent?.getStringExtra("ask") ?: ""
         val startScreen: Screen? = if (screenExtra.startsWith("detail:")) {
             // "detail:movie:603"
             screenExtra.split(":").let { p -> p.getOrNull(2)?.toIntOrNull()?.let { Screen.Detail(p[1], it) } }
@@ -139,7 +144,8 @@ class MainActivity : ComponentActivity() {
             "live" -> Screen.Live
             "services" -> Screen.Services
             "search" -> Screen.Search
-            else -> null
+            "ask" -> Screen.AskJarvis(askExtra)
+            else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
         }
         setContent { McdTheme { App(startScreen) } }
     }
@@ -235,6 +241,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.Intro -> IntroScreen(onDone = { if (isOnlyEntry) nav.replace(Screen.Home) else nav.back() })
         Screen.Home -> HomeScreen(nav)
         Screen.Search -> SearchScreen(nav)
+        is Screen.AskJarvis -> AskJarvisScreen(nav, s.initial)
         Screen.Library -> LibraryScreen(nav)
         Screen.Browse -> BrowseScreen(nav)
         is Screen.BrowseGrid -> BrowseGridScreen(nav, s.kind, s.param, s.title)

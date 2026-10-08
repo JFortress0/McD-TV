@@ -43,7 +43,7 @@ fun PersonScreen(nav: Nav, id: Int) {
     var popular by remember { mutableStateOf(false) }
     val openTitle: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
 
-    Column(Modifier.fillMaxSize().background(ScreenBackground)) {
+    Column(Modifier.fillMaxSize().hudBackground()) {
         when (val l = load) {
             is Load.Loading -> StatusText("Loading…", Modifier.padding(48.dp))
             is Load.Err -> Column(Modifier.padding(48.dp)) {
@@ -75,7 +75,7 @@ fun PersonScreen(nav: Nav, id: Int) {
                                     ).joinToString("   •   "),
                                     color = McdColors.Muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp),
                                 )
-                                Text(p.bio, color = Color.White, fontSize = 14.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                                Text(p.bio, color = McdColors.White, fontSize = 14.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
                                 Spacer(Modifier.height(12.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     ActionButton("All", { kind = "all" }, primary = kind == "all")

@@ -37,6 +37,15 @@ object Http {
     suspend fun postText(url: String, body: String): String =
         withContext(Dispatchers.IO) { request("POST", url, mapOf("Content-Type" to "text/plain"), body, raw = true) }
 
+    /**
+     * POST a JSON body with extra [headers] (API keys etc.). [timeoutMs] sets the read timeout for this call.
+     * Same 8 MB reply cap and HttpException on non-2xx as every other call.
+     */
+    suspend fun postJson(url: String, body: String, headers: Map<String, String> = emptyMap(), timeoutMs: Int? = null): String =
+        withContext(Dispatchers.IO) {
+            request("POST", url, headers + ("Content-Type" to "application/json"), body, raw = true, timeoutMs = timeoutMs)
+        }
+
     private fun request(
         method: String,
         url: String,

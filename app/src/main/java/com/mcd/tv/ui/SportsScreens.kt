@@ -90,7 +90,7 @@ fun SportsScreen(nav: Nav) {
 
     TabPage(nav, NavTab.Sports) {
         Row(Modifier.padding(horizontal = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("McD TV ", style = broadcastStyle(30.sp))
+            Text("JARVIS ", style = broadcastStyle(30.sp))
             Text("SPORTS CENTER", style = broadcastStyle(30.sp, McdColors.Red))
         }
         // Websites you added (Control page or home setup page). Re-read every few seconds so a save shows up right away.
@@ -103,7 +103,7 @@ fun SportsScreen(nav: Nav) {
         ) {
             item { Text("WEBSITES  ", style = broadcastStyle(16.sp, McdColors.Muted)) }
             if (sites.isEmpty()) {
-                item { Text("None yet. Add them in McD TV Control (Settings > Phone & Computer Setup).", color = McdColors.Muted, fontSize = 14.sp) }
+                item { Text("None yet. Add them in Jarvis Control (Settings > Phone & Computer Setup).", color = McdColors.Muted, fontSize = 14.sp) }
             } else {
                 items(sites) { (name, url) -> ActionButton("🌐 $name", { nav.push(Screen.Web(url, name)) }, primary = true) }
             }
@@ -142,7 +142,7 @@ private fun TeamRow(t: TeamLine, winning: Boolean, showScore: Boolean) {
             Text(t.name, style = broadcastStyle(18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (t.record.isNotBlank()) Text(t.record, color = McdColors.Muted, fontSize = 12.sp)
         }
-        if (showScore) Text(t.score, style = broadcastStyle(30.sp, if (winning) Color.White else McdColors.Muted))
+        if (showScore) Text(t.score, style = broadcastStyle(30.sp, if (winning) McdColors.White else McdColors.Muted))
     }
 }
 
@@ -154,7 +154,8 @@ private fun GameCard(g: Game, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth().height(170.dp),
         colors = ClickableSurfaceDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+        shape = ClickableSurfaceDefaults.shape(HudShape),
+        border = hudSurfaceBorder(),
     ) {
         Row(Modifier.fillMaxSize()) {
             // Team color stripe, like a broadcast score bug.
@@ -172,7 +173,7 @@ private fun GameCard(g: Game, onClick: () -> Unit) {
                         Text("LIVE", style = broadcastStyle(13.sp, McdColors.LiveRed))
                         Spacer(Modifier.width(10.dp))
                     }
-                    Text(g.detail, color = Color.White, fontSize = 13.sp)
+                    Text(g.detail, color = McdColors.White, fontSize = 13.sp)
                     if (g.broadcasts.isNotEmpty()) Text("   •   " + g.broadcasts.joinToString(", "), color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
                 }
             }
@@ -185,7 +186,7 @@ private fun GameChannels(g: Game, all: List<Channel>, onPlay: (Channel) -> Unit,
     val matches = remember(g, all) { M3u.matchesFor(g, all).filterNot { com.mcd.tv.data.LiveOrganizer.isSeparator(it.name) } }
     Column(Modifier.padding(horizontal = 48.dp)) {
         Box(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            Modifier.fillMaxWidth().clip(HudShape)
                 .background(Brush.horizontalGradient(listOf(teamColor(g.away.color), McdColors.Navy, teamColor(g.home.color))))
                 .padding(20.dp),
         ) {
@@ -194,7 +195,7 @@ private fun GameChannels(g: Game, all: List<Channel>, onPlay: (Channel) -> Unit,
                 Text("  ${g.away.short}  ${g.away.score}  @  ${g.home.score}  ${g.home.short}  ", style = broadcastStyle(34.sp))
                 AsyncImage(g.home.logo, g.home.name, modifier = Modifier.size(64.dp))
                 Spacer(Modifier.width(24.dp))
-                Text(g.detail + if (g.broadcasts.isNotEmpty()) "  •  " + g.broadcasts.joinToString(", ") else "", color = Color.White)
+                Text(g.detail + if (g.broadcasts.isNotEmpty()) "  •  " + g.broadcasts.joinToString(", ") else "", color = McdColors.White)
             }
         }
         Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -220,7 +221,8 @@ fun ChannelRow(ch: Channel, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         colors = ClickableSurfaceDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(HudShape),
+        border = hudSurfaceBorder(),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             val name = remember(ch.name) { com.mcd.tv.data.LiveOrganizer.cleanName(ch.name) }

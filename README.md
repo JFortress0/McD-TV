@@ -1,9 +1,8 @@
-# McD TV
+# Jarvis
 
-A personal streaming app for Fire TV, Google TV and Android TV.
-Pronounced "Mick-Dee Tee Vee."
+A personal streaming app for Fire TV, Google TV and Android TV, with an original holographic heads-up display look.
 
-McD TV is a player and an interface. It ships with no content sources. You add every source (stream links, Real-Debrid, playlists, addons) inside the app.
+Jarvis is a player and an interface. It ships with no content sources. You add every source (stream links, Real-Debrid, playlists, addons) inside the app.
 
 **Install on a TV:** in the Downloader app, type `jfortress0.github.io/McD-TV/get`. Step-by-step guide for Fire TV, Google TV, Android TV and Android phones: [jfortress0.github.io/McD-TV/install.html](https://jfortress0.github.io/McD-TV/install.html).
 
@@ -11,9 +10,10 @@ McD TV is a player and an interface. It ships with no content sources. You add e
 
 ## What it does (v0.2)
 
-McD TV copies the HuberTV layout and runs it natively on the TV. It talks straight to TMDB, your Real-Debrid account and the addons you install. It needs no server.
+Jarvis copies the HuberTV layout and runs it natively on the TV. It talks straight to TMDB, your Real-Debrid account and the addons you install. It needs no server.
 
-- **Intro:** broadcast-style open with the "This is McD TV" voiceover. Any button skips it.
+- **Intro:** short animated open. Any button skips it.
+- **Look:** an original sci-fi heads-up display. Near-black glass panels, cyan light, chamfered cards with corner brackets on focus, a faint grid behind every page, arc gauges for scores and a live clock in the top bar.
 - **Home:** rotating hero banner, Continue Watching, Watchlist, Favorites, Trending, Popular, Now Playing, Top Rated, Family Movie Night, Browse by Year.
 - **Title page:** backdrop, poster, cast, similar titles, seasons and episodes. Buttons: Play, Choose Source, Favorite, Watchlist, Mark as Watched, Background Noise, Not for me.
 - **Source picker:** every stream your addons return, with quality, size and a CACHED badge. Play picks the best one by itself.
@@ -26,11 +26,11 @@ McD TV copies the HuberTV layout and runs it natively on the TV. It talks straig
 - **Genres:** movies and shows by genre, sorted by Popular or Top Rated.
 - **Title origin filter:** show all countries, US-made only, or hide Asian-made titles (Settings or the web page).
 - **Phone setup:** paste keys and links from your phone over home Wi-Fi.
-- **Accounts (optional):** sign in to your own McD TV server and your lists, history, addons and Real-Debrid link follow you to any TV. See `server/README.md`.
+- **Accounts (optional):** sign in to your own Jarvis server and your lists, history, addons and Real-Debrid link follow you to any TV. See `server/README.md`.
 - **Websites:** a built-in browser with a remote-controlled pointer, for sites you add in Phone setup (Sports > Websites).
 - **Settings:** US only, Slow connection (smaller files first), intro on or off.
 
-McD TV ships with no content sources. You add the TMDB key, addons, Real-Debrid account and playlist yourself.
+Jarvis ships with no content sources. You add the TMDB key, addons, Real-Debrid account and playlist yourself.
 
 ### Remote controls in the player
 
@@ -43,7 +43,7 @@ McD TV ships with no content sources. You add the TMDB key, addons, Real-Debrid 
 ## Project map
 
 ```
-McD TV/
+Jarvis/
 ├── .github/workflows/build.yml   Cloud build. Makes the APK on every push.
 ├── app/
 │   ├── build.gradle.kts          App settings: name, version, libraries
@@ -96,3 +96,5 @@ Each build gets a higher version number, so the TV installs it as an update. You
 ## Tech stack
 
 Kotlin, Jetpack Compose for TV, Media3 / ExoPlayer, Gradle (Kotlin DSL, version catalog), GitHub Actions. Minimum Android 7.0 (API 24).
+
+Fonts: Orbitron (headings, wordmark, numbers) and Rajdhani (body text and buttons), bundled in `app/src/main/res/font` under the SIL Open Font License. See `FONT-LICENSE-HUD.txt`. The web pages load the same two fonts from Google Fonts.

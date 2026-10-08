@@ -13,7 +13,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 
-/** One shared setup page for the whole app, running while McD TV is open. */
+/** One shared setup page for the whole app, running while Jarvis is open. */
 object LocalWeb {
     var lastMessage by androidx.compose.runtime.mutableStateOf("Waiting for a browser…")
     var error by androidx.compose.runtime.mutableStateOf<String?>(null)
@@ -179,6 +179,7 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
     private suspend fun save(f: Map<String, String>): String {
         val done = mutableListOf<String>()
         f["tmdb"]?.takeIf { it.isNotBlank() }?.let { Prefs.tmdbKey = it; done += "TMDB key saved" }
+        f["jarvis"]?.takeIf { it.isNotBlank() }?.let { Prefs.jarvisKey = it; done += "Jarvis key saved" }
         f["magnet"]?.takeIf { it.isNotBlank() }?.let { m ->
             done += runCatching { "Added to Real-Debrid: " + RdCloud.addMagnet(m) }
                 .getOrElse { "Real-Debrid add failed: ${it.message}" }
@@ -224,16 +225,19 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
                 "<form method=post style='display:inline'><input type=hidden name=removeSite value=\"${esc(u)}\"><button>Remove</button></form></li>"
         }.ifBlank { "<li>None yet</li>" }
         return """
-<!doctype html><html><head><meta name=viewport content="width=device-width,initial-scale=1"><title>McD TV setup</title>
-<style>body{font-family:-apple-system,Helvetica,Arial;background:#060B1A;color:#fff;margin:0;padding:20px}
-h1{font-style:italic;font-weight:900}h1 span{background:#D61828;padding:0 8px;border-radius:4px}
-label{display:block;margin:18px 0 6px;color:#9AA3C0;font-size:14px}
-input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid #333;background:#1A2244;color:#fff;font-size:16px}
-button{margin-top:12px;background:#D61828;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:700;font-size:16px}
-.msg{background:#14304a;padding:10px;border-radius:8px}code{font-size:12px}li{margin:8px 0}</style></head><body>
-<h1>McD <span>TV</span> setup</h1>${if (msg.isNotBlank()) "<p class=msg>${esc(msg)}</p>" else ""}
+<!doctype html><html><head><meta name=viewport content="width=device-width,initial-scale=1"><title>Jarvis setup</title>
+<link rel=stylesheet href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap">
+<style>body{font-family:Rajdhani,"Arial Narrow",Arial,sans-serif;font-size:17px;background:#02060A radial-gradient(ellipse at top,#031018,#02060A 70%);color:#EAFBFF;margin:0;padding:20px}
+h1,h3{font-family:Orbitron,Arial,sans-serif;text-transform:uppercase;letter-spacing:2px}h1{font-size:22px;text-shadow:0 0 12px rgba(0,229,255,.7)}h1 span{color:#00E5FF}h3{font-size:13px;color:#00E5FF}
+label{display:block;margin:18px 0 6px;color:#8FB8C4;font-size:15px}
+input{width:100%;box-sizing:border-box;padding:12px;border:1px solid #0E6A7A;background:rgba(6,23,34,.85);color:#EAFBFF;font-size:16px;font-family:inherit;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+input:focus{outline:none;border-color:#00E5FF}
+button{margin-top:12px;background:#00E5FF;color:#02060A;border:0;padding:12px 18px;font-weight:700;font-size:16px;font-family:inherit;text-transform:uppercase;letter-spacing:1px;clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+.msg{background:#0A2230;border:1px solid #0E6A7A;padding:10px}code{font-size:12px;color:#7DF9FF}li{margin:8px 0}</style></head><body>
+<h1><span>&#9673;</span> Jarvis setup</h1>${if (msg.isNotBlank()) "<p class=msg>${esc(msg)}</p>" else ""}
 <form method=post>
 <label>TMDB API key (posters and info). ${if (Prefs.tmdbKey.isNotBlank()) "✅ set" else "Not set"}</label><input name=tmdb placeholder="Paste key or read token">
+<label>Jarvis key (powers Ask Jarvis). ${if (Prefs.jarvisKey.isNotBlank()) "✅ set" else "Not set"}</label><input name=jarvis type=password autocomplete=off placeholder="Paste to replace">
 <label>Add an addon (manifest URL or stremio:// link)</label><input name=addon placeholder="https://…/manifest.json">
 <label>Live TV playlist (M3U URL). ${if (Prefs.m3uUrl.isNotBlank()) "✅ set" else "Not set"}</label><input name=m3u placeholder="https://…/playlist.m3u">
 <label>Add a magnet link to your Real-Debrid cloud (plays under My List &gt; Real-Debrid Cloud)</label><input name=magnet placeholder="magnet:?xt=urn:btih:…">
@@ -243,7 +247,7 @@ button{margin-top:12px;background:#D61828;color:#fff;border:0;border-radius:8px;
 <button>Save to TV</button></form>
 <h3>Websites</h3><ul>$sites</ul>
 <h3>Installed addons</h3><ul>$addons</ul>
-<p style="color:#9AA3C0;font-size:13px">Real-Debrid connects on the TV itself: Settings &gt; Connect Real-Debrid.</p>
+<p style="color:#8FB8C4;font-size:14px">Real-Debrid connects on the TV itself: Settings &gt; Connect Real-Debrid.</p>
 </body></html>""".trimIndent()
     }
 }

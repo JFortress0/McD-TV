@@ -1,6 +1,7 @@
 package com.mcd.tv.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,7 +52,7 @@ import com.mcd.tv.data.Tmdb
 fun DetailScreen(nav: Nav, type: String, id: Int, openSources: Boolean = false) {
     var retry by remember { mutableIntStateOf(0) }
     val load by rememberLoad(type, id, retry) { Tmdb.details(type, id) }
-    Box(Modifier.fillMaxSize().background(McdColors.Navy)) {
+    Box(Modifier.fillMaxSize().hudBackground()) {
         when (val l = load) {
             is Load.Loading -> StatusText("Loading…", Modifier.padding(48.dp))
             is Load.Err -> Column(Modifier.padding(48.dp)) {
@@ -116,8 +116,10 @@ private fun DetailBody(nav: Nav, d: Details) {
             Box(Modifier.fillMaxWidth().heightIn(min = 400.dp)) {
                 AsyncImage(
                     Tmdb.img(t.backdrop, "w1280"), t.name, contentScale = ContentScale.Crop,
-                    alignment = Alignment.TopCenter, modifier = Modifier.matchParentSize(),
+                    alignment = Alignment.TopCenter, colorFilter = HudDuotone, modifier = Modifier.matchParentSize(),
                 )
+                // Duotone wash and scanlines.
+                Box(Modifier.matchParentSize().background(McdColors.Ink.copy(alpha = 0.25f)).background(McdColors.Accent.copy(alpha = 0.15f)).hudScanlines())
                 // Full-bleed backdrop melting into the page on the left and at the bottom (Max-style).
                 Box(
                     Modifier.matchParentSize().background(
@@ -143,23 +145,25 @@ private fun DetailBody(nav: Nav, d: Details) {
                 Row(Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 28.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
                     AsyncImage(
                         Tmdb.img(t.poster, "w342"), t.name, contentScale = ContentScale.Crop,
-                        modifier = Modifier.width(160.dp).height(240.dp).clip(RoundedCornerShape(6.dp)).background(McdColors.Card),
+                        modifier = Modifier.width(160.dp).height(240.dp)
+                            .hudBrackets(true, McdColors.Accent, inset = (-5).dp, arm = 12.dp, stroke = 1.5.dp)
+                            .clip(HudShape).background(McdColors.Card).border(1.dp, McdColors.Line, HudShape),
                     )
                     Spacer(Modifier.width(28.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(t.name, style = broadcastStyle(30.sp).copy(lineHeight = 34.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (d.tagline.isNotBlank()) Text(d.tagline, color = McdColors.Muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(t.name.uppercase(), style = broadcastStyle(32.sp).copy(lineHeight = 32.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (d.tagline.isNotBlank()) Text(d.tagline, color = McdColors.Accent, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
                             listOfNotNull(
                                 t.year.ifBlank { null },
                                 if (d.runtimeMin > 0) "${d.runtimeMin / 60}h ${d.runtimeMin % 60}m" else null,
                                 d.genres.take(3).joinToString(" / ").ifBlank { null },
-                            ).joinToString("   •   "),
-                            color = McdColors.Muted, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                            ).joinToString("  ▪  ").uppercase(),
+                            color = McdColors.Muted, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, letterSpacing = 1.sp,
                             modifier = Modifier.padding(vertical = 6.dp),
                         )
                         RatingsRow(t.rating, d.imdbId)
-                        Text(t.overview, color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(t.overview, color = McdColors.White.copy(alpha = 0.9f), fontSize = 15.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(10.dp))
                         // Main row: Play / Resume, Trailer, Watchlist, and "More" for everything else.
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -194,7 +198,7 @@ private fun DetailBody(nav: Nav, d: Details) {
                                 }
                             }
                         }
-                        if (note.isNotBlank()) Text(note, color = McdColors.RedBright, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                        if (note.isNotBlank()) Text(note, color = McdColors.Amber, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
             }
@@ -298,29 +302,16 @@ fun openApp(context: android.content.Context, packages: List<String>): Boolean {
     return false
 }
 
-/** Compact scores: TMDB, plus IMDb, Rotten Tomatoes critics / audience and Metacritic when MDBList is set up. */
+/** Scores as small HUD arc gauges: TMDB, plus IMDb, Rotten Tomatoes critics / audience and Metacritic when MDBList is set up. */
 @Composable
 private fun RatingsRow(tmdb: Double, imdbId: String?) {
     val r by rememberLoad(imdbId) { if (imdbId != null) com.mcd.tv.data.RatingsSource.forImdb(imdbId) else com.mcd.tv.data.Ratings() }
     val ratings = (r as? Load.Ok<com.mcd.tv.data.Ratings>)?.value ?: com.mcd.tv.data.Ratings()
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-        if (tmdb > 0) ScoreChip("TMDB", "%.1f".format(tmdb), Color(0xFF01B4E4))
-        ratings.imdb?.let { ScoreChip("IMDb", "%.1f".format(it), Color(0xFFF5C518)) }
-        ratings.rtCritics?.let { ScoreChip("🍅", "$it%", Color.White) }
-        ratings.rtAudience?.let { ScoreChip("🍿", "$it%", Color.White) }
-        ratings.metacritic?.let { ScoreChip("MC", "$it", McdColors.Muted) }
-    }
-}
-
-/** One small dark pill: colored source label, white score. */
-@Composable
-private fun ScoreChip(label: String, value: String, labelColor: Color) {
-    Row(
-        Modifier.background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, color = labelColor, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-        Spacer(Modifier.width(4.dp))
-        Text(value, color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+        if (tmdb > 0) HudGauge((tmdb / 10.0).toFloat(), "%.1f".format(tmdb), "TMDB")
+        ratings.imdb?.let { HudGauge((it / 10.0).toFloat(), "%.1f".format(it), "IMDb", color = Color(0xFFF5C518)) }
+        ratings.rtCritics?.let { HudGauge(it / 100f, "$it%", "RT", color = McdColors.Coral) }
+        ratings.rtAudience?.let { HudGauge(it / 100f, "$it%", "AUDIENCE", color = McdColors.Amber) }
+        ratings.metacritic?.let { HudGauge(it / 100f, "$it", "META", color = McdColors.AccentBright) }
     }
 }

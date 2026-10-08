@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -62,7 +64,7 @@ import kotlinx.coroutines.delay
 /** Shared page frame: background + top nav + content. */
 @Composable
 fun TabPage(nav: Nav, tab: NavTab, autoFocus: Boolean = true, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxSize().background(ScreenBackground)) {
+    Column(Modifier.fillMaxSize().hudBackground()) {
         // autoFocus: start on the current tab so the remote has somewhere to go. Screens that focus
         // something themselves (Search's text field) pass false.
         TopNav(tab, nav.tab, autoFocus = autoFocus)
@@ -95,25 +97,38 @@ fun SearchScreen(nav: Nav) {
     // Focus the field (no keyboard yet: OK opens it), so typing is one press away.
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { field.requestFocus() } }
     TabPage(nav, NavTab.Search, autoFocus = false) {
-        BasicTextField(
-            value = query,
-            onValueChange = { query = it },
-            singleLine = true,
-            textStyle = TextStyle(color = McdColors.White, fontSize = 22.sp),
-            cursorBrush = SolidColor(McdColors.Red),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, showKeyboardOnFocus = false),
-            keyboardActions = KeyboardActions(onSearch = { submitted = query.trim() }),
-            modifier = Modifier.padding(horizontal = 48.dp).fillMaxWidth().focusRequester(field)
-                .background(McdColors.Card, RoundedCornerShape(8.dp)).border(2.dp, McdColors.Red, RoundedCornerShape(8.dp))
-                .padding(16.dp),
-        )
+        Row(Modifier.padding(horizontal = 48.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                textStyle = TextStyle(color = McdColors.White, fontSize = 22.sp),
+                cursorBrush = SolidColor(McdColors.Red),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, showKeyboardOnFocus = false),
+                keyboardActions = KeyboardActions(onSearch = { submitted = query.trim() }),
+                modifier = Modifier.weight(1f).focusRequester(field)
+                    .background(McdColors.Card, HudShape).border(1.5.dp, McdColors.Accent, HudShape)
+                    .padding(16.dp),
+            )
+            Spacer(Modifier.width(14.dp))
+            // Can't remember the name? Describe it to Jarvis instead.
+            ActionButton("✦ Ask Jarvis", { nav.push(Screen.AskJarvis()) }, primary = true)
+        }
         Text("Search movies and TV shows. Press OK to type, then Search on the keyboard.", color = McdColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 6.dp))
         if (submitted.isNotBlank()) {
             val res by rememberLoad(submitted) { Tmdb.search(submitted) }
             when (val r = res) {
                 is Load.Loading -> StatusText("Searching…", Modifier.padding(start = 48.dp))
                 is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
-                is Load.Ok -> PosterGrid(r.value, gridState) { nav.push(Screen.Detail(it.type, it.id)) }
+                is Load.Ok -> if (r.value.isEmpty()) {
+                    Row(Modifier.padding(horizontal = 48.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("No titles match \"$submitted\".", color = McdColors.Muted, fontSize = 16.sp)
+                        Spacer(Modifier.width(16.dp))
+                        ActionButton("Try Ask Jarvis", { nav.push(Screen.AskJarvis(submitted)) })
+                    }
+                } else {
+                    PosterGrid(r.value, gridState) { nav.push(Screen.Detail(it.type, it.id)) }
+                }
             }
         }
     }
@@ -333,7 +348,7 @@ fun NoiseRunScreen(nav: Nav) {
     if (u != null && m != null) {
         key(u) { PlayerScreen(url = u, title = "Background Noise  •  ${m.label}", meta = m, onEnded = { round++ }, headers = headers) }
     } else {
-        Box(Modifier.fillMaxSize().background(McdColors.Navy).padding(48.dp)) {
+        Box(Modifier.fillMaxSize().hudBackground().padding(48.dp)) {
             Column {
                 McdLogo()
                 Text(status, color = McdColors.White, fontSize = 20.sp, modifier = Modifier.padding(top = 24.dp))

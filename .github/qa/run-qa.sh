@@ -20,7 +20,7 @@ if grep -qi "TRENDING THIS WEEK" qa-out/ui-home.xml; then pass "Home loads TMDB 
 
 # 2) Setup web page: reachable, and saves what a browser sends.
 adb forward tcp:8642 tcp:8642
-if curl -sf -m 10 http://127.0.0.1:8642/ -o qa-out/setup-page.html && grep -q "McD" qa-out/setup-page.html; then
+if curl -sf -m 10 http://127.0.0.1:8642/ -o qa-out/setup-page.html && grep -q "Jarvis" qa-out/setup-page.html; then
   pass "Setup page loads (GET)"
 else
   fail "Setup page loads (GET)"
@@ -59,7 +59,7 @@ check_screen() { # name, expected text (case-insensitive regex)
   fi
 }
 check_screen settings "Phone &amp; Computer Setup|Phone & Computer Setup"
-check_screen phone "MCD TV CONTROL"
+check_screen phone "JARVIS CONTROL"
 check_screen genres "All years"
 check_screen services "Netflix"
 check_screen sports "WEBSITES"
@@ -67,6 +67,7 @@ check_screen noise "BACKGROUND NOISE"
 check_screen library "Real-Debrid Cloud"
 check_screen live "playlist"
 check_screen search "Search movies"
+check_screen ask "ASK JARVIS"
 check_screen browse "Collections"
 check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"

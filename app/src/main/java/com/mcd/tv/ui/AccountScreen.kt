@@ -46,13 +46,13 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit, pass
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
             // No keyboard just for moving focus onto the field; OK opens it.
             keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Text, showKeyboardOnFocus = false),
-            modifier = Modifier.width(420.dp).background(McdColors.Card, RoundedCornerShape(8.dp))
-                .border(1.dp, McdColors.Muted, RoundedCornerShape(8.dp)).padding(12.dp),
+            modifier = Modifier.width(420.dp).background(McdColors.Card, HudShape)
+                .border(1.dp, McdColors.Accent.copy(alpha = 0.7f), HudShape).padding(12.dp),
         )
     }
 }
 
-/** Sign in or create a McD TV account on your own server. */
+/** Sign in or create a Jarvis account on your own server. */
 @Composable
 fun AccountScreen(nav: Nav) {
     var signedIn by remember { mutableStateOf(Account.signedIn) }
@@ -77,7 +77,7 @@ fun AccountScreen(nav: Nav) {
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 48.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("McD TV ACCOUNT", style = broadcastStyle(32.sp))
+            Text("JARVIS ACCOUNT", style = broadcastStyle(32.sp))
             Text(
                 "Server: " + Prefs.serverUrl.ifBlank { "not set. Add it in Phone setup." },
                 color = McdColors.White, fontSize = 15.sp,
@@ -89,11 +89,11 @@ fun AccountScreen(nav: Nav) {
                     ActionButton("Sign out", { run("Sign out") { Account.logout() } })
                 }
             } else if (pairing != null) {
-                Text("On your computer or phone, open your McD TV Control page, sign in, and enter this code under Link a TV:", color = McdColors.White, fontSize = 18.sp)
+                Text("On your computer or phone, open your Jarvis Control page, sign in, and enter this code under Link a TV:", color = McdColors.White, fontSize = 18.sp)
                 Text(
                     pairing!!.code,
-                    style = broadcastStyle(64.sp),
-                    modifier = Modifier.background(McdColors.Red, RoundedCornerShape(8.dp)).padding(horizontal = 28.dp, vertical = 8.dp),
+                    style = hudDisplayStyle(44.sp, McdColors.Ink, 6.sp),
+                    modifier = Modifier.hudGlow(true, HudShape).background(McdColors.Accent, HudShape).padding(horizontal = 28.dp, vertical = 8.dp),
                 )
                 Text(Prefs.serverUrl, color = McdColors.Muted, fontSize = 16.sp)
                 ActionButton("Cancel", { pairing = null })

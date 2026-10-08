@@ -43,7 +43,8 @@ private fun RowCard(title: String, subtitle: String, modifier: Modifier = Modifi
         modifier = modifier.fillMaxWidth(),
         colors = ClickableSurfaceDefaults.colors(containerColor = McdColors.Card, focusedContainerColor = McdColors.NavyLight),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(HudShape),
+        border = hudSurfaceBorder(),
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
             Text(title, style = broadcastStyle(16.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
