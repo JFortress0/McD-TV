@@ -91,7 +91,15 @@ data class Details(
     val nextEpisode: Episode?,
     /** US subscription services carrying this title (e.g. Netflix), from TMDB / JustWatch. */
     val providers: List<Service> = emptyList(),
+    /** YouTube video key of the title's trailer (or teaser), if TMDB lists one. */
+    val trailerKey: String? = null,
+    /** Movie franchise (TMDB belongs_to_collection), if any. */
+    val collectionId: Int? = null,
+    val collectionName: String? = null,
 )
+
+/** A movie franchise: every film in it, oldest first. */
+data class TitleCollection(val id: Int, val name: String, val parts: List<Title>)
 
 /** Streaming services shown on the Services screen (TMDB watch-provider ids, US). */
 data class Service(val id: Int, val name: String) {
@@ -319,7 +327,7 @@ object Tmdb {
     )
 
     suspend fun details(type: String, id: Int): Details {
-        val o = get("/$type/$id", mapOf("append_to_response" to "credits,similar,external_ids,watch/providers"))
+        val o = get("/$type/$id", mapOf("append_to_response" to "credits,similar,external_ids,watch/providers,videos"))
         val t = parse(o, type) ?: throw IllegalStateException("Not found")
         val genres = o.optJSONArray("genres")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).optString("name") } } ?: emptyList()
         val castArr = o.optJSONObject("credits")?.optJSONArray("cast")
@@ -352,7 +360,36 @@ object Tmdb {
                 ?.optJSONArray("flatrate")?.let { a ->
                     (0 until a.length()).map { a.getJSONObject(it) }.map { Service(it.optInt("provider_id"), it.s("provider_name") ?: "") }
                 } ?: emptyList(),
+            trailerKey = pickTrailer(o.optJSONObject("videos")?.optJSONArray("results")),
+            collectionId = o.optJSONObject("belongs_to_collection")?.optInt("id")?.takeIf { it > 0 },
+            collectionName = o.optJSONObject("belongs_to_collection")?.s("name"),
         )
+    }
+
+    /** First YouTube trailer (official preferred), else the first YouTube teaser. */
+    private fun pickTrailer(arr: JSONArray?): String? {
+        if (arr == null) return null
+        val vids = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+            .filter { it.s("site").equals("YouTube", ignoreCase = true) && it.s("key") != null }
+        val trailers = vids.filter { it.s("type") == "Trailer" }
+        val pick = trailers.firstOrNull { it.optBoolean("official", false) }
+            ?: trailers.firstOrNull()
+            ?: vids.firstOrNull { it.s("type") == "Teaser" }
+        return pick?.s("key")
+    }
+
+    /**
+     * A movie franchise, sorted by release date (unreleased / undated last).
+     * Deliberately NOT filtered by the country setting: every entry of the series shows.
+     */
+    suspend fun collection(id: Int): TitleCollection {
+        val o = get("/collection/$id")
+        val arr = o.optJSONArray("parts")
+        val parts = if (arr == null) emptyList() else (0 until arr.length())
+            .mapNotNull { i -> arr.optJSONObject(i)?.let { j -> parse(j, "movie")?.let { t -> t to (j.s("release_date") ?: "") } } }
+            .sortedWith(compareBy<Pair<Title, String>>({ it.second.isBlank() }, { it.second }))
+            .map { it.first }
+        return TitleCollection(id, o.s("name") ?: "Collection", parts)
     }
 
     private fun parseEpisode(e: JSONObject) = Episode(

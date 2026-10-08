@@ -96,6 +96,7 @@ object Library {
             ?.takeIf { !it.finished }?.positionMs ?: 0L
 
     fun record(meta: PlayMeta, positionMs: Long, durationMs: Long) {
+        if (meta.type == "tv" && meta.season > 0 && durationMs > 0) recordEpisode(meta, positionMs.toFloat() / durationMs)
         val rest = history().filterNot { it.meta.historyKey == meta.historyKey }
         val list = listOf(HistoryEntry(meta, positionMs, durationMs, System.currentTimeMillis())) + rest
         Prefs.putJson(
@@ -109,4 +110,51 @@ object Library {
     }
 
     fun markWatched(meta: PlayMeta) = record(meta, 1, 1)
+
+    // ---- Per-episode progress (history keeps only the latest episode per show) ----
+    private const val EPISODES_KEY = "lib_episodes"
+    private const val EPISODES_MAX = 3000
+
+    private fun loadEpisodes(): JSONObject = runCatching { JSONObject(Prefs.json(EPISODES_KEY).ifBlank { "{}" }) }.getOrDefault(JSONObject())
+
+    private fun recordEpisode(meta: PlayMeta, progress: Float) {
+        val o = loadEpisodes()
+        val k = "${meta.tmdbId}:${meta.season}:${meta.episode}"
+        o.remove(k) // re-insert so the newest entries stay at the end
+        o.put(k, progress.coerceIn(0f, 1f).toDouble())
+        if (o.length() > EPISODES_MAX) {
+            val drop = mutableListOf<String>()
+            val keys = o.keys()
+            while (keys.hasNext() && o.length() - drop.size > EPISODES_MAX) drop.add(keys.next())
+            drop.forEach { k2 -> o.remove(k2) }
+        }
+        Prefs.putJson(EPISODES_KEY, o.toString())
+    }
+
+    /** Watched fraction (0..1) of one episode, or null if it was never played. */
+    fun progressFor(type: String, id: Int, season: Int, episode: Int): Float? {
+        if (type != "tv") {
+            return history().firstOrNull { it.meta.historyKey == "$type:$id" }?.progress
+        }
+        val o = loadEpisodes()
+        val k = "$id:$season:$episode"
+        if (o.has(k)) return o.optDouble(k, 0.0).toFloat()
+        // Older installs: only the latest episode per show is in history.
+        return history().firstOrNull { it.meta.historyKey == "tv:$id" && it.meta.season == season && it.meta.episode == episode }?.progress
+    }
+
+    /** Watched fraction for every played episode of one season, keyed by episode number. */
+    fun seasonProgress(tvId: Int, season: Int): Map<Int, Float> {
+        val out = mutableMapOf<Int, Float>()
+        history().firstOrNull { it.meta.historyKey == "tv:$tvId" && it.meta.season == season }
+            ?.let { out[it.meta.episode] = it.progress }
+        val o = loadEpisodes()
+        val prefix = "$tvId:$season:"
+        val keys = o.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            if (k.startsWith(prefix)) k.removePrefix(prefix).toIntOrNull()?.let { e -> out[e] = o.optDouble(k, 0.0).toFloat() }
+        }
+        return out
+    }
 }
