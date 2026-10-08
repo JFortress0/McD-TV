@@ -55,7 +55,20 @@ val TV_GENRES = listOf(
     Genre(10764, "Reality"), Genre(10765, "Sci-Fi & Fantasy"), Genre(10768, "War & Politics"), Genre(37, "Western"),
 )
 
-data class CastMember(val name: String, val character: String, val photo: String?)
+data class CastMember(val name: String, val character: String, val photo: String?, val id: Int = 0)
+
+/** A person's page: bio plus every movie and show they acted in or worked on. */
+data class Person(
+    val id: Int,
+    val name: String,
+    val photo: String?,
+    val department: String,
+    val birthday: String,
+    val placeOfBirth: String,
+    val bio: String,
+    val acting: List<Title>,
+    val crew: List<Pair<Title, String>>, // title + job (Director, Writer, ...)
+)
 data class SeasonInfo(val number: Int, val name: String, val episodeCount: Int)
 data class Episode(
     val season: Int,
@@ -177,6 +190,41 @@ object Tmdb {
         page,
     )
 
+    /**
+     * Everything a person has done (TMDB combined credits), newest first.
+     * Deliberately NOT filtered by the country setting: this is their entire catalogue.
+     */
+    suspend fun person(id: Int): Person {
+        val o = get("/person/$id", mapOf("append_to_response" to "combined_credits"))
+        val credits = o.optJSONObject("combined_credits")
+        fun raw(arr: JSONArray?): List<Pair<Title, JSONObject>> =
+            if (arr == null) emptyList() else (0 until arr.length()).mapNotNull { i ->
+                val j = arr.getJSONObject(i)
+                parse(j, null)?.let { it to j }
+            }
+        val acting = raw(credits?.optJSONArray("cast"))
+            .filterNot { (t, j) -> t.type == "tv" && (j.optString("character").contains("Self", true) && j.optInt("episode_count") <= 1) }
+            .map { it.first }
+            .distinctBy { "${it.type}-${it.id}" }
+            .sortedByDescending { it.year }
+        val crew = raw(credits?.optJSONArray("crew"))
+            .map { (t, j) -> t to (j.s("job") ?: "Crew") }
+            .groupBy { "${it.first.type}-${it.first.id}" }
+            .map { (_, v) -> v.first().first to v.map { it.second }.distinct().joinToString(", ") }
+            .sortedByDescending { it.first.year }
+        return Person(
+            id = id,
+            name = o.s("name") ?: "",
+            photo = o.s("profile_path"),
+            department = o.s("known_for_department") ?: "",
+            birthday = o.s("birthday") ?: "",
+            placeOfBirth = o.s("place_of_birth") ?: "",
+            bio = o.s("biography") ?: "",
+            acting = acting,
+            crew = crew,
+        )
+    }
+
     /** "More like this" from TMDB, used for Suggested for You on Home. */
     suspend fun recommendations(type: String, id: Int): List<Title> =
         parseList(get("/$type/$id/recommendations").optJSONArray("results"), type)
@@ -254,7 +302,7 @@ object Tmdb {
         val cast = castArr?.let { a ->
             (0 until minOf(a.length(), 20)).map {
                 val c = a.getJSONObject(it)
-                CastMember(c.s("name") ?: "", c.s("character") ?: "", c.s("profile_path"))
+                CastMember(c.s("name") ?: "", c.s("character") ?: "", c.s("profile_path"), c.optInt("id"))
             }
         } ?: emptyList()
         val seasons = o.optJSONArray("seasons")?.let { a ->

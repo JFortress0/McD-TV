@@ -222,15 +222,25 @@ fun ActionButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
     }
 }
 
-/** Round cast photo. */
+/** Round cast photo. Focusable and clickable when [onClick] is given (opens the person's page). */
 @Composable
-fun CastBubble(name: String, role: String, photo: String?) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(96.dp)) {
+fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)? = null) {
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(104.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .graphicsLayer { val sc = if (focused) 1.1f else 1f; scaleX = sc; scaleY = sc }
+            .then(if (onClick != null) Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick) else Modifier)
+            .padding(4.dp),
+    ) {
         AsyncImage(
             model = Tmdb.img(photo, "w185"),
             contentDescription = name,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.size(80.dp).clip(RoundedCornerShape(40.dp)).background(McdColors.Card),
+            modifier = Modifier.size(84.dp).clip(CircleShape).background(McdColors.Card)
+                .border(if (focused) 3.dp else 0.dp, if (focused) McdColors.Red else Color.Transparent, CircleShape),
         )
         Text(name, fontSize = 12.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(role, fontSize = 11.sp, color = McdColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)

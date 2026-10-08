@@ -166,7 +166,7 @@ private fun DetailBody(nav: Nav, d: Details) {
             Column(Modifier.padding(top = 18.dp)) {
                 RailHeader("Cast", Modifier.padding(start = 48.dp))
                 LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(d.cast) { c -> CastBubble(c.name, c.character, c.photo) }
+                    items(d.cast) { c -> CastBubble(c.name, c.character, c.photo) { if (c.id > 0) nav.push(Screen.Person(c.id)) } }
                 }
             }
         }

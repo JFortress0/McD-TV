@@ -66,6 +66,7 @@ check_screen live "playlist"
 check_screen search "Search movies"
 check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
+check_screen "person:6384" "Keanu"
 
 # 5) Crash check.
 adb logcat -d > qa-out/logcat.txt

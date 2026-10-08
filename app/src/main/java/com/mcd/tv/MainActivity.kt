@@ -29,6 +29,7 @@ import com.mcd.tv.ui.NoiseRunScreen
 import com.mcd.tv.ui.NoiseScreen
 import com.mcd.tv.ui.NavTab
 import com.mcd.tv.ui.PhoneSetupScreen
+import com.mcd.tv.ui.PersonScreen
 import com.mcd.tv.ui.RdCloudScreen
 import com.mcd.tv.ui.RdConnectScreen
 import com.mcd.tv.ui.SearchScreen
@@ -57,6 +58,7 @@ sealed interface Screen {
     data object RdConnect : Screen
     data object AccountPage : Screen
     data object RdCloud : Screen
+    data class Person(val id: Int) : Screen
     /** openSources = go straight to the source list once the title loads (Services catalog). */
     data class Detail(val type: String, val id: Int, val openSources: Boolean = false) : Screen
     /** autoPlay = the Play button: pick the best source and start immediately. */
@@ -100,6 +102,8 @@ class MainActivity : ComponentActivity() {
         val startScreen: Screen? = if (screenExtra.startsWith("detail:")) {
             // "detail:movie:603"
             screenExtra.split(":").let { p -> p.getOrNull(2)?.toIntOrNull()?.let { Screen.Detail(p[1], it) } }
+        } else if (screenExtra.startsWith("person:")) {
+            screenExtra.substringAfter(":").toIntOrNull()?.let { Screen.Person(it) }
         } else when (screenExtra) {
             "settings" -> Screen.Settings
             "phone" -> Screen.PhoneSetup
@@ -183,6 +187,7 @@ private fun App(startScreen: Screen? = null) {
         Screen.RdConnect -> RdConnectScreen(nav)
         Screen.AccountPage -> AccountScreen(nav)
         Screen.RdCloud -> RdCloudScreen(nav)
+        is Screen.Person -> PersonScreen(nav, s.id)
         is Screen.Detail -> DetailScreen(nav, s.type, s.id, s.openSources)
         is Screen.Sources -> SourcesScreen(nav, s.meta, s.imdbId, s.autoPlay)
         is Screen.Web -> WebScreen(s.url) { url, headers, title -> nav.push(Screen.Player(url, title, headers = headers)) }
