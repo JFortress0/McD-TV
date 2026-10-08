@@ -81,6 +81,9 @@ object RealDebrid {
 
     private suspend fun auth() = mapOf("Authorization" to "Bearer ${token()}")
 
+    /** Valid access token (refreshed if needed), for other RD helpers. */
+    suspend fun accessToken(): String = token()
+
     /** Account status line for Settings, e.g. "jfortress • premium until 2027-01-02". */
     suspend fun accountSummary(): String {
         val o = JSONObject(Http.get("$API/user", auth()))
@@ -123,6 +126,60 @@ object RealDebrid {
             delay(1500)
         }
         throw IllegalStateException("Not cached on Real-Debrid yet (${info.optInt("progress")}% downloaded). Pick a cached source.")
+    }
+}
+
+/** One item in your Real-Debrid cloud (torrents you added to your own account). */
+data class RdItem(val id: String, val name: String, val sizeGb: Double, val status: String, val progress: Int, val added: String)
+
+/** One playable file inside a cloud item. */
+data class RdFile(val name: String, val link: String, val sizeGb: Double)
+
+object RdCloud {
+    private const val API = "https://api.real-debrid.com/rest/1.0"
+    private val videoExt = Regex("\\.(mkv|mp4|avi|m4v|mov|webm|ts)$", RegexOption.IGNORE_CASE)
+
+    private suspend fun auth() = mapOf("Authorization" to "Bearer ${RealDebrid.accessToken()}")
+
+    /** Everything in your RD cloud, newest first. */
+    suspend fun list(): List<RdItem> {
+        val a = JSONArray(Http.get("$API/torrents?limit=200", auth()))
+        return (0 until a.length()).map { a.getJSONObject(it) }.map {
+            RdItem(
+                id = it.optString("id"),
+                name = it.optString("filename"),
+                sizeGb = it.optLong("bytes") / 1_073_741_824.0,
+                status = it.optString("status"),
+                progress = it.optInt("progress"),
+                added = it.optString("added").take(10),
+            )
+        }
+    }
+
+    /** The video files in one item, in order, each with its RD link. */
+    suspend fun files(id: String): List<RdFile> {
+        val info = JSONObject(Http.get("$API/torrents/info/$id", auth()))
+        val links = info.optJSONArray("links") ?: JSONArray()
+        val files = info.optJSONArray("files") ?: JSONArray()
+        // RD returns one link per selected file, in file order.
+        val selected = (0 until files.length()).map { files.getJSONObject(it) }.filter { it.optInt("selected") == 1 }
+        return selected.mapIndexedNotNull { i, f ->
+            val path = f.optString("path")
+            if (!videoExt.containsMatchIn(path) || i >= links.length()) null
+            else RdFile(path.substringAfterLast('/'), links.getString(i), f.optLong("bytes") / 1_073_741_824.0)
+        }.sortedBy { it.name }
+    }
+
+    /** Adds a magnet link you supply to your RD account and selects its video files. */
+    suspend fun addMagnet(magnet: String): String {
+        val h = auth()
+        val id = JSONObject(Http.postForm("$API/torrents/addMagnet", mapOf("magnet" to magnet.trim()), h)).getString("id")
+        val info = JSONObject(Http.get("$API/torrents/info/$id", h))
+        val files = info.optJSONArray("files") ?: JSONArray()
+        val ids = (0 until files.length()).map { files.getJSONObject(it) }
+            .filter { videoExt.containsMatchIn(it.optString("path")) }.map { it.optInt("id") }
+        Http.postForm("$API/torrents/selectFiles/$id", mapOf("files" to if (ids.isEmpty()) "all" else ids.joinToString(",")), h)
+        return info.optString("filename", "Added")
     }
 }
 

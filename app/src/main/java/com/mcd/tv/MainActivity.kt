@@ -27,6 +27,7 @@ import com.mcd.tv.ui.NoiseRunScreen
 import com.mcd.tv.ui.NoiseScreen
 import com.mcd.tv.ui.NavTab
 import com.mcd.tv.ui.PhoneSetupScreen
+import com.mcd.tv.ui.RdCloudScreen
 import com.mcd.tv.ui.RdConnectScreen
 import com.mcd.tv.ui.SearchScreen
 import com.mcd.tv.ui.ServiceGridScreen
@@ -53,11 +54,13 @@ sealed interface Screen {
     data object PhoneSetup : Screen
     data object RdConnect : Screen
     data object AccountPage : Screen
+    data object RdCloud : Screen
     data class Detail(val type: String, val id: Int) : Screen
     /** autoPlay = the Play button: pick the best source and start immediately. */
     data class Sources(val meta: PlayMeta, val imdbId: String, val autoPlay: Boolean) : Screen
     data class Web(val url: String, val name: String) : Screen
-    data class Player(val url: String, val title: String, val meta: PlayMeta? = null) : Screen
+    /** imdbId lets a TV episode roll into the next one when it ends. */
+    data class Player(val url: String, val title: String, val meta: PlayMeta? = null, val imdbId: String? = null) : Screen
 }
 
 /** Navigation actions handed to every screen. */
@@ -131,9 +134,16 @@ private fun App() {
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)
         Screen.AccountPage -> AccountScreen(nav)
+        Screen.RdCloud -> RdCloudScreen(nav)
         is Screen.Detail -> DetailScreen(nav, s.type, s.id)
         is Screen.Sources -> SourcesScreen(nav, s.meta, s.imdbId, s.autoPlay)
         is Screen.Web -> WebScreen(s.url)
-        is Screen.Player -> PlayerScreen(url = s.url, title = s.title, meta = s.meta)
+        is Screen.Player -> {
+            val m = s.meta
+            val next: (() -> Unit)? = if (m != null && m.type == "tv" && s.imdbId != null) {
+                { nav.replace(Screen.Sources(m.copy(episode = m.episode + 1), s.imdbId, autoPlay = true)) }
+            } else null
+            androidx.compose.runtime.key(s.url) { PlayerScreen(url = s.url, title = s.title, meta = m, onEnded = next) }
+        }
     }
 }

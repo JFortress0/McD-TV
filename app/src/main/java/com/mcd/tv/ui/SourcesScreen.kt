@@ -57,7 +57,7 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
         status = "Getting stream from ${s.addon}…"
         scope.launch {
             runCatching { Resolver.resolve(s) }
-                .onSuccess { url -> nav.replace(Screen.Player(url, meta.label, meta)) }
+                .onSuccess { url -> nav.replace(Screen.Player(url, meta.label, meta, imdbId)) }
                 .onFailure { status = it.message ?: "Could not open this source"; busy = false }
         }
     }
@@ -69,7 +69,7 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
                 busy = true
                 status = "Finding the best source…"
                 runCatching { Resolver.best(l.value) }
-                    .onSuccess { (_, url) -> nav.replace(Screen.Player(url, meta.label, meta)) }
+                    .onSuccess { (_, url) -> nav.replace(Screen.Player(url, meta.label, meta, imdbId)) }
                     .onFailure { status = "${it.message} Pick one below."; busy = false; runCatching { firstFocus.requestFocus() } }
             } else {
                 runCatching { firstFocus.requestFocus() }

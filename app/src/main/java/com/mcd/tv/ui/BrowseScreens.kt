@@ -114,6 +114,7 @@ fun LibraryScreen(nav: Nav) {
     val history = remember { Library.history() }
     TabPage(nav, NavTab.Library) {
         LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
+            item { Row(Modifier.padding(horizontal = 48.dp)) { ActionButton("☁  Real-Debrid Cloud", { nav.push(Screen.RdCloud) }, primary = true) } }
             item { TitleRow("Watchlist", Library.watchlist(), openTitle) }
             item { TitleRow("Favorites", Library.favorites(), openTitle) }
             item { TitleRow("Background Noise Shows", Library.noiseShows(), openTitle) }

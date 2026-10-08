@@ -85,6 +85,10 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
         val done = mutableListOf<String>()
         f["tmdb"]?.takeIf { it.isNotBlank() }?.let { Prefs.tmdbKey = it; done += "TMDB key saved" }
         f["server"]?.takeIf { it.isNotBlank() }?.let { Prefs.serverUrl = if (it.startsWith("http")) it else "https://$it"; done += "Server address saved" }
+        f["magnet"]?.takeIf { it.isNotBlank() }?.let { m ->
+            done += runCatching { "Added to Real-Debrid: " + runBlocking { RdCloud.addMagnet(m) } }
+                .getOrElse { "Real-Debrid add failed: ${it.message}" }
+        }
         f["m3u"]?.takeIf { it.isNotBlank() }?.let { Prefs.m3uUrl = it; done += "Playlist saved" }
         f["stream"]?.takeIf { it.isNotBlank() }?.let { Prefs.customUrl = it; done += "Stream link saved" }
         f["addon"]?.takeIf { it.isNotBlank() }?.let { url ->
@@ -127,6 +131,7 @@ button{margin-top:12px;background:#D61828;color:#fff;border:0;border-radius:8px;
 <label>Add an addon (manifest URL or stremio:// link)</label><input name=addon placeholder="https://…/manifest.json">
 <label>Live TV playlist (M3U URL). ${if (Prefs.m3uUrl.isNotBlank()) "✅ set" else "Not set"}</label><input name=m3u placeholder="https://…/playlist.m3u">
 <label>McD TV server address (for accounts). ${if (Prefs.serverUrl.isNotBlank()) "✅ " + esc(Prefs.serverUrl) else "Not set"}</label><input name=server placeholder="https://tv.yourdomain.com">
+<label>Add a magnet link to your Real-Debrid cloud (plays under My List &gt; Real-Debrid Cloud)</label><input name=magnet placeholder="magnet:?xt=urn:btih:…">
 <label>Direct stream link (shows as My Stream)</label><input name=stream placeholder="https://…/video.m3u8">
 <label>Add a website (opens in the TV's built-in browser, under Sports &gt; Websites)</label><input name=site placeholder="https://example.com">
 <label>Name for that website (optional)</label><input name=siteName placeholder="My site">
