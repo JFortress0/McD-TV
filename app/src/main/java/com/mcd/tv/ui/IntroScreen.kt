@@ -232,7 +232,7 @@ fun IntroScreen(onDone: () -> Unit) {
         ) {
             Text(
                 text = "THIS IS",
-                style = broadcastStyle(34.sp, McdColors.Red).copy(letterSpacing = 10.sp),
+                style = introStyle(34.sp, McdColors.Red).copy(letterSpacing = 10.sp),
                 modifier = Modifier.graphicsLayer {
                     val p = ramp(t, 2.7f, 2.95f)
                     alpha = p
@@ -271,7 +271,7 @@ fun IntroScreen(onDone: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "MICK-DEE  •  TEE VEE",
-                style = broadcastStyle(26.sp, McdColors.Muted).copy(letterSpacing = 6.sp),
+                style = introStyle(26.sp, McdColors.Muted).copy(letterSpacing = 6.sp),
                 modifier = Modifier.graphicsLayer { alpha = ramp(t, 3.6f, 4.1f) },
             )
         }
@@ -290,7 +290,7 @@ fun IntroScreen(onDone: () -> Unit) {
         ) {
             Text(
                 text = "LIVE  •  MOVIES  •  SHOWS  •  SPORTS  •  YOUR STREAMS  •  YOUR RULES  •  LIVE  •  MOVIES  •  SHOWS",
-                style = broadcastStyle(24.sp).copy(letterSpacing = 3.sp),
+                style = introStyle(24.sp).copy(letterSpacing = 3.sp),
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Clip,
@@ -302,7 +302,7 @@ fun IntroScreen(onDone: () -> Unit) {
 
         Text(
             text = "Press any button to skip",
-            style = broadcastStyle(14.sp, McdColors.Muted).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Normal),
+            style = introStyle(14.sp, McdColors.Muted).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Normal),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 32.dp, bottom = 72.dp)
@@ -345,10 +345,10 @@ private fun ChromeWordmark(text: String, modifier: Modifier = Modifier) {
         for (i in 10 downTo 1) {
             Text(
                 text = text,
-                style = broadcastStyle(150.sp, if (i > 6) Color(0xFF3A050B) else McdColors.RedDark),
+                style = introStyle(150.sp, if (i > 6) Color(0xFF3A050B) else McdColors.RedDark),
                 modifier = Modifier.offset(x = (i * 0.9f).dp, y = (i * 0.9f).dp),
             )
         }
-        Text(text = text, style = broadcastStyle(150.sp).copy(brush = chrome))
+        Text(text = text, style = introStyle(150.sp).copy(brush = chrome))
     }
 }

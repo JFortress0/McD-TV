@@ -32,6 +32,11 @@ object Prefs {
         get() = sp.getBoolean("us_only", true)
         set(v) = sp.edit().putBoolean("us_only", v).apply()
 
+    /** Which countries' titles to show (see OriginFilter). Default hides Asian-made titles. */
+    var origin: OriginFilter
+        get() = OriginFilter.entries.firstOrNull { it.key == str("origin_filter") } ?: OriginFilter.NO_ASIA
+        set(v) = put("origin_filter", v.key)
+
     /** Like HuberTV's "Slow connection": prefer smaller files and 720p when picking a source. */
     var slowConnection: Boolean
         get() = sp.getBoolean("slow_connection", false)

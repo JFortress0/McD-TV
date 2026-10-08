@@ -46,7 +46,7 @@ fun TileCard(
             focusedContainerColor = McdColors.Card,
         ),
         border = CardDefaults.border(
-            focusedBorder = Border(border = BorderStroke(3.dp, McdColors.Red)),
+            focusedBorder = Border(border = BorderStroke(2.dp, McdColors.Red)),
         ),
         scale = CardDefaults.scale(focusedScale = 1.08f),
     ) {
@@ -56,8 +56,8 @@ fun TileCard(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            if (dimmed) McdColors.Card else McdColors.NavyLight,
-                            if (dimmed) McdColors.Navy else McdColors.RedDark.copy(alpha = 0.55f),
+                            if (dimmed) McdColors.Card else Color(0xFF1A2029),
+                            if (dimmed) McdColors.Navy else Color(0xFF0E1218),
                         ),
                     ),
                 ),
@@ -100,23 +100,23 @@ fun TileCard(
     }
 }
 
-/** Section header styled like a lower-third: red bar + italic caps. */
+/** Section header: thin red bar + uppercase headline. */
 @Composable
 fun RailHeader(text: String, modifier: Modifier = Modifier) {
     androidx.compose.foundation.layout.Row(
-        modifier = modifier.padding(bottom = 12.dp),
+        modifier = modifier.padding(bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .width(6.dp)
-                .height(24.dp)
-                .background(McdColors.Red),
+                .width(4.dp)
+                .height(22.dp)
+                .background(McdColors.Red, RoundedCornerShape(2.dp)),
         )
         Text(
             text = text.uppercase(),
-            style = broadcastStyle(22.sp).copy(letterSpacing = 2.sp),
-            modifier = Modifier.padding(start = 10.dp),
+            style = broadcastStyle(21.sp).copy(letterSpacing = 1.sp),
+            modifier = Modifier.padding(start = 12.dp),
         )
     }
 }

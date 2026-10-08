@@ -13,6 +13,46 @@ data class Title(
     val backdrop: String?,
     val rating: Double,
     val year: String,
+    val originCountries: List<String> = emptyList(),
+    val language: String = "",
+)
+
+/** Where titles may come from. Set in Settings or the web page. */
+enum class OriginFilter(val key: String, val label: String) {
+    ALL("all", "All countries"),
+    US("us", "Made in the US only"),
+    NO_ASIA("no_asia", "Hide Asian-made titles"),
+}
+
+/** East, South, Southeast and Central Asia (country codes and original languages). */
+private val ASIAN_COUNTRIES = setOf(
+    "JP", "KR", "KP", "CN", "TW", "HK", "MO", "MN", "IN", "PK", "BD", "LK", "NP", "BT", "MV", "AF",
+    "TH", "VN", "LA", "KH", "MM", "MY", "SG", "ID", "PH", "BN", "TL", "KZ", "UZ", "TM", "KG", "TJ",
+)
+private val ASIAN_LANGUAGES = setOf(
+    "ja", "ko", "zh", "cn", "hi", "ta", "te", "ml", "kn", "mr", "bn", "pa", "gu", "ur", "or", "as",
+    "th", "vi", "id", "ms", "tl", "km", "lo", "my", "mn", "ne", "si", "dz", "kk", "uz",
+)
+
+/** True if the title passes the user's origin setting. */
+fun Title.allowedByOrigin(f: OriginFilter): Boolean = when (f) {
+    OriginFilter.ALL -> true
+    OriginFilter.US -> if (originCountries.isNotEmpty()) "US" in originCountries else language == "en"
+    OriginFilter.NO_ASIA -> originCountries.none { it in ASIAN_COUNTRIES } && language !in ASIAN_LANGUAGES
+}
+
+data class Genre(val id: Int, val name: String)
+
+val MOVIE_GENRES = listOf(
+    Genre(28, "Action"), Genre(12, "Adventure"), Genre(16, "Animation"), Genre(35, "Comedy"), Genre(80, "Crime"),
+    Genre(99, "Documentary"), Genre(18, "Drama"), Genre(10751, "Family"), Genre(14, "Fantasy"), Genre(36, "History"),
+    Genre(27, "Horror"), Genre(10402, "Music"), Genre(9648, "Mystery"), Genre(10749, "Romance"),
+    Genre(878, "Sci-Fi"), Genre(53, "Thriller"), Genre(10752, "War"), Genre(37, "Western"),
+)
+val TV_GENRES = listOf(
+    Genre(10759, "Action & Adventure"), Genre(16, "Animation"), Genre(35, "Comedy"), Genre(80, "Crime"),
+    Genre(99, "Documentary"), Genre(18, "Drama"), Genre(10751, "Family"), Genre(10762, "Kids"), Genre(9648, "Mystery"),
+    Genre(10764, "Reality"), Genre(10765, "Sci-Fi & Fantasy"), Genre(10768, "War & Politics"), Genre(37, "Western"),
 )
 
 data class CastMember(val name: String, val character: String, val photo: String?)
@@ -101,13 +141,35 @@ object Tmdb {
             backdrop = o.s("backdrop_path"),
             rating = o.optDouble("vote_average", 0.0),
             year = date.take(4),
+            originCountries = (o.optJSONArray("origin_country")
+                ?: o.optJSONArray("production_countries"))?.let { a ->
+                (0 until a.length()).mapNotNull { i ->
+                    when (val v = a.get(i)) { is String -> v; is JSONObject -> v.s("iso_3166_1"); else -> null }
+                }
+            } ?: emptyList(),
+            language = o.s("original_language") ?: "",
         )
     }
 
+    /** Every list in the app passes through here, so the origin setting applies everywhere. */
     private fun parseList(arr: JSONArray?, forcedType: String?): List<Title> {
         if (arr == null) return emptyList()
-        return (0 until arr.length()).mapNotNull { parse(arr.getJSONObject(it), forcedType) }
+        val f = Prefs.origin
+        return (0 until arr.length()).mapNotNull { parse(arr.getJSONObject(it), forcedType) }.filter { it.allowedByOrigin(f) }
     }
+
+    /** Adds TMDB's own origin filter where it supports one (discover lists), so pages stay full. */
+    private fun originParams(): Map<String, String> =
+        if (Prefs.origin == OriginFilter.US) mapOf("with_origin_country" to "US") else emptyMap()
+
+    suspend fun byGenre(type: String, genreId: Int, topRated: Boolean, page: Int = 1): List<Title> = discover(
+        type,
+        buildMap {
+            put("with_genres", genreId.toString())
+            if (topRated) { put("sort_by", "vote_average.desc"); put("vote_count.gte", if (type == "movie") "1000" else "300") }
+        },
+        page,
+    )
 
     private fun region(): Map<String, String> = if (Prefs.usOnly) mapOf("region" to "US") else emptyMap()
 
@@ -142,6 +204,7 @@ object Tmdb {
         p["page"] = page.toString()
         p.putIfAbsent("sort_by", "popularity.desc")
         p["include_adult"] = "false" // adult titles are never shown anywhere in McD TV
+        originParams().forEach { (k, v) -> p.putIfAbsent(k, v) }
         if (Prefs.usOnly) p.putIfAbsent("watch_region", "US")
         return list("/discover/$type", type, p)
     }

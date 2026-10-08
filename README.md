@@ -21,7 +21,8 @@ McD TV copies the HuberTV layout and runs it natively on the TV. It talks straig
 - **Live TV:** your M3U playlist, grouped by category.
 - **Services:** browse the Netflix, Prime, Disney+, Hulu, Apple TV+, Peacock, Max, Paramount+, Crunchyroll and Starz catalogs. Title pages show which service carries a title and open that service's own app.
 - **Background Noise:** pick shows once. Random episodes keep playing.
-- **Calendar:** upcoming episodes for shows on your Watchlist.
+- **Genres:** movies and shows by genre, sorted by Popular or Top Rated.
+- **Title origin filter:** show all countries, US-made only, or hide Asian-made titles (Settings or the web page).
 - **Phone setup:** paste keys and links from your phone over home Wi-Fi.
 - **Accounts (optional):** sign in to your own McD TV server and your lists, history, addons and Real-Debrid link follow you to any TV. See `server/README.md`.
 - **Websites:** a built-in browser with a remote-controlled pointer, for sites you add in Phone setup (Sports > Websites).

@@ -178,36 +178,6 @@ fun ServiceGridScreen(nav: Nav, service: Service) {
     }
 }
 
-// ============================== Calendar ==============================
-
-@Composable
-fun CalendarScreen(nav: Nav) {
-    val res by rememberLoad {
-        Library.watchlist().filter { it.type == "tv" }
-            .mapNotNull { t -> runCatching { Tmdb.details("tv", t.id) }.getOrNull() }
-            .mapNotNull { d -> d.nextEpisode?.let { d to it } }
-            .sortedBy { it.second.airDate }
-    }
-    TabPage(nav, NavTab.Calendar) {
-        Text("Upcoming episodes for shows in your watchlist.", color = McdColors.Muted, modifier = Modifier.padding(horizontal = 48.dp))
-        when (val r = res) {
-            is Load.Loading -> StatusText("Checking air dates…", Modifier.padding(start = 48.dp))
-            is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
-            is Load.Ok -> if (r.value.isEmpty()) StatusText("No upcoming episodes. Add shows to your Watchlist.", Modifier.padding(start = 48.dp))
-            else LazyColumn(contentPadding = PaddingValues(48.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(r.value) { (d, e) ->
-                    WideCard(
-                        title = d.title.name,
-                        subtitle = "${e.airDate}  •  S${e.season}E${e.number} ${e.name}",
-                        image = Tmdb.img(e.still ?: d.title.backdrop, "w780"),
-                        onClick = { nav.push(Screen.Detail("tv", d.title.id)) },
-                    )
-                }
-            }
-        }
-    }
-}
-
 // ============================== Background Noise ==============================
 
 @Composable
@@ -278,6 +248,38 @@ fun NoiseRunScreen(nav: Nav) {
                 McdLogo()
                 Text(status, color = McdColors.White, fontSize = 20.sp, modifier = Modifier.padding(top = 24.dp))
             }
+        }
+    }
+}
+
+// ============================== Genres ==============================
+
+@Composable
+fun GenresScreen(nav: Nav) {
+    var type by remember { mutableStateOf("movie") }
+    val genres = if (type == "movie") com.mcd.tv.data.MOVIE_GENRES else com.mcd.tv.data.TV_GENRES
+    var genre by remember(type) { mutableStateOf(genres.first()) }
+    var topRated by remember { mutableStateOf(false) }
+    val res by rememberLoad(type, genre.id, topRated) {
+        (1..3).flatMap { Tmdb.byGenre(type, genre.id, topRated, it) }.distinctBy { it.id }
+    }
+    TabPage(nav, NavTab.Genres) {
+        Row(Modifier.padding(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ActionButton("Movies", { type = "movie" }, primary = type == "movie")
+            ActionButton("Shows", { type = "tv" }, primary = type == "tv")
+            ActionButton(if (topRated) "Sort: Top Rated" else "Sort: Popular", { topRated = !topRated })
+            Text(
+                com.mcd.tv.data.Prefs.origin.label, color = McdColors.Muted, fontSize = 13.sp,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
+        LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(genres, key = { it.id }) { g -> ActionButton(g.name, { genre = g }, primary = g == genre) }
+        }
+        when (val r = res) {
+            is Load.Loading -> StatusText("Loading ${genre.name}…", Modifier.padding(start = 48.dp))
+            is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
+            is Load.Ok -> PosterGrid(r.value) { nav.push(Screen.Detail(it.type, it.id)) }
         }
     }
 }

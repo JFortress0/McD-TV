@@ -17,7 +17,7 @@ import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
 import com.mcd.tv.ui.AccountScreen
-import com.mcd.tv.ui.CalendarScreen
+import com.mcd.tv.ui.GenresScreen
 import com.mcd.tv.ui.DetailScreen
 import com.mcd.tv.ui.HomeScreen
 import com.mcd.tv.ui.IntroScreen
@@ -50,7 +50,7 @@ sealed interface Screen {
     data class ServiceGrid(val service: Service) : Screen
     data object Noise : Screen
     data object NoiseRun : Screen
-    data object Calendar : Screen
+    data object Genres : Screen
     data object Settings : Screen
     data object PhoneSetup : Screen
     data object RdConnect : Screen
@@ -122,7 +122,7 @@ private fun App() {
                     NavTab.Live -> Screen.Live
                     NavTab.Services -> Screen.Services
                     NavTab.Noise -> Screen.Noise
-                    NavTab.Calendar -> Screen.Calendar
+                    NavTab.Genres -> Screen.Genres
                     NavTab.Settings -> Screen.Settings
                 }
                 if (s != null) stack.add(s)
@@ -143,7 +143,7 @@ private fun App() {
         is Screen.ServiceGrid -> ServiceGridScreen(nav, s.service)
         Screen.Noise -> NoiseScreen(nav)
         Screen.NoiseRun -> NoiseRunScreen(nav)
-        Screen.Calendar -> CalendarScreen(nav)
+        Screen.Genres -> GenresScreen(nav)
         Screen.Settings -> SettingsScreen(nav)
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)

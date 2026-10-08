@@ -36,6 +36,7 @@ private const val PLAYER_TEST_URL =
 @Composable
 fun SettingsScreen(nav: Nav) {
     var usOnly by remember { mutableStateOf(Prefs.usOnly) }
+    var origin by remember { mutableStateOf(Prefs.origin) }
     var slow by remember { mutableStateOf(Prefs.slowConnection) }
     var intro by remember { mutableStateOf(Prefs.playIntro) }
     val rd by rememberLoad(Prefs.rdAccessToken) { if (RealDebrid.connected) RealDebrid.accountSummary() else "Not connected" }
@@ -84,7 +85,14 @@ fun SettingsScreen(nav: Nav) {
             Spacer(Modifier.height(6.dp))
             RailHeader("Preferences")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("US only: ${if (usOnly) "ON" else "OFF"}", { usOnly = !usOnly; Prefs.usOnly = usOnly })
+                ActionButton("Titles: ${origin.label}", {
+                    val all = com.mcd.tv.data.OriginFilter.entries
+                    origin = all[(all.indexOf(origin) + 1) % all.size]
+                    Prefs.origin = origin
+                }, primary = true)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ActionButton("US release dates: ${if (usOnly) "ON" else "OFF"}", { usOnly = !usOnly; Prefs.usOnly = usOnly })
                 ActionButton("Slow connection: ${if (slow) "ON" else "OFF"}", { slow = !slow; Prefs.slowConnection = slow })
                 ActionButton("Intro on launch: ${if (intro) "ON" else "OFF"}", { intro = !intro; Prefs.playIntro = intro })
                 ActionButton("Replay intro", { nav.push(Screen.Intro) })
