@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -95,19 +96,19 @@ private fun DetailBody(nav: Nav, d: Details) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
         item {
-            Box(Modifier.fillMaxWidth().height(470.dp)) {
-                AsyncImage(Tmdb.img(t.backdrop, "w1280"), t.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(McdColors.Navy, McdColors.Navy.copy(alpha = 0.75f), Color.Transparent))))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, McdColors.Navy))))
-                Row(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 16.dp), verticalAlignment = Alignment.Bottom) {
+            Box(Modifier.fillMaxWidth().heightIn(min = 400.dp)) {
+                AsyncImage(Tmdb.img(t.backdrop, "w1280"), t.name, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+                Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(McdColors.Navy, McdColors.Navy.copy(alpha = 0.75f), Color.Transparent))))
+                Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, McdColors.Navy))))
+                Row(Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 28.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
                     AsyncImage(
                         Tmdb.img(t.poster, "w342"), t.name, contentScale = ContentScale.Crop,
-                        modifier = Modifier.width(190.dp).height(285.dp).clip(RoundedCornerShape(8.dp)).background(McdColors.Card),
+                        modifier = Modifier.width(160.dp).height(240.dp).clip(RoundedCornerShape(8.dp)).background(McdColors.Card),
                     )
                     Spacer(Modifier.width(28.dp))
-                    Column(Modifier.width(720.dp)) {
-                        Text(t.name.uppercase(), style = broadcastStyle(40.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (d.tagline.isNotBlank()) Text(d.tagline, color = McdColors.Muted, fontSize = 15.sp)
+                    Column(Modifier.weight(1f)) {
+                        Text(t.name.uppercase(), style = broadcastStyle(30.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (d.tagline.isNotBlank()) Text(d.tagline, color = McdColors.Muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
                             listOfNotNull(
                                 t.year.ifBlank { null },
@@ -117,8 +118,8 @@ private fun DetailBody(nav: Nav, d: Details) {
                             color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp),
                         )
                         RatingsRow(t.rating, d.imdbId)
-                        Text(t.overview, color = Color.White, fontSize = 15.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
-                        Spacer(Modifier.height(14.dp))
+                        Text(t.overview, color = Color.White, fontSize = 14.sp, lineHeight = 19.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             val resumeLabel = if (t.type == "tv" && last != null) "▶  Resume S${last.meta.season}E${last.meta.episode}" else "▶  Play"
                             ActionButton(resumeLabel, {
