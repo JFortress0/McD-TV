@@ -23,7 +23,6 @@ import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
 import com.mcd.tv.ui.AccountScreen
-import com.mcd.tv.ui.AskJarvisScreen
 import com.mcd.tv.ui.BrowseGridScreen
 import com.mcd.tv.ui.BrowseScreen
 import com.mcd.tv.ui.GenresScreen
@@ -51,12 +50,8 @@ import com.mcd.tv.ui.WebScreen
 /** Every screen in the app. Navigation is a simple back stack of these. */
 sealed interface Screen {
     data object Intro : Screen
-    /** "Who's watching?" profile picker (after the intro, and from the profile chip in the top bar). */
-    data object Profiles : Screen
     data object Home : Screen
     data object Search : Screen
-    /** Ask Jarvis: describe a title in plain words. [initial] is asked right away when not blank. */
-    data class AskJarvis(val initial: String = "") : Screen
     data object Library : Screen
     /** Catalog menu: Trending, Top Rated, New Releases, By Year, By Language, Genres, Collections, services, Sports, Noise. */
     data object Browse : Screen
@@ -67,8 +62,6 @@ sealed interface Screen {
     data class BrowseGrid(val kind: String, val param: String = "", val title: String = "") : Screen
     data object Sports : Screen
     data object Live : Screen
-    /** Live TV multiview: 1, 2 or 4 playlist channels at once. */
-    data object Multiview : Screen
     data object Services : Screen
     data class ServiceGrid(val service: Service) : Screen
     data object Noise : Screen
@@ -112,8 +105,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
         if (intent?.getBooleanExtra("qa_mode", false) == true) { LocalWeb.qaMode = true; Prefs.qaMode = true }
-        // Automated QA launch: no profile picker, the last used profile is used.
-        com.mcd.tv.ui.ProfileStart.skip = intent?.hasExtra("qa") == true
         // The home-network setup page (port 8642) normally runs only while Phone & Computer Setup is open
         // (PhoneSetupScreen starts and stops it). The automated QA run talks to it directly, so a launch
         // with a QA extra ("--ez qa true", or "--es screen ...") starts it here too.
@@ -129,8 +120,6 @@ class MainActivity : ComponentActivity() {
         }
         // QA hook: "--es screen settings" opens a screen directly (used by the automated emulator test).
         val screenExtra = intent?.getStringExtra("screen") ?: ""
-        // "--es screen ask --es ask 'that movie where…'" opens Ask Jarvis and asks right away.
-        val askExtra = intent?.getStringExtra("ask") ?: ""
         val startScreen: Screen? = if (screenExtra.startsWith("detail:")) {
             // "detail:movie:603"
             screenExtra.split(":").let { p -> p.getOrNull(2)?.toIntOrNull()?.let { Screen.Detail(p[1], it) } }
@@ -144,16 +133,13 @@ class MainActivity : ComponentActivity() {
             "phone" -> Screen.PhoneSetup
             "genres" -> Screen.Genres
             "sports" -> Screen.Sports
-            "profiles" -> Screen.Profiles
             "noise" -> Screen.Noise
             "library" -> Screen.Library
             "browse" -> Screen.Browse
             "live" -> Screen.Live
-            "multiview" -> Screen.Multiview
             "services" -> Screen.Services
             "search" -> Screen.Search
-            "ask" -> Screen.AskJarvis(askExtra)
-            else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
+            else -> null
         }
         setContent { McdTheme { App(startScreen) } }
     }
@@ -171,7 +157,6 @@ private fun App(startScreen: Screen? = null) {
         when {
             startScreen != null -> mutableStateListOf<Screen>(Screen.Home, startScreen)
             Prefs.playIntro -> mutableStateListOf<Screen>(Screen.Intro)
-            !com.mcd.tv.ui.ProfileStart.skip -> mutableStateListOf<Screen>(Screen.Profiles)
             else -> mutableStateListOf<Screen>(Screen.Home)
         }
     }
@@ -247,20 +232,14 @@ private fun App(startScreen: Screen? = null) {
 private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
     when (val s = screen) {
         // "Replay intro" pushes Intro on top of Settings: go back there instead of stacking a second Home.
-        Screen.Intro -> IntroScreen(onDone = {
-            if (isOnlyEntry) nav.replace(if (com.mcd.tv.ui.ProfileStart.skip) Screen.Home else Screen.Profiles) else nav.back()
-        })
-        // Picked at start: on to Home. Picked from the top bar or Settings: back there (Home reloads for the new profile).
-        Screen.Profiles -> com.mcd.tv.ui.ProfilePickerScreen(onPicked = { if (isOnlyEntry) nav.replace(Screen.Home) else nav.back() })
+        Screen.Intro -> IntroScreen(onDone = { if (isOnlyEntry) nav.replace(Screen.Home) else nav.back() })
         Screen.Home -> HomeScreen(nav)
         Screen.Search -> SearchScreen(nav)
-        is Screen.AskJarvis -> AskJarvisScreen(nav, s.initial)
         Screen.Library -> LibraryScreen(nav)
         Screen.Browse -> BrowseScreen(nav)
         is Screen.BrowseGrid -> BrowseGridScreen(nav, s.kind, s.param, s.title)
         Screen.Sports -> SportsScreen(nav)
         Screen.Live -> LiveTvScreen(nav)
-        Screen.Multiview -> com.mcd.tv.ui.MultiviewScreen(nav)
         Screen.Services -> ServicesScreen(nav)
         is Screen.ServiceGrid -> ServiceGridScreen(nav, s.service)
         Screen.Noise -> NoiseScreen(nav)

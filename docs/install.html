@@ -3,10 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Install Jarvis</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<title>Install McD TV</title>
 <style>
 :root{--bg:#05070D;--bg2:#0A1430;--bg3:#070B18;--card:#111827;--raised:#1A2335;--line:#1F2937;--accent:#3D7BFF;--accent2:#6EA0FF;--red:var(--accent);--muted:#A3ADC2;--cyan:#6EA0FF;--ok:#1f9d55}
 *{box-sizing:border-box}
@@ -28,52 +25,18 @@ ol{padding-left:22px;margin:8px 0}ol li{margin:6px 0}
 .tabs a:hover{background:#fff;color:#05070D}
 .no{color:#ff8a8a}
 a{color:var(--cyan)}
-
-/* ---------- Jarvis HUD skin ---------- */
-:root{--bg:#02060A;--bg2:#031018;--bg3:#02080D;--card:rgba(6,23,34,.85);--raised:#0A2230;--line:#0E6A7A;--accent:#00E5FF;--accent2:#7DF9FF;--bright:#7DF9FF;--red:var(--accent);--muted:#8FB8C4;--ok:#00E5FF;--cyan:#00E5FF;--ink:#02060A;--white:#EAFBFF;
-  --disp:Orbitron,Rajdhani,Arial,sans-serif;--cut:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);--cut-s:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
-body{color:var(--white);font-family:Rajdhani,"Arial Narrow",Arial,sans-serif;font-size:17px;
-  background:linear-gradient(rgba(0,229,255,.04) 1px,transparent 1px) 0 0/40px 40px,linear-gradient(90deg,rgba(0,229,255,.04) 1px,transparent 1px) 0 0/40px 40px,
-  radial-gradient(ellipse at 50% 35%,transparent 55%,rgba(0,0,0,.55)),linear-gradient(var(--bg2),var(--bg3) 240px,var(--bg) 560px) no-repeat,var(--bg)}
-header{border-bottom:1px solid rgba(14,106,122,.6);background:rgba(2,6,10,.6)}
-.logo{display:flex;align-items:center;gap:9px;font:700 20px var(--disp);letter-spacing:3px;color:var(--white);text-shadow:0 0 12px rgba(0,229,255,.75)}
-.logo .ring{flex:0 0 auto;filter:drop-shadow(0 0 4px rgba(0,229,255,.6))}
-.tag{font:500 11px var(--disp);letter-spacing:2px;color:var(--accent)}
-h1,h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:1.5px}
-h1{font-size:22px;font-weight:700}
-h2{font-size:14px;font-weight:500;color:var(--white);display:flex;align-items:center;gap:8px}
-h2::before{content:"\25B8";color:var(--accent)}
-h2::after{content:"";width:40px;height:1px;background:var(--accent);box-shadow:4px 0 0 -0px transparent}
-.card{position:relative;background:var(--card);border:1px solid var(--line);border-radius:0;clip-path:var(--cut)}
-.card::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.55;background:linear-gradient(var(--bright),var(--bright)) left 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px top 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) left 5px bottom 5px/2px 12px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/12px 2px no-repeat,linear-gradient(var(--bright),var(--bright)) right 5px bottom 5px/2px 12px no-repeat}
-input,select{border-radius:0;border:1px solid var(--line);background:rgba(2,6,10,.7);color:var(--white);font-family:inherit;clip-path:var(--cut-s)}
-input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
-button,a.btnlink,.tabs a{border-radius:0!important;clip-path:var(--cut-s);background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1px rgba(0,229,255,.75);border:0;
-  font-family:Rajdhani,Arial,sans-serif;font-weight:600;text-transform:uppercase;letter-spacing:1px}
-button:hover,button:focus-visible,a.btnlink:hover,a.btnlink:focus-visible,.tabs a:hover,.tabs a:focus-visible{background:var(--accent);color:var(--ink);box-shadow:none;outline:none}
-button.primary,a.btnlink{background:var(--accent);color:var(--ink);box-shadow:none;border:0}
-button.primary:hover,button.primary:focus-visible,a.btnlink:hover,a.btnlink:focus-visible{background:var(--bright);color:var(--ink);box-shadow:none}
-code,.big{border-radius:0;background:rgba(2,6,10,.7);border-color:var(--line);color:var(--bright)}
-.big{clip-path:var(--cut);font-family:var(--disp);letter-spacing:1px;font-size:18px}
-.pill{border-radius:0;clip-path:var(--cut-s);background:var(--raised)}.pill.ok{background:rgba(0,229,255,.18);color:var(--accent)}.pill.no{background:rgba(255,77,109,.15);color:#FF4D6D}
-.dot.on{background:var(--accent);box-shadow:0 0 8px var(--accent)}
-.bar{background:rgba(2,6,10,.94);border-top:1px solid var(--line)}
-li{border-bottom-color:rgba(14,106,122,.45)}
-.err{color:#FF4D6D}.good{color:var(--accent)}.no{color:#FF4D6D}
-a{color:var(--accent)}
 </style>
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2212%22%20fill%3D%22%2302060A%22/%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2218%22%20fill%3D%22none%22%20stroke%3D%22%2300E5FF%22%20stroke-width%3D%224%22/%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%227%22%20fill%3D%22%237DF9FF%22/%3E%3Cg%20stroke%3D%22%2300E5FF%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M32%204v6M32%2054v6M4%2032h6M54%2032h6%22/%3E%3C/g%3E%3C/svg%3E"><meta name="theme-color" content="#02060A"><meta name="apple-mobile-web-app-title" content="Jarvis">
 </head>
 <body>
-<header><div class="logo"><svg class="ring" viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-opacity=".25" stroke-width="4"/><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-width="1.4"/><path d="M28.80 16.00L31.60 16.00M27.60 22.70L29.51 23.80M22.70 27.60L23.80 29.51M16.00 28.80L16.00 31.60M9.30 27.60L8.20 29.51M4.40 22.70L2.49 23.80M3.20 16.00L0.40 16.00M4.40 9.30L2.49 8.20M9.30 4.40L8.20 2.49M16.00 3.20L16.00 0.40M22.70 4.40L23.80 2.49M27.60 9.30L29.51 8.20" stroke="#00E5FF" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="#00E5FF" fill-opacity=".25"/><circle cx="16" cy="16" r="2" fill="#7DF9FF"/></svg>JARVIS</div><div class="tag">INSTALL GUIDE</div></header>
+<header><div class="logo">McD <b>TV</b></div><div class="tag">INSTALL GUIDE</div></header>
 <main>
-<h1>Install Jarvis</h1>
-<p class="muted">Jarvis is an Android TV app. It runs on Amazon Fire TV and on Android TV and Google TV devices. You install it with one link.</p>
+<h1>Install McD TV</h1>
+<p class="muted">McD TV is an Android TV app. It runs on Amazon Fire TV and on Android TV and Google TV devices. You install it with one link.</p>
 
 <div class="card">
   <div>The install link (type it in the Downloader app):</div>
   <div class="big">jfortress0.github.io/McD-TV/get</div>
-  <div class="muted">Long version, if the short one does not work:<br><code>https://github.com/JFortress0/McD-TV/releases/latest/download/Jarvis.apk</code></div>
+  <div class="muted">Long version, if the short one does not work:<br><code>https://github.com/JFortress0/McD-TV/releases/latest/download/McD-TV.apk</code></div>
 </div>
 
 <div class="tabs">
@@ -98,14 +61,14 @@ a{color:var(--accent)}
   <li>If you do not see <b>Developer options</b>: open <b>About</b>, select your device name 7 times, then press Back. "You are now a developer" shows.</li>
   <li>Open <b>Developer options</b> &gt; <b>Install unknown apps</b>. Set <b>Downloader</b> to <b>ON</b>.</li>
 </ol>
-<p><b>Step 3. Install Jarvis.</b></p>
+<p><b>Step 3. Install McD TV.</b></p>
 <ol>
   <li>Open Downloader. Allow it to access files if it asks.</li>
   <li>Select the address box on the Home tab. Type <code>jfortress0.github.io/McD-TV/get</code> and select <b>Go</b>.</li>
   <li>The download starts. When it finishes, select <b>Install</b>, then <b>Done</b>.</li>
-  <li>Select <b>Delete</b> to remove the installer file. Jarvis stays installed.</li>
+  <li>Select <b>Delete</b> to remove the installer file. McD TV stays installed.</li>
 </ol>
-<p><b>Step 4. Put Jarvis on your home screen.</b> Open <b>Settings</b> &gt; <b>Applications</b> &gt; <b>Manage Installed Applications</b>, or hold the Home button and select <b>Apps</b>. Find Jarvis, press the Menu button (three lines) and select <b>Move to front</b>.</p>
+<p><b>Step 4. Put McD TV on your home screen.</b> Open <b>Settings</b> &gt; <b>Applications</b> &gt; <b>Manage Installed Applications</b>, or hold the Home button and select <b>Apps</b>. Find McD TV, press the Menu button (three lines) and select <b>Move to front</b>.</p>
 </div>
 
 <h2 id="google">Google TV and Android TV</h2>
@@ -124,20 +87,20 @@ a{color:var(--accent)}
 <h2 id="phone">Android phone or tablet</h2>
 <div class="card">
 <ol>
-  <li>On the phone, open this link in Chrome: <a href="https://github.com/JFortress0/McD-TV/releases/latest/download/Jarvis.apk">Download Jarvis</a>.</li>
+  <li>On the phone, open this link in Chrome: <a href="https://github.com/JFortress0/McD-TV/releases/latest/download/McD-TV.apk">Download McD TV</a>.</li>
   <li>Open the downloaded file. If Android asks, allow Chrome to install unknown apps, then go back and select <b>Install</b>.</li>
 </ol>
-<p class="muted">Jarvis is made for a TV remote. It works on a phone, but some screens are easier with a remote. To set up your TV from your phone, you do not need this: use the QR code on the TV (see below).</p>
+<p class="muted">McD TV is made for a TV remote. It works on a phone, but some screens are easier with a remote. To set up your TV from your phone, you do not need this: use the QR code on the TV (see below).</p>
 </div>
 
 <h2 id="after">After you install</h2>
 <div class="card">
 <ol>
-  <li>Open Jarvis. The intro plays, then the home screen shows movies and shows.</li>
-  <li><b>Connect your phone:</b> open <b>Settings</b> (the circle at the top right) &gt; <b>Phone &amp; Computer Setup</b>. Scan the QR code with your phone camera. The Jarvis Control page opens. Use it to add addons, your Live TV playlist and websites. Changes reach the TV in a few seconds.</li>
+  <li>Open McD TV. The intro plays, then the home screen shows movies and shows.</li>
+  <li><b>Connect your phone:</b> open <b>Settings</b> (the circle at the top right) &gt; <b>Phone &amp; Computer Setup</b>. Scan the QR code with your phone camera. The McD TV Control page opens. Use it to add addons, your Live TV playlist and websites. Changes reach the TV in a few seconds.</li>
   <li><b>Real-Debrid (optional):</b> <b>Settings</b> &gt; <b>Real-Debrid</b>. The TV shows a code. On your phone, open <code>real-debrid.com/device</code> and type the code.</li>
   <li><b>Live TV (optional):</b> on the Control page, paste your M3U playlist link in the Live TV field and save. Open <b>Live TV</b> on the TV.</li>
-  <li><b>Browse on your phone: <a href="app/">the Jarvis web app</a>.</b> On the Control page, tap <b>Open Jarvis web app</b>. Find something to watch on your phone or computer, then tap <b>Play on TV</b>.</li>
+  <li><b>Browse on your phone: <a href="app/">the McD TV web app</a>.</b> On the Control page, tap <b>Open McD TV web app</b>. Find something to watch on your phone or computer, then tap <b>Play on TV</b>.</li>
 </ol>
 <p class="muted">Keep your Control page link private. Anyone with it can change your TV's setup. To make a new one: <b>Phone &amp; Computer Setup</b> &gt; <b>New link</b>.</p>
 </div>
@@ -145,12 +108,12 @@ a{color:var(--accent)}
 <h2 id="update">Updates</h2>
 <div class="card">
 <p>To update, do Step 3 again with the same link. The new version installs over the old one. Your settings, history and lists stay.</p>
-<p class="muted">If the TV says "App not installed", uninstall Jarvis first (Settings &gt; Applications &gt; Jarvis &gt; Uninstall), then install again. You then need to set it up again.</p>
+<p class="muted">If the TV says "App not installed", uninstall McD TV first (Settings &gt; Applications &gt; McD TV &gt; Uninstall), then install again. You then need to set it up again.</p>
 </div>
 
 <h2 id="other">Other devices</h2>
 <div class="card">
-<p class="no">Roku, Apple TV, iPhone, iPad, Samsung (Tizen) TVs and LG (webOS) TVs cannot install Android apps, so Jarvis does not run on them.</p>
+<p class="no">Roku, Apple TV, iPhone, iPad, Samsung (Tizen) TVs and LG (webOS) TVs cannot install Android apps, so McD TV does not run on them.</p>
 <p class="muted">For those TVs, plug in a Fire TV Stick 4K or a Chromecast with Google TV (about $30 to $50) and follow the steps above.</p>
 </div>
 </main>
