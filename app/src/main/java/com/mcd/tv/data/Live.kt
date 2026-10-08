@@ -86,6 +86,82 @@ object M3u {
     @Volatile var userAgent: String = USER_AGENTS.first()
         private set
 
+    /** Server, username and password of an Xtream Codes style link (.../get.php?username=..&password=..). */
+    private class Xtream(val base: String, val user: String, val pass: String)
+
+    private fun xtreamOf(url: String): Xtream? = runCatching {
+        val u = java.net.URI(url.trim())
+        val path = u.path.orEmpty()
+        if (!path.endsWith("get.php")) return null
+        val q = (u.rawQuery ?: return null).split("&").associate {
+            it.substringBefore("=").lowercase() to java.net.URLDecoder.decode(it.substringAfter("=", ""), "UTF-8")
+        }
+        val user = q["username"]?.takeIf { it.isNotBlank() } ?: return null
+        val pass = q["password"]?.takeIf { it.isNotBlank() } ?: return null
+        val port = if (u.port > 0) ":${u.port}" else ""
+        Xtream("${u.scheme}://${u.host}$port${path.removeSuffix("get.php").trimEnd('/')}", user, pass)
+    }.getOrNull()
+
+    /** GET as text with a user agent; null body when the server answers outside 2xx. */
+    private fun httpText(url: String, ua: String): Pair<Int, String?> {
+        val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        try {
+            c.connectTimeout = 20_000
+            c.readTimeout = 90_000
+            c.instanceFollowRedirects = true
+            c.setRequestProperty("User-Agent", ua)
+            c.setRequestProperty("Accept", "*/*")
+            val code = c.responseCode
+            if (code !in 200..299) return code to null
+            return code to c.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    /**
+     * Live channels through the Xtream Codes app API (player_api.php), the way IPTV apps sign in.
+     * Returns null when the server refuses every user agent (the caller then tries the M3U download).
+     */
+    private fun loadXtream(x: Xtream, onGuide: (String) -> Unit, onCode: (Int) -> Unit): List<Channel>? {
+        val enc = { v: String -> java.net.URLEncoder.encode(v, "UTF-8") }
+        val api = "${x.base}/player_api.php?username=${enc(x.user)}&password=${enc(x.pass)}"
+        for (ua in (listOf(userAgent) + USER_AGENTS).distinct()) {
+            val (code, body) = runCatching { httpText(api, ua) }.getOrElse { 0 to null }
+            if (body == null) { if (code != 0) onCode(code); continue }
+            val info = runCatching { JSONObject(body).optJSONObject("user_info") }.getOrNull() ?: continue
+            if (info.optInt("auth", 1) == 0) throw Exception("The provider rejected the username or password in your playlist link.")
+            val status = info.optString("status")
+            if (status.isNotBlank() && !status.equals("Active", ignoreCase = true)) {
+                throw Exception("Your IPTV account is not active (status: $status). Check with your provider.")
+            }
+            val formats = info.optJSONArray("allowed_output_formats")
+            val allowed = if (formats == null) emptyList() else List(formats.length()) { formats.optString(it) }
+            val ext = if (allowed.isEmpty() || "m3u8" in allowed) "m3u8" else allowed.first()
+            val cats = HashMap<String, String>()
+            runCatching { org.json.JSONArray(httpText("$api&action=get_live_categories", ua).second ?: "[]") }.getOrNull()?.let { a ->
+                for (i in 0 until a.length()) a.optJSONObject(i)?.let { cats[it.optString("category_id")] = it.optString("category_name") }
+            }
+            val streams = runCatching { org.json.JSONArray(httpText("$api&action=get_live_streams", ua).second ?: "[]") }.getOrNull() ?: continue
+            val out = ArrayList<Channel>(streams.length())
+            for (i in 0 until streams.length()) {
+                val o = streams.optJSONObject(i) ?: continue
+                val id = o.opt("stream_id")?.toString()?.takeIf { it.isNotBlank() && it != "null" } ?: continue
+                val name = o.optString("name").trim().ifBlank { "Channel $id" }
+                val logo = o.optString("stream_icon").takeIf { it.startsWith("http") }
+                val group = cats[o.optString("category_id")]?.ifBlank { null } ?: "Other"
+                val epg = o.optString("epg_channel_id").trim().takeIf { it.isNotBlank() && it != "null" }
+                out += Channel(name, logo, group, "${x.base}/live/${x.user}/${x.pass}/$id.$ext", epg, name)
+                if (out.size >= 25_000) break
+            }
+            if (out.isEmpty()) continue
+            userAgent = ua
+            onGuide("${x.base}/xmltv.php?username=${enc(x.user)}&password=${enc(x.pass)}")
+            return out
+        }
+        return null
+    }
+
     suspend fun load(force: Boolean = false): List<Channel> {
         val url = Prefs.m3uUrl
         if (url.isBlank()) return emptyList()
@@ -94,9 +170,16 @@ object M3u {
             if (fresh && !force && cache.isNotEmpty()) return@withLock cache
             var guide = ""
             val list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                // Some playlist servers only answer the user agents of common IPTV players,
-                // so try a few in turn and remember the one that works (the live player uses it too).
                 var lastCode = 0
+                // Xtream Codes providers (links like .../get.php?username=..&password=..) often switch off the
+                // M3U download but keep their app API on, which is what IPTV Smarters uses. Try the API first.
+                val x = xtreamOf(url)
+                if (x != null) {
+                    val r = loadXtream(x, { g -> guide = g }, { code -> lastCode = code })
+                    if (r != null) return@withContext r
+                }
+                // Plain M3U download. Some servers only answer the user agents of common IPTV players,
+                // so try a few in turn and remember the one that works (the live player uses it too).
                 var result: List<Channel>? = null
                 for (ua in (listOf(userAgent) + USER_AGENTS).distinct()) {
                     val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
