@@ -52,7 +52,7 @@ fun SettingsScreen(nav: Nav) {
                 "Paste your TMDB key, addon links, playlist and stream links from your phone instead of typing with the remote.",
                 color = McdColors.Muted, fontSize = 15.sp,
             )
-            ActionButton("Open Phone Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
+            ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
 
             Spacer(Modifier.height(6.dp))
             RailHeader("Account")
@@ -109,49 +109,49 @@ fun SettingsScreen(nav: Nav) {
     }
 }
 
-/** Shows the setup page address (the page itself runs whenever McD TV is open). */
+/** Setup from a phone or computer: QR code for the internet Control page, plus the home-network page. */
 @Composable
 fun PhoneSetupScreen(nav: Nav) {
     LocalWeb.start() // in case it stopped; does nothing if already running
+    com.mcd.tv.data.Relay.start()
     val addrs = remember { LocalWeb.addresses() }
+    var link by remember { mutableStateOf(com.mcd.tv.data.Relay.controlUrl()) }
     // Keep the TV awake (no screensaver) while this screen is open.
     val view = androidx.compose.ui.platform.LocalView.current
     androidx.compose.runtime.DisposableEffect(Unit) {
         view.keepScreenOn = true
         onDispose { view.keepScreenOn = false }
     }
-    Column(Modifier.fillMaxSize().background(ScreenBackground).padding(48.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        McdLogo()
-        Text("PHONE AND COMPUTER SETUP", style = broadcastStyle(36.sp))
-        Text("1.  Use a phone or computer on the same Wi-Fi as this TV.", fontSize = 20.sp, color = McdColors.White)
-        Text("2.  Open this address in its web browser:", fontSize = 20.sp, color = McdColors.White)
-        Text(
-            addrs.first(),
-            style = broadcastStyle(44.sp),
-            modifier = Modifier.background(McdColors.Red, RoundedCornerShape(8.dp)).padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        if (addrs.size > 1) Text("If that one doesn't load, try: " + addrs.drop(1).joinToString("   "), fontSize = 16.sp, color = McdColors.White)
-        Text("3.  Paste your keys and links, then tap Save to TV.", fontSize = 20.sp, color = McdColors.White)
-        Text(LocalWeb.error?.let { "Could not start: $it" } ?: LocalWeb.lastMessage, fontSize = 18.sp, color = McdColors.Muted)
-        // Diagnostics: the TV loads its own page. OK here + nothing on the phone = the network blocks the phone.
-        var selfTest by remember { mutableStateOf("Checking the page…") }
-        LaunchedEffect(Unit) {
-            selfTest = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                addrs.map { a ->
-                    runCatching {
-                        val c = java.net.URL(a).openConnection() as java.net.HttpURLConnection
-                        c.connectTimeout = 3000; c.readTimeout = 3000
-                        val code = c.responseCode; c.disconnect()
-                        "$a  ${if (code == 200) "OK" else "HTTP $code"}"
-                    }.getOrElse { "$a  FAILED (${it.javaClass.simpleName})" }
-                }.joinToString("    ")
+    Row(
+        Modifier.fillMaxSize().background(ScreenBackground).padding(48.dp),
+        horizontalArrangement = Arrangement.spacedBy(48.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            McdLogo()
+            Text("MCD TV CONTROL", style = broadcastStyle(36.sp))
+            Text("1.  Point your phone's camera at the code and tap the link.", fontSize = 20.sp, color = McdColors.White)
+            Text("2.  Add addons, websites and keys, then tap Save.", fontSize = 20.sp, color = McdColors.White)
+            Text(
+                "Works over the internet from any network, at home or away. To use a computer, tap Copy link on your phone's Control page and open it there.",
+                fontSize = 16.sp, color = McdColors.Muted,
+            )
+            Text(com.mcd.tv.data.Relay.status, fontSize = 16.sp, color = McdColors.White)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ActionButton("New link (disconnect old devices)", {
+                    com.mcd.tv.data.Relay.newLink()
+                    link = com.mcd.tv.data.Relay.controlUrl()
+                })
             }
+            Text(
+                "Home Wi-Fi page: ${addrs.first()}   •   ${if (LocalWeb.running) "running" else "stopped"}   •   browser requests: ${LocalWeb.requests}",
+                fontSize = 13.sp, color = McdColors.Muted,
+            )
+            Text(LocalWeb.error?.let { "Home page error: $it" } ?: LocalWeb.lastMessage, fontSize = 13.sp, color = McdColors.Muted)
         }
-        Text(
-            "Page running: ${if (LocalWeb.running) "yes" else "no"}   •   Self-test: $selfTest   •   Requests from browsers: ${LocalWeb.requests}",
-            fontSize = 14.sp, color = McdColors.Muted,
-        )
-        Text("The page works whenever McD TV is open. Bookmark it.", fontSize = 14.sp, color = McdColors.Muted)
+        Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+            QrCode(link, 300.dp)
+            Text("Scan to open McD TV Control", fontSize = 14.sp, color = McdColors.Muted, modifier = Modifier.padding(top = 10.dp))
+        }
     }
 }
 

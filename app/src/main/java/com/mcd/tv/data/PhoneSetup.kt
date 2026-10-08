@@ -96,6 +96,13 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
             if (h.isEmpty()) break
             if (h.lowercase().startsWith("content-length:")) length = h.substringAfter(":").trim().toIntOrNull() ?: 0
         }
+        if (requestLine.startsWith("GET /qa-relay") && c.inetAddress.isLoopbackAddress) {
+            val b = Relay.controlUrl().toByteArray()
+            val o = c.getOutputStream()
+            o.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${b.size}\r\nConnection: close\r\n\r\n".toByteArray())
+            o.write(b); o.flush()
+            return
+        }
         var message = ""
         if (requestLine.startsWith("POST")) {
             val buf = CharArray(length)

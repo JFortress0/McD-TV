@@ -105,7 +105,18 @@ object Prefs {
         set(v) = sp.edit().putLong("last_sync_at", v).apply()
 
     /** Keys that belong to this TV only and never sync to the account. */
-    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at")
+    private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since")
+
+    // ---- Internet setup link (ntfy relay) ----
+    var relayId: String
+        get() = str("relay_id")
+        set(v) = put("relay_id", v)
+    var relayKey: String
+        get() = str("relay_key")
+        set(v) = put("relay_key", v)
+    var relaySince: String
+        get() = str("relay_since")
+        set(v) = put("relay_since", v)
 
     /** Every synced setting and list, as JSON, for the account server. */
     fun exportAll(): org.json.JSONObject {

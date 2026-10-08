@@ -220,7 +220,7 @@ fun LiveTvScreen(nav: Nav) {
             is Load.Ok -> if (r.value.isEmpty()) {
                 Column(Modifier.padding(horizontal = 48.dp)) {
                     StatusText("No playlist yet. McD TV ships with no channels; add your own M3U playlist URL.")
-                    ActionButton("Open Phone Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
+                    ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
                 }
             } else {
                 val groups = remember(r.value) { r.value.map { it.group }.distinct() }

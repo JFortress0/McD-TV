@@ -30,6 +30,15 @@ else
   fail "Setup page saves a website (POST)"
 fi
 
+# 2b) Internet setup link (ntfy relay), end to end.
+pip install -q cryptography >/dev/null 2>&1
+LINK=$(curl -sf -m 10 http://127.0.0.1:8642/qa-relay)
+if [ -n "$LINK" ]; then
+  python3 .github/qa/relay_test.py "$LINK" || FAILED=1
+else
+  fail "Internet setup link available"
+fi
+
 # 3) Page still answers after the app goes to the background (screensaver case).
 adb shell input keyevent KEYCODE_HOME
 sleep 5

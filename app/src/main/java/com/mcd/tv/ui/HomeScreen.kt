@@ -90,7 +90,7 @@ fun HomeScreen(nav: Nav) {
             is Load.Err -> item {
                 Column(Modifier.padding(horizontal = 48.dp)) {
                     StatusText(d.message)
-                    if (Prefs.tmdbKey.isBlank()) ActionButton("Open Phone Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
+                    if (Prefs.tmdbKey.isBlank()) ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
                 }
             }
             is Load.Ok -> {

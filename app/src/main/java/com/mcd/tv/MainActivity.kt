@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import com.mcd.tv.data.Account
 import com.mcd.tv.data.LocalWeb
+import com.mcd.tv.data.Relay
 import com.mcd.tv.data.PlayMeta
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -77,6 +78,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
         LocalWeb.start()
+        Relay.start() // internet setup link (works from any network)
         // Signed in to a McD TV account? Pick up changes made on other TVs.
         lifecycleScope.launch {
             // Pick up changes made on the web page or another TV: now, then every 2 minutes.

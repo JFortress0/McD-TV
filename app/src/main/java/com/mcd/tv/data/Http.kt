@@ -24,7 +24,11 @@ object Http {
     suspend fun postForm(url: String, fields: Map<String, String>, headers: Map<String, String> = emptyMap()): String =
         withContext(Dispatchers.IO) { request("POST", url, headers, form(fields)) }
 
-    private fun request(method: String, url: String, headers: Map<String, String>, body: String?): String {
+    /** POST a plain-text body (used for the ntfy relay). */
+    suspend fun postText(url: String, body: String): String =
+        withContext(Dispatchers.IO) { request("POST", url, mapOf("Content-Type" to "text/plain"), body, raw = true) }
+
+    private fun request(method: String, url: String, headers: Map<String, String>, body: String?, raw: Boolean = false): String {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
             c.requestMethod = method
@@ -36,7 +40,7 @@ object Http {
             headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
             if (body != null) {
                 c.doOutput = true
-                c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                if (!raw) c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
                 c.outputStream.use { it.write(body.toByteArray()) }
             }
             val code = c.responseCode
