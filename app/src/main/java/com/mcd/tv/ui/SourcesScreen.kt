@@ -14,10 +14,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -45,7 +47,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
     val streamId = if (meta.type == "tv") "$imdbId:${meta.season}:${meta.episode}" else imdbId
-    val sources by rememberLoad(streamId) { Addons.streams(meta.type, streamId) }
+    var retry by remember { mutableIntStateOf(0) }
+    val sources by rememberLoad(streamId, retry) { Addons.streams(meta.type, streamId) }
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -57,21 +60,32 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
         status = "Getting stream from ${s.addon}…"
         scope.launch {
             runCatching { Resolver.resolve(s) }
-                .onSuccess { url -> nav.replace(Screen.Player(url, meta.label, meta, imdbId)) }
+                .onSuccess { url -> nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = s.headers)) }
                 .onFailure { status = it.message ?: "Could not open this source"; busy = false }
         }
     }
 
     val l = sources
     LaunchedEffect(l) {
-        if (l is Load.Ok && l.value.isNotEmpty()) {
+        if (l is Load.Ok && l.value.isEmpty() && autoPlay && meta.type == "tv" && meta.episode > 1) {
+            // Auto-advance ran past the last episode of the season: try the next season's first episode.
+            // Only from episode > 1, and the new screen asks for episode 1, so this rolls over at most once.
+            nav.replace(Screen.Sources(meta.copy(season = meta.season + 1, episode = 1), imdbId, true))
+        } else if (l is Load.Ok && l.value.isNotEmpty()) {
             if (autoPlay) {
                 busy = true
                 status = "Finding the best source…"
                 runCatching { Resolver.best(l.value) }
-                    .onSuccess { (_, url) -> nav.replace(Screen.Player(url, meta.label, meta, imdbId)) }
-                    .onFailure { status = "${it.message} Pick one below."; busy = false; runCatching { firstFocus.requestFocus() } }
+                    .onSuccess { (src, url) -> nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = src.headers)) }
+                    .onFailure {
+                        status = "${it.message} Pick one below."
+                        busy = false
+                        withFrameNanos { }
+                        runCatching { firstFocus.requestFocus() }
+                    }
             } else {
+                // Wait one frame so the list is laid out before focusing its first row.
+                withFrameNanos { }
                 runCatching { firstFocus.requestFocus() }
             }
         }
@@ -85,7 +99,10 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
 
         when (l) {
             is Load.Loading -> StatusText("Asking your addons…")
-            is Load.Err -> StatusText(l.message)
+            is Load.Err -> {
+                StatusText(l.message)
+                ActionButton("Retry", { retry++ }, primary = true)
+            }
             is Load.Ok -> if (l.value.isEmpty()) {
                 StatusText(
                     if (Prefs.addonUrls.isEmpty()) "No addons installed. Add one from your phone: Settings > Phone setup."

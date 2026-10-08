@@ -1,5 +1,6 @@
 package com.mcd.tv.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,9 +30,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -67,6 +71,17 @@ fun SportsScreen(nav: Nav) {
     var league by remember { mutableStateOf(League.NFL) }
     var tick by remember { mutableIntStateOf(0) }
     var picked by remember { mutableStateOf<Game?>(null) }
+    // Back from a game's channel list returns to the scores, not out of Sports.
+    var switched by remember { mutableIntStateOf(0) }
+    BackHandler(enabled = picked != null) { picked = null; switched++ }
+    val leagueFocus = remember { FocusRequester() }
+    val closeFocus = remember { FocusRequester() }
+    LaunchedEffect(switched) {
+        if (switched == 0) return@LaunchedEffect
+        // One frame so the new view is laid out, then focus something on it.
+        withFrameNanos { }
+        runCatching { if (picked != null) closeFocus.requestFocus() else leagueFocus.requestFocus() }
+    }
     val games by rememberLoad(league, tick) { Scores.scoreboard(league) }
     val channels by rememberLoad(Prefs.m3uUrl) { runCatching { M3u.load() }.getOrDefault(emptyList()) }
 
@@ -94,13 +109,15 @@ fun SportsScreen(nav: Nav) {
             }
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(League.entries) { l -> ActionButton(l.label, { league = l; picked = null }, primary = l == league) }
+            items(League.entries) { l ->
+                ActionButton(l.label, { league = l; picked = null }, if (l == league) Modifier.focusRequester(leagueFocus) else Modifier, primary = l == league)
+            }
         }
 
         val p = picked
         if (p != null) {
             val list = (channels as? Load.Ok<List<Channel>>)?.value ?: emptyList()
-            GameChannels(p, list, onPlay = { ch -> nav.push(Screen.Player(ch.url, "${p.away.short} @ ${p.home.short}  •  ${ch.name}")) }, onClose = { picked = null })
+            GameChannels(p, list, onPlay = { ch -> nav.push(Screen.Player(ch.url, "${p.away.short} @ ${p.home.short}  •  ${ch.name}")) }, onClose = { picked = null; switched++ }, closeFocus = closeFocus)
         } else when (val g = games) {
             is Load.Loading -> StatusText("Loading scores…", Modifier.padding(start = 48.dp))
             is Load.Err -> StatusText(g.message, Modifier.padding(start = 48.dp))
@@ -111,7 +128,7 @@ fun SportsScreen(nav: Nav) {
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                items(g.value, key = { it.id }) { game -> GameCard(game, onClick = { picked = game }) }
+                items(g.value, key = { it.id }) { game -> GameCard(game, onClick = { picked = game; switched++ }) }
             }
         }
     }
@@ -164,7 +181,7 @@ private fun GameCard(g: Game, onClick: () -> Unit) {
 }
 
 @Composable
-private fun GameChannels(g: Game, all: List<Channel>, onPlay: (Channel) -> Unit, onClose: () -> Unit) {
+private fun GameChannels(g: Game, all: List<Channel>, onPlay: (Channel) -> Unit, onClose: () -> Unit, closeFocus: FocusRequester) {
     val matches = remember(g, all) { M3u.matchesFor(g, all) }
     Column(Modifier.padding(horizontal = 48.dp)) {
         Box(
@@ -181,7 +198,7 @@ private fun GameChannels(g: Game, all: List<Channel>, onPlay: (Channel) -> Unit,
             }
         }
         Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("Back to scores", onClose)
+            ActionButton("Back to scores", onClose, Modifier.focusRequester(closeFocus))
         }
         when {
             Prefs.m3uUrl.isBlank() -> StatusText("Add your Live TV playlist (Settings > Phone setup) to watch from here.")

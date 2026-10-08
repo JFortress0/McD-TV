@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -25,10 +29,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -49,21 +56,25 @@ import com.mcd.tv.data.Service
 import com.mcd.tv.data.Title
 import com.mcd.tv.data.Tmdb
 import com.mcd.tv.player.PlayerScreen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /** Shared page frame: background + top nav + content. */
 @Composable
-fun TabPage(nav: Nav, tab: NavTab, content: @Composable () -> Unit) {
+fun TabPage(nav: Nav, tab: NavTab, autoFocus: Boolean = true, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxSize().background(ScreenBackground)) {
-        TopNav(tab, nav.tab)
+        // autoFocus: start on the current tab so the remote has somewhere to go. Screens that focus
+        // something themselves (Search's text field) pass false.
+        TopNav(tab, nav.tab, autoFocus = autoFocus)
         content()
     }
 }
 
 /** Poster grid used by Search, Services and Library. */
 @Composable
-fun PosterGrid(items: List<Title>, onOpen: (Title) -> Unit) {
+fun PosterGrid(items: List<Title>, state: LazyGridState = rememberLazyGridState(), onOpen: (Title) -> Unit) {
     LazyVerticalGrid(
+        state = state,
         columns = GridCells.Adaptive(150.dp),
         contentPadding = PaddingValues(horizontal = 48.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -77,18 +88,20 @@ fun PosterGrid(items: List<Title>, onOpen: (Title) -> Unit) {
 
 @Composable
 fun SearchScreen(nav: Nav) {
-    var query by remember { mutableStateOf("") }
-    var submitted by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
+    var submitted by rememberSaveable { mutableStateOf("") }
     val field = remember { FocusRequester() }
+    val gridState = rememberLazyGridState()
+    // Focus the field (no keyboard yet: OK opens it), so typing is one press away.
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { field.requestFocus() } }
-    TabPage(nav, NavTab.Search) {
+    TabPage(nav, NavTab.Search, autoFocus = false) {
         BasicTextField(
             value = query,
             onValueChange = { query = it },
             singleLine = true,
             textStyle = TextStyle(color = McdColors.White, fontSize = 22.sp),
             cursorBrush = SolidColor(McdColors.Red),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, showKeyboardOnFocus = false),
             keyboardActions = KeyboardActions(onSearch = { submitted = query.trim() }),
             modifier = Modifier.padding(horizontal = 48.dp).fillMaxWidth().focusRequester(field)
                 .background(McdColors.Card, RoundedCornerShape(8.dp)).border(2.dp, McdColors.Red, RoundedCornerShape(8.dp))
@@ -100,7 +113,7 @@ fun SearchScreen(nav: Nav) {
             when (val r = res) {
                 is Load.Loading -> StatusText("Searching…", Modifier.padding(start = 48.dp))
                 is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
-                is Load.Ok -> PosterGrid(r.value) { nav.push(Screen.Detail(it.type, it.id)) }
+                is Load.Ok -> PosterGrid(r.value, gridState) { nav.push(Screen.Detail(it.type, it.id)) }
             }
         }
     }
@@ -112,12 +125,15 @@ fun SearchScreen(nav: Nav) {
 fun LibraryScreen(nav: Nav) {
     val openTitle: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
     val history = remember { Library.history() }
+    val watchlist = remember { Library.watchlist() }
+    val favorites = remember { Library.favorites() }
+    val noiseShows = remember { Library.noiseShows() }
     TabPage(nav, NavTab.Library) {
         LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
             item { Row(Modifier.padding(horizontal = 48.dp)) { ActionButton("☁  Real-Debrid Cloud", { nav.push(Screen.RdCloud) }, primary = true) } }
-            item { TitleRow("Watchlist", Library.watchlist(), openTitle) }
-            item { TitleRow("Favorites", Library.favorites(), openTitle) }
-            item { TitleRow("Background Noise Shows", Library.noiseShows(), openTitle) }
+            item { TitleRow("Watchlist", watchlist, openTitle) }
+            item { TitleRow("Favorites", favorites, openTitle) }
+            item { TitleRow("Background Noise Shows", noiseShows, openTitle) }
             if (history.isNotEmpty()) item {
                 Column(Modifier.padding(top = 18.dp)) {
                     RailHeader("Watch History", Modifier.padding(start = 48.dp))
@@ -134,7 +150,7 @@ fun LibraryScreen(nav: Nav) {
                     }
                 }
             }
-            if (history.isEmpty() && Library.watchlist().isEmpty() && Library.favorites().isEmpty()) item {
+            if (history.isEmpty() && watchlist.isEmpty() && favorites.isEmpty()) item {
                 StatusText("Nothing here yet. Use Favorite and Watchlist on any title page.", Modifier.padding(start = 48.dp))
             }
         }
@@ -160,12 +176,32 @@ fun ServicesScreen(nav: Nav) {
 
 @Composable
 fun ServiceGridScreen(nav: Nav, service: Service) {
-    var type by remember { mutableStateOf("movie") }
-    var pages by remember(type) { mutableStateOf(2) }
+    var type by rememberSaveable { mutableStateOf("movie") }
+    var pages by rememberSaveable(type) { mutableIntStateOf(2) }
+    var retry by remember { mutableIntStateOf(0) }
     val newest by rememberLoad(service.id, type) { Tmdb.byService(type, service.id, 1, newest = true) }
-    val all by rememberLoad(service.id, type, pages) {
-        (1..pages).flatMap { Tmdb.byService(type, service.id, it) }.distinctBy { it.id }
+    // "Load more" only fetches the new pages and appends them; pages already shown stay put.
+    val all = remember(type) { mutableStateListOf<Title>() }
+    var loaded by remember(type) { mutableIntStateOf(0) }
+    var allErr by remember(type) { mutableStateOf<String?>(null) }
+    LaunchedEffect(service.id, type, pages, retry) {
+        allErr = null
+        while (loaded < pages) {
+            val next = loaded + 1
+            val got = try {
+                Tmdb.byService(type, service.id, next)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                allErr = e.message ?: e.toString()
+                return@LaunchedEffect
+            }
+            val seen = all.map { it.id }.toHashSet()
+            all.addAll(got.distinctBy { it.id }.filter { it.id !in seen })
+            loaded = next
+        }
     }
+    val listState = rememberLazyListState()
     // Movies go straight to the source list; shows open their page to pick an episode.
     val pick: (Title) -> Unit = { t -> nav.push(Screen.Detail(t.type, t.id, openSources = t.type == "movie")) }
     TabPage(nav, NavTab.Services) {
@@ -178,26 +214,35 @@ fun ServiceGridScreen(nav: Nav, service: Service) {
             "Current US catalog, refreshed daily from TMDB / JustWatch. Selecting a movie opens its sources.",
             color = McdColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 4.dp),
         )
-        LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
+        LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 48.dp)) {
             item {
                 val n = newest
                 if (n is Load.Ok) TitleRow("New on ${service.name}", n.value, pick)
             }
             item { RailHeader("Everything on ${service.name}", Modifier.padding(start = 48.dp, top = 18.dp)) }
-            when (val r = all) {
-                is Load.Loading -> item { StatusText("Loading…", Modifier.padding(start = 48.dp)) }
-                is Load.Err -> item { StatusText(r.message, Modifier.padding(start = 48.dp)) }
-                is Load.Ok -> {
-                    // Rows of 6 posters, so the whole catalog scrolls in one list.
-                    items(r.value.chunked(6)) { rowItems ->
-                        Row(Modifier.padding(horizontal = 48.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            rowItems.forEach { t -> PosterCard(t, onClick = { pick(t) }) }
-                        }
+            val err = allErr
+            if (all.isEmpty()) {
+                item {
+                    Column(Modifier.padding(horizontal = 48.dp)) {
+                        StatusText(err ?: "Loading…")
+                        if (err != null) ActionButton("Retry", { retry++ }, primary = true)
                     }
-                    item {
-                        Row(Modifier.padding(horizontal = 48.dp, vertical = 12.dp)) {
-                            ActionButton("Load more (${r.value.size} shown)", { pages += 2 }, primary = true)
-                        }
+                }
+            } else {
+                // Rows of 5 posters (5 x 140dp + gaps fits the 864dp content width), so the whole catalog scrolls in one list.
+                items(all.chunked(5)) { rowItems ->
+                    Row(Modifier.padding(horizontal = 48.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        rowItems.forEach { t -> PosterCard(t, onClick = { pick(t) }) }
+                    }
+                }
+                item(key = "loadMore") {
+                    Row(Modifier.padding(horizontal = 48.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ActionButton(
+                            if (err != null) "Retry (${all.size} shown)" else "Load more (${all.size} shown)",
+                            { if (err != null) retry++ else pages += 2 },
+                            primary = true,
+                        )
+                        if (err != null) StatusText(err) else if (loaded < pages) StatusText("Loading…")
                     }
                 }
             }
@@ -218,16 +263,32 @@ fun NoiseScreen(nav: Nav) {
                     "Add shows with \"+ Background Noise\" on any show page.",
                 color = McdColors.Muted, fontSize = 15.sp,
             )
-            Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("▶  Play Background Noise", { if (shows.isNotEmpty()) nav.push(Screen.NoiseRun) }, primary = true)
+            Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (shows.isNotEmpty()) ActionButton("▶  Play Background Noise", { nav.push(Screen.NoiseRun) }, primary = true)
                 Text("Your shows: ${shows.size} of 50", color = McdColors.Muted)
             }
+            if (shows.isEmpty()) StatusText("No shows yet. Open any show and press \"+ Background Noise\" to add it here.")
         }
-        LazyRow(contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            items(shows, key = { it.id }) { t ->
+        // After Remove, focus moves to the neighbouring show's Remove button instead of getting lost.
+        var focusAfterRemove by remember { mutableStateOf<Int?>(null) }
+        LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            itemsIndexed(shows, key = { _, t -> t.id }) { i, t ->
+                val removeFocus = remember { FocusRequester() }
+                LaunchedEffect(focusAfterRemove) {
+                    if (focusAfterRemove == t.id) {
+                        withFrameNanos { }
+                        runCatching { removeFocus.requestFocus() }
+                        focusAfterRemove = null
+                    }
+                }
                 Column {
                     PosterCard(t, onClick = { nav.push(Screen.Detail("tv", t.id)) })
-                    ActionButton("Remove", { Library.toggleNoise(t); shows = Library.noiseShows() })
+                    ActionButton("Remove", {
+                        Library.toggleNoise(t)
+                        val left = Library.noiseShows()
+                        shows = left
+                        focusAfterRemove = (left.getOrNull(i) ?: left.lastOrNull())?.id
+                    }, Modifier.focusRequester(removeFocus))
                 }
             }
         }
@@ -240,6 +301,7 @@ fun NoiseRunScreen(nav: Nav) {
     var round by remember { mutableIntStateOf(0) }
     var url by remember { mutableStateOf<String?>(null) }
     var meta by remember { mutableStateOf<PlayMeta?>(null) }
+    var headers by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var status by remember { mutableStateOf("Shuffling…") }
 
     LaunchedEffect(round) {
@@ -256,9 +318,10 @@ fun NoiseRunScreen(nav: Nav) {
                 val e = (1..s.episodeCount).random()
                 val m = PlayMeta("tv", show.id, show.name, show.poster, show.backdrop, s.number, e)
                 val list = Addons.streams("tv", "$imdb:${s.number}:$e")
-                m to Resolver.best(list).second
+                val (src, u) = Resolver.best(list)
+                Triple(m, u, src.headers)
             }.getOrNull()
-            if (pick != null) { meta = pick.first; url = pick.second; return@LaunchedEffect }
+            if (pick != null) { meta = pick.first; headers = pick.third; url = pick.second; return@LaunchedEffect }
             status = "That one didn't work, trying another… (${attempt + 1})"
             delay(500)
         }
@@ -268,7 +331,7 @@ fun NoiseRunScreen(nav: Nav) {
     val u = url
     val m = meta
     if (u != null && m != null) {
-        key(u) { PlayerScreen(url = u, title = "Background Noise  •  ${m.label}", meta = m, onEnded = { round++ }) }
+        key(u) { PlayerScreen(url = u, title = "Background Noise  •  ${m.label}", meta = m, onEnded = { round++ }, headers = headers) }
     } else {
         Box(Modifier.fillMaxSize().background(McdColors.Navy).padding(48.dp)) {
             Column {
@@ -283,11 +346,14 @@ fun NoiseRunScreen(nav: Nav) {
 
 @Composable
 fun GenresScreen(nav: Nav) {
-    var type by remember { mutableStateOf("movie") }
+    var type by rememberSaveable { mutableStateOf("movie") }
     val genres = if (type == "movie") com.mcd.tv.data.MOVIE_GENRES else com.mcd.tv.data.TV_GENRES
-    var genre by remember(type) { mutableStateOf(genres.first()) }
-    var topRated by remember { mutableStateOf(false) }
-    var year by remember { mutableStateOf<Int?>(null) }
+    // Saved by id (Genre itself is not saveable) so Back from a title restores the selection.
+    var genreId by rememberSaveable(type) { mutableIntStateOf(genres.first().id) }
+    val genre = genres.firstOrNull { it.id == genreId } ?: genres.first()
+    var topRated by rememberSaveable { mutableStateOf(false) }
+    var year by rememberSaveable { mutableStateOf<Int?>(null) }
+    val gridState = rememberLazyGridState()
     val years = remember { listOf<Int?>(null) + (java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) downTo 1960).toList() }
     val res by rememberLoad(type, genre.id, topRated, year) {
         (1..3).flatMap { Tmdb.byGenre(type, genre.id, topRated, it, year) }.distinctBy { it.id }
@@ -303,7 +369,7 @@ fun GenresScreen(nav: Nav) {
             )
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(genres, key = { it.id }) { g -> ActionButton(g.name, { genre = g }, primary = g == genre) }
+            items(genres, key = { it.id }) { g -> ActionButton(g.name, { genreId = g.id }, primary = g.id == genre.id) }
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(years) { y -> ActionButton(y?.toString() ?: "All years", { year = y }, primary = y == year) }
@@ -311,7 +377,7 @@ fun GenresScreen(nav: Nav) {
         when (val r = res) {
             is Load.Loading -> StatusText("Loading ${genre.name}${year?.let { " from $it" } ?: ""}…", Modifier.padding(start = 48.dp))
             is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
-            is Load.Ok -> PosterGrid(r.value) { nav.push(Screen.Detail(it.type, it.id)) }
+            is Load.Ok -> PosterGrid(r.value, gridState) { nav.push(Screen.Detail(it.type, it.id)) }
         }
     }
 }

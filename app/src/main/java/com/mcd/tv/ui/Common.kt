@@ -5,6 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
@@ -65,6 +69,7 @@ sealed interface Load<out T> {
 @Composable
 fun <T> rememberLoad(vararg keys: Any?, block: suspend () -> T): State<Load<T>> =
     produceState<Load<T>>(Load.Loading, *keys) {
+        value = Load.Loading // a key change (e.g. Retry) shows Loading again instead of the old result
         value = try {
             Load.Ok(block())
         } catch (e: CancellationException) {
@@ -251,11 +256,11 @@ fun CastBubble(name: String, role: String, photo: String?, onClick: (() -> Unit)
 enum class NavTab(val label: String) { Home("Home"), Search("Search"), Library("My List"), Genres("Genres"), Sports("Sports"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Settings("Settings") }
 
 @Composable
-private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
+        modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .clip(RoundedCornerShape(8.dp))
             .background(if (focused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
@@ -274,10 +279,10 @@ private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ProfileCircle(selected: Boolean, onClick: () -> Unit) {
+private fun ProfileCircle(selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .size(40.dp)
             .clip(CircleShape)
@@ -299,7 +304,12 @@ private fun ProfileCircle(selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier) {
+fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier, autoFocus: Boolean = false) {
+    val currentFocus = remember { FocusRequester() }
+    if (autoFocus) {
+        // Give the remote somewhere to start: focus the current tab once the page is laid out.
+        LaunchedEffect(Unit) { withFrameNanos { }; runCatching { currentFocus.requestFocus() } }
+    }
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -307,8 +317,10 @@ fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Mod
     ) {
         McdLogo(scale = 0.75f)
         Spacer(Modifier.width(20.dp))
-        NavTab.entries.filter { it != NavTab.Settings }.forEach { tab -> NavItem(tab.label, tab == current) { onSelect(tab) } }
+        NavTab.entries.filter { it != NavTab.Settings }.forEach { tab ->
+            NavItem(tab.label, tab == current, { onSelect(tab) }, if (tab == current) Modifier.focusRequester(currentFocus) else Modifier)
+        }
         Spacer(Modifier.weight(1f))
-        ProfileCircle(current == NavTab.Settings) { onSelect(NavTab.Settings) }
+        ProfileCircle(current == NavTab.Settings, { onSelect(NavTab.Settings) }, if (current == NavTab.Settings) Modifier.focusRequester(currentFocus) else Modifier)
     }
 }

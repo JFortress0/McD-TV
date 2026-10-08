@@ -102,7 +102,8 @@ private fun CatalogList(nav: Nav, cat: LiveCatalog) {
     LaunchedEffect(cat, page) {
         runCatching { Addons.catalog(cat, skip = list.size) }
             .onSuccess { got ->
-                val fresh = got.filter { g -> list.none { it.id == g.id } }
+                // Addons can repeat an item within one page or send blank ids; both would crash the keyed list.
+                val fresh = got.distinctBy { it.id }.filter { g -> g.id.isNotBlank() && list.none { it.id == g.id } }
                 list.addAll(fresh)
                 more = fresh.isNotEmpty()
                 status = if (list.isEmpty()) "Nothing listed right now." else ""
@@ -112,7 +113,7 @@ private fun CatalogList(nav: Nav, cat: LiveCatalog) {
     if (status.isNotBlank()) StatusText(status, Modifier.padding(start = 48.dp))
     LazyColumn(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(list, key = { it.id }) { item -> LiveItemRow(item) { nav.push(Screen.LiveChannel(item)) } }
-        if (list.isNotEmpty() && more) item { ActionButton("Load more", { page++ }) }
+        if (list.isNotEmpty() && more) item(key = "loadMore") { ActionButton("Load more", { page++ }) }
     }
 }
 

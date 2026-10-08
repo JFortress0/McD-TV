@@ -114,7 +114,13 @@ fun SettingsScreen(nav: Nav) {
 /** Setup from a phone or computer: QR code for the internet Control page, plus the home-network page. */
 @Composable
 fun PhoneSetupScreen(nav: Nav) {
-    LocalWeb.start() // in case it stopped; does nothing if already running
+    // The home-network setup page only runs while this screen is open.
+    var webRunning by remember { mutableStateOf(LocalWeb.running) }
+    DisposableEffect(Unit) {
+        com.mcd.tv.data.LocalWeb.start()
+        webRunning = LocalWeb.running
+        onDispose { com.mcd.tv.data.LocalWeb.stop() }
+    }
     com.mcd.tv.data.Relay.start()
     val addrs = remember { LocalWeb.addresses() }
     var link by remember { mutableStateOf(com.mcd.tv.data.Relay.controlUrl()) }
@@ -128,7 +134,7 @@ fun PhoneSetupScreen(nav: Nav) {
         Modifier.fillMaxSize().background(ScreenBackground).padding(48.dp),
         horizontalArrangement = Arrangement.spacedBy(48.dp),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             McdLogo()
             Text("MCD TV CONTROL", style = broadcastStyle(36.sp))
             Text("1.  Point your phone's camera at the code and tap the link.", fontSize = 20.sp, color = McdColors.White)
@@ -145,7 +151,7 @@ fun PhoneSetupScreen(nav: Nav) {
                 })
             }
             Text(
-                "Home Wi-Fi page: ${addrs.first()}   •   ${if (LocalWeb.running) "running" else "stopped"}   •   browser requests: ${LocalWeb.requests}",
+                "Home Wi-Fi page: ${addrs.first()}   •   ${if (webRunning) "running" else "stopped"}   •   browser requests: ${LocalWeb.requests}",
                 fontSize = 13.sp, color = McdColors.Muted,
             )
             Text(LocalWeb.error?.let { "Home page error: $it" } ?: LocalWeb.lastMessage, fontSize = 13.sp, color = McdColors.Muted)

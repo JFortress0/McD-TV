@@ -50,11 +50,15 @@ import com.mcd.tv.data.Tmdb
 /** Title page: backdrop, poster, actions, seasons/episodes (TV), cast, similar. */
 @Composable
 fun DetailScreen(nav: Nav, type: String, id: Int, openSources: Boolean = false) {
-    val load by rememberLoad(type, id) { Tmdb.details(type, id) }
+    var retry by remember { mutableIntStateOf(0) }
+    val load by rememberLoad(type, id, retry) { Tmdb.details(type, id) }
     Box(Modifier.fillMaxSize().background(McdColors.Navy)) {
         when (val l = load) {
             is Load.Loading -> StatusText("Loading…", Modifier.padding(48.dp))
-            is Load.Err -> StatusText(l.message, Modifier.padding(48.dp))
+            is Load.Err -> Column(Modifier.padding(48.dp)) {
+                StatusText(l.message)
+                ActionButton("Retry", { retry++ }, primary = true)
+            }
             is Load.Ok -> {
                 val d = l.value
                 // From a service catalog: replace this page with the source list right away.
@@ -138,9 +142,10 @@ private fun DetailBody(nav: Nav, d: Details) {
                         }
                         if (d.providers.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("ALSO ON", style = broadcastStyle(13.sp, McdColors.Muted))
-                                d.providers.take(4).forEach { svc ->
+                            // LazyRow: long provider names scroll instead of running off the screen.
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                item { Text("ALSO ON", style = broadcastStyle(13.sp, McdColors.Muted)) }
+                                items(d.providers.take(4)) { svc ->
                                     ActionButton("Open ${svc.name}", { if (!openApp(context, svc.packages)) note = "${svc.name} app is not installed on this TV" })
                                 }
                             }

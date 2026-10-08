@@ -44,7 +44,8 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit, pass
             textStyle = TextStyle(color = McdColors.White, fontSize = 18.sp),
             cursorBrush = SolidColor(McdColors.Red),
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Text),
+            // No keyboard just for moving focus onto the field; OK opens it.
+            keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Text, showKeyboardOnFocus = false),
             modifier = Modifier.width(420.dp).background(McdColors.Card, RoundedCornerShape(8.dp))
                 .border(1.dp, McdColors.Muted, RoundedCornerShape(8.dp)).padding(12.dp),
         )

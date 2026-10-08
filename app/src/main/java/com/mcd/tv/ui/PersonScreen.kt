@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,15 +37,19 @@ import com.mcd.tv.data.Tmdb
 /** An actor's (or director's) page: photo, short bio, and every movie and show they've done. */
 @Composable
 fun PersonScreen(nav: Nav, id: Int) {
-    val load by rememberLoad(id) { Tmdb.person(id) }
+    var retry by remember { mutableIntStateOf(0) }
+    val load by rememberLoad(id, retry) { Tmdb.person(id) }
     var kind by remember { mutableStateOf("all") } // all | movie | tv
     var popular by remember { mutableStateOf(false) }
-    val open: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
+    val openTitle: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
 
     Column(Modifier.fillMaxSize().background(ScreenBackground)) {
         when (val l = load) {
             is Load.Loading -> StatusText("Loading…", Modifier.padding(48.dp))
-            is Load.Err -> StatusText(l.message, Modifier.padding(48.dp))
+            is Load.Err -> Column(Modifier.padding(48.dp)) {
+                StatusText(l.message)
+                ActionButton("Retry", { retry++ }, primary = true)
+            }
             is Load.Ok -> {
                 val p = l.value
                 fun List<Title>.shown() = filter { kind == "all" || it.type == kind }
@@ -83,19 +88,19 @@ fun PersonScreen(nav: Nav, id: Int) {
                     }
                     if (acting.isNotEmpty()) {
                         item { RailHeader("Acting (${acting.size})", Modifier.padding(start = 48.dp, top = 24.dp)) }
-                        items(acting.chunked(6)) { row ->
+                        items(acting.chunked(5)) { row ->
                             Row(Modifier.padding(horizontal = 48.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                row.forEach { t -> PosterCard(t, onClick = { open(t) }) }
+                                row.forEach { t -> PosterCard(t, onClick = { openTitle(t) }) }
                             }
                         }
                     }
                     if (crew.isNotEmpty()) {
                         item { RailHeader("Behind the camera (${crew.size})", Modifier.padding(start = 48.dp, top = 24.dp)) }
-                        items(crew.chunked(6)) { row ->
+                        items(crew.chunked(5)) { row ->
                             Row(Modifier.padding(horizontal = 48.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 row.forEach { (t, job) ->
                                     Column {
-                                        PosterCard(t, onClick = { open(t) })
+                                        PosterCard(t, onClick = { openTitle(t) })
                                         Text(job, color = McdColors.Muted, fontSize = 11.sp, maxLines = 1, modifier = Modifier.width(140.dp))
                                     }
                                 }

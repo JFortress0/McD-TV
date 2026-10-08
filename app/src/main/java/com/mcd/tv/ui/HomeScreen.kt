@@ -62,7 +62,8 @@ fun HomeScreen(nav: Nav) {
     val hidden = remember { Library.hidden().map { "${it.type}-${it.id}" }.toSet() }
     fun List<Title>.visible() = filterNot { "${it.type}-${it.id}" in hidden }
 
-    val data by rememberLoad {
+    var retry by remember { mutableIntStateOf(0) }
+    val data by rememberLoad(retry) {
         coroutineScope {
             val tr = async { Tmdb.trending() }
             val pm = async { Tmdb.popular("movie") }
@@ -116,7 +117,10 @@ fun HomeScreen(nav: Nav) {
             is Load.Err -> item {
                 Column(Modifier.padding(horizontal = 48.dp)) {
                     StatusText(d.message)
-                    if (Prefs.tmdbKey.isBlank()) ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ActionButton("Retry", { retry++ }, primary = Prefs.tmdbKey.isNotBlank())
+                        if (Prefs.tmdbKey.isBlank()) ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
+                    }
                 }
             }
             is Load.Ok -> {
