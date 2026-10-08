@@ -162,14 +162,24 @@ object Tmdb {
     private fun originParams(): Map<String, String> =
         if (Prefs.origin == OriginFilter.US) mapOf("with_origin_country" to "US") else emptyMap()
 
-    suspend fun byGenre(type: String, genreId: Int, topRated: Boolean, page: Int = 1): List<Title> = discover(
+    /** Genre browsing, optionally limited to one year (null = all years). */
+    suspend fun byGenre(type: String, genreId: Int, topRated: Boolean, page: Int = 1, year: Int? = null): List<Title> = discover(
         type,
         buildMap {
             put("with_genres", genreId.toString())
-            if (topRated) { put("sort_by", "vote_average.desc"); put("vote_count.gte", if (type == "movie") "1000" else "300") }
+            if (year != null) put(if (type == "movie") "primary_release_year" else "first_air_date_year", year.toString())
+            if (topRated) {
+                put("sort_by", "vote_average.desc")
+                // A single year has fewer votes per title, so the bar is lower.
+                put("vote_count.gte", if (year != null) (if (type == "movie") "200" else "60") else (if (type == "movie") "1000" else "300"))
+            }
         },
         page,
     )
+
+    /** "More like this" from TMDB, used for Suggested for You on Home. */
+    suspend fun recommendations(type: String, id: Int): List<Title> =
+        parseList(get("/$type/$id/recommendations").optJSONArray("results"), type)
 
     private fun region(): Map<String, String> = if (Prefs.usOnly) mapOf("region" to "US") else emptyMap()
 
@@ -209,11 +219,20 @@ object Tmdb {
         return list("/discover/$type", type, p)
     }
 
-    suspend fun byService(type: String, providerId: Int, page: Int = 1) = discover(
-        type,
-        mapOf("with_watch_providers" to providerId.toString(), "watch_region" to "US"),
-        page,
-    )
+    /**
+     * A streaming service's current US catalog (TMDB, from JustWatch data, kept current daily).
+     * newest = true: most recent releases first (only titles already out, with a few votes).
+     */
+    suspend fun byService(type: String, providerId: Int, page: Int = 1, newest: Boolean = false): List<Title> {
+        val p = mutableMapOf("with_watch_providers" to providerId.toString(), "watch_region" to "US", "with_watch_monetization_types" to "flatrate")
+        if (newest) {
+            val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            if (type == "movie") { p["sort_by"] = "primary_release_date.desc"; p["primary_release_date.lte"] = today }
+            else { p["sort_by"] = "first_air_date.desc"; p["first_air_date.lte"] = today }
+            p["vote_count.gte"] = "5"
+        }
+        return discover(type, p, page)
+    }
 
     suspend fun byYear(type: String, year: Int) = discover(
         type,

@@ -48,13 +48,23 @@ import com.mcd.tv.data.Tmdb
 
 /** Title page: backdrop, poster, actions, seasons/episodes (TV), cast, similar. */
 @Composable
-fun DetailScreen(nav: Nav, type: String, id: Int) {
+fun DetailScreen(nav: Nav, type: String, id: Int, openSources: Boolean = false) {
     val load by rememberLoad(type, id) { Tmdb.details(type, id) }
     Box(Modifier.fillMaxSize().background(McdColors.Navy)) {
         when (val l = load) {
             is Load.Loading -> StatusText("Loading…", Modifier.padding(48.dp))
             is Load.Err -> StatusText(l.message, Modifier.padding(48.dp))
-            is Load.Ok -> DetailBody(nav, l.value)
+            is Load.Ok -> {
+                val d = l.value
+                // From a service catalog: replace this page with the source list right away.
+                LaunchedEffect(d.title.id) {
+                    val imdb = d.imdbId
+                    if (openSources && imdb != null) {
+                        nav.replace(Screen.Sources(PlayMeta(d.title.type, d.title.id, d.title.name, d.title.poster, d.title.backdrop), imdb, autoPlay = false))
+                    }
+                }
+                DetailBody(nav, d)
+            }
         }
     }
 }
@@ -100,13 +110,13 @@ private fun DetailBody(nav: Nav, d: Details) {
                         if (d.tagline.isNotBlank()) Text(d.tagline, color = McdColors.Muted, fontSize = 15.sp)
                         Text(
                             listOfNotNull(
-                                if (t.rating > 0) "★ %.1f".format(t.rating) else null,
                                 t.year.ifBlank { null },
                                 if (d.runtimeMin > 0) "${d.runtimeMin / 60}h ${d.runtimeMin % 60}m" else null,
                                 d.genres.take(3).joinToString(" / ").ifBlank { null },
                             ).joinToString("   •   "),
                             color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp),
                         )
+                        RatingsRow(t.rating, d.imdbId)
                         Text(t.overview, color = Color.White, fontSize = 15.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(14.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -195,4 +205,30 @@ fun openApp(context: android.content.Context, packages: List<String>): Boolean {
         return runCatching { context.startActivity(intent); true }.getOrDefault(false)
     }
     return false
+}
+
+/** TMDB rating plus IMDb and Rotten Tomatoes critics and audience scores (when MDBList is set up). */
+@Composable
+private fun RatingsRow(tmdb: Double, imdbId: String?) {
+    val r by rememberLoad(imdbId) { if (imdbId != null) com.mcd.tv.data.RatingsSource.forImdb(imdbId) else com.mcd.tv.data.Ratings() }
+    val ratings = (r as? Load.Ok<com.mcd.tv.data.Ratings>)?.value ?: com.mcd.tv.data.Ratings()
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+        if (tmdb > 0) ScoreChip("TMDB", "★ %.1f".format(tmdb), Color(0xFF0D253F))
+        ratings.imdb?.let { ScoreChip("IMDb", "%.1f".format(it), Color(0xFF8A6D00)) }
+        ratings.rtCritics?.let { ScoreChip("🍅 Critics", "$it%", if (it >= 60) Color(0xFFB3261E) else Color(0xFF3D6B1F)) }
+        ratings.rtAudience?.let { ScoreChip("🍿 Audience", "$it%", if (it >= 60) Color(0xFFB3261E) else Color(0xFF3D6B1F)) }
+        ratings.metacritic?.let { ScoreChip("Metacritic", "$it", Color(0xFF2E3A46)) }
+    }
+}
+
+@Composable
+private fun ScoreChip(label: String, value: String, color: Color) {
+    Row(
+        Modifier.background(color, RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+        Spacer(Modifier.width(6.dp))
+        Text(value, color = Color.White, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+    }
 }

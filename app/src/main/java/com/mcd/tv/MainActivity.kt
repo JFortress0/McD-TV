@@ -57,7 +57,8 @@ sealed interface Screen {
     data object RdConnect : Screen
     data object AccountPage : Screen
     data object RdCloud : Screen
-    data class Detail(val type: String, val id: Int) : Screen
+    /** openSources = go straight to the source list once the title loads (Services catalog). */
+    data class Detail(val type: String, val id: Int, val openSources: Boolean = false) : Screen
     /** autoPlay = the Play button: pick the best source and start immediately. */
     data class Sources(val meta: PlayMeta, val imdbId: String, val autoPlay: Boolean) : Screen
     data class Web(val url: String, val name: String) : Screen
@@ -95,7 +96,11 @@ class MainActivity : ComponentActivity() {
             }
         }
         // QA hook: "--es screen settings" opens a screen directly (used by the automated emulator test).
-        val startScreen: Screen? = when (intent?.getStringExtra("screen")) {
+        val screenExtra = intent?.getStringExtra("screen") ?: ""
+        val startScreen: Screen? = if (screenExtra.startsWith("detail:")) {
+            // "detail:movie:603"
+            screenExtra.split(":").let { p -> p.getOrNull(2)?.toIntOrNull()?.let { Screen.Detail(p[1], it) } }
+        } else when (screenExtra) {
             "settings" -> Screen.Settings
             "phone" -> Screen.PhoneSetup
             "genres" -> Screen.Genres
@@ -178,7 +183,7 @@ private fun App(startScreen: Screen? = null) {
         Screen.RdConnect -> RdConnectScreen(nav)
         Screen.AccountPage -> AccountScreen(nav)
         Screen.RdCloud -> RdCloudScreen(nav)
-        is Screen.Detail -> DetailScreen(nav, s.type, s.id)
+        is Screen.Detail -> DetailScreen(nav, s.type, s.id, s.openSources)
         is Screen.Sources -> SourcesScreen(nav, s.meta, s.imdbId, s.autoPlay)
         is Screen.Web -> WebScreen(s.url) { url, headers, title -> nav.push(Screen.Player(url, title, headers = headers)) }
         is Screen.Player -> {

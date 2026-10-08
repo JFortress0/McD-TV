@@ -174,6 +174,7 @@ object Relay {
         if (d.has("m3u_url")) Prefs.m3uUrl = d.optString("m3u_url")
         if (d.has("custom_stream_url")) Prefs.customUrl = d.optString("custom_stream_url")
         d.optString("tmdb_key").takeIf { it.isNotBlank() }?.let { Prefs.tmdbKey = it }
+        d.optString("mdblist_key").takeIf { it.isNotBlank() }?.let { Prefs.mdblistKey = it }
         d.optString("origin_filter").takeIf { it.isNotBlank() }?.let { k ->
             OriginFilter.entries.firstOrNull { it.key == k }?.let { Prefs.origin = it }
         }
@@ -196,6 +197,7 @@ object Relay {
             .put("m3u_url", Prefs.m3uUrl)
             .put("custom_stream_url", Prefs.customUrl)
             .put("tmdb_set", Prefs.tmdbKey.isNotBlank())
+            .put("mdblist_set", Prefs.mdblistKey.isNotBlank())
             .put("origin_filter", Prefs.origin.key)
             .put("us_only", Prefs.usOnly)
             .put("slow_connection", Prefs.slowConnection)

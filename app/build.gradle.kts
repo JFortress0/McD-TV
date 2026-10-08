@@ -25,6 +25,7 @@ android {
         // Optional: CI bakes in the TMDB key from the TMDB_API_KEY GitHub secret,
         // so nobody has to enter it on the TV. A key saved in Phone setup still wins.
         buildConfigField("String", "TMDB_KEY", "\"${System.getenv("TMDB_API_KEY") ?: ""}\"")
+        buildConfigField("String", "MDBLIST_KEY", "\"${System.getenv("MDBLIST_API_KEY") ?: ""}\"")
     }
 
     signingConfigs {

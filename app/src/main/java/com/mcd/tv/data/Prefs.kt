@@ -47,6 +47,11 @@ object Prefs {
         get() = str("tmdb_key").ifBlank { com.mcd.tv.BuildConfig.TMDB_KEY }
         set(v) = put("tmdb_key", v)
 
+    /** MDBList key for IMDb / Rotten Tomatoes scores. A key saved in the app wins over the built-in one. */
+    var mdblistKey: String
+        get() = str("mdblist_key").ifBlank { com.mcd.tv.BuildConfig.MDBLIST_KEY }
+        set(v) = put("mdblist_key", v)
+
     // ---- Live TV ----
     var m3uUrl: String
         get() = str("m3u_url")

@@ -161,19 +161,46 @@ fun ServicesScreen(nav: Nav) {
 @Composable
 fun ServiceGridScreen(nav: Nav, service: Service) {
     var type by remember { mutableStateOf("movie") }
-    val res by rememberLoad(service.id, type) {
-        (1..3).flatMap { Tmdb.byService(type, service.id, it) }.distinctBy { it.id }
+    var pages by remember(type) { mutableStateOf(2) }
+    val newest by rememberLoad(service.id, type) { Tmdb.byService(type, service.id, 1, newest = true) }
+    val all by rememberLoad(service.id, type, pages) {
+        (1..pages).flatMap { Tmdb.byService(type, service.id, it) }.distinctBy { it.id }
     }
+    // Movies go straight to the source list; shows open their page to pick an episode.
+    val pick: (Title) -> Unit = { t -> nav.push(Screen.Detail(t.type, t.id, openSources = t.type == "movie")) }
     TabPage(nav, NavTab.Services) {
         Row(Modifier.padding(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(service.name.uppercase(), style = broadcastStyle(30.sp))
             ActionButton("Movies", { type = "movie" }, primary = type == "movie")
             ActionButton("Shows", { type = "tv" }, primary = type == "tv")
         }
-        when (val r = res) {
-            is Load.Loading -> StatusText("Loading…", Modifier.padding(start = 48.dp))
-            is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
-            is Load.Ok -> PosterGrid(r.value) { nav.push(Screen.Detail(it.type, it.id)) }
+        Text(
+            "Current US catalog, refreshed daily from TMDB / JustWatch. Selecting a movie opens its sources.",
+            color = McdColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 4.dp),
+        )
+        LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
+            item {
+                val n = newest
+                if (n is Load.Ok) TitleRow("New on ${service.name}", n.value, pick)
+            }
+            item { RailHeader("Everything on ${service.name}", Modifier.padding(start = 48.dp, top = 18.dp)) }
+            when (val r = all) {
+                is Load.Loading -> item { StatusText("Loading…", Modifier.padding(start = 48.dp)) }
+                is Load.Err -> item { StatusText(r.message, Modifier.padding(start = 48.dp)) }
+                is Load.Ok -> {
+                    // Rows of 6 posters, so the whole catalog scrolls in one list.
+                    items(r.value.chunked(6)) { rowItems ->
+                        Row(Modifier.padding(horizontal = 48.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            rowItems.forEach { t -> PosterCard(t, onClick = { pick(t) }) }
+                        }
+                    }
+                    item {
+                        Row(Modifier.padding(horizontal = 48.dp, vertical = 12.dp)) {
+                            ActionButton("Load more (${r.value.size} shown)", { pages += 2 }, primary = true)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -260,8 +287,10 @@ fun GenresScreen(nav: Nav) {
     val genres = if (type == "movie") com.mcd.tv.data.MOVIE_GENRES else com.mcd.tv.data.TV_GENRES
     var genre by remember(type) { mutableStateOf(genres.first()) }
     var topRated by remember { mutableStateOf(false) }
-    val res by rememberLoad(type, genre.id, topRated) {
-        (1..3).flatMap { Tmdb.byGenre(type, genre.id, topRated, it) }.distinctBy { it.id }
+    var year by remember { mutableStateOf<Int?>(null) }
+    val years = remember { listOf<Int?>(null) + (java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) downTo 1960).toList() }
+    val res by rememberLoad(type, genre.id, topRated, year) {
+        (1..3).flatMap { Tmdb.byGenre(type, genre.id, topRated, it, year) }.distinctBy { it.id }
     }
     TabPage(nav, NavTab.Genres) {
         Row(Modifier.padding(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -276,8 +305,11 @@ fun GenresScreen(nav: Nav) {
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(genres, key = { it.id }) { g -> ActionButton(g.name, { genre = g }, primary = g == genre) }
         }
+        LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(years) { y -> ActionButton(y?.toString() ?: "All years", { year = y }, primary = y == year) }
+        }
         when (val r = res) {
-            is Load.Loading -> StatusText("Loading ${genre.name}…", Modifier.padding(start = 48.dp))
+            is Load.Loading -> StatusText("Loading ${genre.name}${year?.let { " from $it" } ?: ""}…", Modifier.padding(start = 48.dp))
             is Load.Err -> StatusText(r.message, Modifier.padding(start = 48.dp))
             is Load.Ok -> PosterGrid(r.value) { nav.push(Screen.Detail(it.type, it.id)) }
         }

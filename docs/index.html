@@ -90,9 +90,11 @@ li:last-child{border-bottom:0}
     <label>My Stream (direct link: HLS, DASH, MP4, MKV)</label><input id="stream" placeholder="https://…/video.m3u8">
   </div>
 
-  <h2>TMDB (posters and info)</h2>
+  <h2>Keys</h2>
   <div class="card"><span id="tmdbState"></span>
-    <label>Replace the TMDB key (leave blank to keep the current one)</label><input id="tmdb" type="password" placeholder="Paste to replace">
+    <label>TMDB key (posters and info). Leave blank to keep the current one.</label><input id="tmdb" type="password" placeholder="Paste to replace">
+    <div style="margin-top:12px"><span id="mdbState"></span></div>
+    <label>MDBList key (IMDb and Rotten Tomatoes critic and audience scores). Free at mdblist.com.</label><input id="mdb" type="password" placeholder="Paste to replace">
   </div>
 
   <h2>Preferences</h2>
@@ -200,7 +202,8 @@ function render() {
   sites = (state.websites || []).map((p) => [p[0], p[1]]);
   drawAddons(); drawSites();
   $("rd").innerHTML = state.rd_connected ? '<span class="pill ok">Connected</span>' : '<span class="pill no">Not connected</span>';
-  $("tmdbState").innerHTML = state.tmdb_set ? '<span class="pill ok">Key set</span>' : '<span class="pill no">No key</span>';
+  $("tmdbState").innerHTML = state.tmdb_set ? '<span class="pill ok">TMDB key set</span>' : '<span class="pill no">No TMDB key</span>';
+  $("mdbState").innerHTML = state.mdblist_set ? '<span class="pill ok">MDBList key set</span>' : '<span class="pill no">No MDBList key</span>';
   $("m3u").value = state.m3u_url || ""; $("stream").value = state.custom_stream_url || "";
   $("origin").value = state.origin_filter || "no_asia";
   $("usOnly").checked = !!state.us_only; $("slow").checked = !!state.slow_connection; $("intro").checked = state.play_intro !== false;
@@ -241,7 +244,7 @@ function removeSite(i) { sites.splice(i, 1); drawSites(); dirty(true); save(); }
 function dirty(on) { dirtyFlag = on; $("saveBtn").disabled = !on; if (on) { $("saveMsg").className = "msg"; $("saveMsg").textContent = "Unsaved changes"; } }
 $("siteUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") addSite(); });
 $("addonIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addAddon(); });
-["m3u", "stream", "tmdb"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
+["m3u", "stream", "tmdb", "mdb"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
 ["origin", "usOnly", "slow", "intro"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
 
 async function save() {
@@ -254,9 +257,10 @@ async function save() {
     origin_filter: $("origin").value, us_only: $("usOnly").checked, slow_connection: $("slow").checked, play_intro: $("intro").checked,
   };
   if ($("tmdb").value.trim()) data.tmdb_key = $("tmdb").value.trim();
+  if ($("mdb").value.trim()) data.mdblist_key = $("mdb").value.trim();
   try {
     await send({ cmd: "set", data });
-    $("tmdb").value = ""; dirtyFlag = false; $("saveBtn").disabled = true;
+    $("tmdb").value = ""; $("mdb").value = ""; dirtyFlag = false; $("saveBtn").disabled = true;
     $("saveMsg").className = "msg"; $("saveMsg").textContent = "Sent. Waiting for the TV to confirm…";
   } catch (e) { $("saveMsg").className = "err"; $("saveMsg").textContent = e.message; }
 }

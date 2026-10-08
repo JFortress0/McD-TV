@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,7 +73,20 @@ fun HomeScreen(nav: Nav) {
             HomeData(tr.await(), pm.await(), pt.await(), np.await(), tm.await(), tt.await())
         }
     }
-    val continueWatching = remember { Library.continueWatching() }
+    val history = remember { Library.history().sortedByDescending { it.updatedAt } }
+    val continueWatching = remember { Library.continueWatching().sortedByDescending { it.updatedAt } }
+    val recent = remember { history.filter { h -> continueWatching.none { it.meta.historyKey == h.meta.historyKey } }.take(20) }
+    val firstFocus = remember { FocusRequester() }
+    // Suggestions: titles like the last few things you watched or favorited.
+    val suggestions by rememberLoad {
+        val seeds = (history.map { it.meta.type to it.meta.tmdbId } + Library.favorites().map { it.type to it.id }).distinct().take(4)
+        val seen = history.map { "${it.meta.type}-${it.meta.tmdbId}" }.toSet()
+        coroutineScope { seeds.map { (t, id) -> async { runCatching { Tmdb.recommendations(t, id) }.getOrDefault(emptyList()) } }.map { it.await() } }
+            .flatMap { it.take(8) }.distinctBy { "${it.type}-${it.id}" }.filterNot { "${it.type}-${it.id}" in seen }.take(24)
+    }
+    LaunchedEffect(Unit) {
+        if (history.isNotEmpty()) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
+    }
     val watchlist = remember { Library.watchlist() }
     val favorites = remember { Library.favorites() }
     val scope = rememberCoroutineScope()
@@ -85,6 +99,18 @@ fun HomeScreen(nav: Nav) {
     ) {
         item { TopNav(NavTab.Home, nav.tab) }
 
+        // 1) Resume, 2) recently watched, 3) suggestions, then everything else.
+        if (continueWatching.isNotEmpty()) item {
+            HistoryRow("Continue Watching", continueWatching, nav, firstFocus)
+        }
+        if (recent.isNotEmpty()) item {
+            HistoryRow("Recently Watched", recent, nav, if (continueWatching.isEmpty()) firstFocus else null)
+        }
+        item {
+            val sg = suggestions
+            if (sg is Load.Ok && sg.value.isNotEmpty()) TitleRow("Suggested for You", sg.value.visible(), openTitle)
+        }
+
         when (val d = data) {
             is Load.Loading -> item { StatusText("Loading…", Modifier.padding(start = 48.dp)) }
             is Load.Err -> item {
@@ -95,27 +121,8 @@ fun HomeScreen(nav: Nav) {
             }
             is Load.Ok -> {
                 val heroes = d.value.trending.visible().filter { it.backdrop != null }.take(6)
-                if (heroes.isNotEmpty()) item { Hero(heroes, nav) }
+                if (heroes.isNotEmpty()) item { Hero(heroes, nav, takeFocus = history.isEmpty()) }
 
-                if (continueWatching.isNotEmpty()) item {
-                    Column(Modifier.padding(top = 18.dp)) {
-                        RailHeader("Continue Watching", Modifier.padding(start = 48.dp))
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            items(continueWatching, key = { it.meta.historyKey }) { h ->
-                                WideCard(
-                                    title = h.meta.name,
-                                    subtitle = if (h.meta.type == "tv") "S${h.meta.season} E${h.meta.episode}" else "${(h.progress * 100).toInt()}% watched",
-                                    image = Tmdb.img(h.meta.backdrop, "w780"),
-                                    progress = h.progress,
-                                    onClick = { nav.push(Screen.Detail(h.meta.type, h.meta.tmdbId)) },
-                                )
-                            }
-                        }
-                    }
-                }
                 item { TitleRow("My Watchlist", watchlist, openTitle) }
                 item { TitleRow("Favorites", favorites, openTitle) }
                 item { TitleRow("Trending This Week", d.value.trending.visible(), openTitle) }
@@ -153,13 +160,14 @@ fun HomeScreen(nav: Nav) {
 
 /** Big backdrop banner that rotates through trending titles, like HuberTV's hero. */
 @Composable
-private fun Hero(items: List<Title>, nav: Nav) {
+private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true) {
     var index by remember { mutableIntStateOf(0) }
     var paused by remember { mutableStateOf(false) }
     val t = items[index % items.size]
     val playFocus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
+        if (!takeFocus) return@LaunchedEffect
         withFrameNanos { }
         runCatching { playFocus.requestFocus() }
     }
@@ -217,6 +225,33 @@ private fun BrowseByYear(nav: Nav) {
             val sh = shows
             if (m is Load.Ok) TitleRow("Movies from $year", m.value) { t -> nav.push(Screen.Detail(t.type, t.id)) }
             if (sh is Load.Ok) TitleRow("Shows from $year", sh.value) { t -> nav.push(Screen.Detail(t.type, t.id)) }
+        }
+    }
+}
+
+/** A row of landscape cards from watch history (resume points or recently watched). */
+@Composable
+private fun HistoryRow(label: String, list: List<com.mcd.tv.data.HistoryEntry>, nav: Nav, focus: FocusRequester?) {
+    Column(Modifier.padding(top = 12.dp)) {
+        RailHeader(label, Modifier.padding(start = 48.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            itemsIndexed(list, key = { _, h -> h.meta.historyKey }) { i, h ->
+                WideCard(
+                    title = h.meta.name,
+                    subtitle = when {
+                        h.finished -> "Watched"
+                        h.meta.type == "tv" -> "S${h.meta.season} E${h.meta.episode}  •  ${(h.progress * 100).toInt()}%"
+                        else -> "${(h.progress * 100).toInt()}% watched"
+                    },
+                    image = Tmdb.img(h.meta.backdrop, "w780"),
+                    progress = if (h.finished) null else h.progress,
+                    onClick = { nav.push(Screen.Detail(h.meta.type, h.meta.tmdbId)) },
+                    modifier = if (i == 0 && focus != null) Modifier.focusRequester(focus) else Modifier,
+                )
+            }
         }
     }
 }
