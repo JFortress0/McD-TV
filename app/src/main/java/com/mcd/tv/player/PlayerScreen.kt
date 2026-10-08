@@ -70,10 +70,14 @@ fun PlayerScreen(
     meta: PlayMeta? = null,
     onEnded: (() -> Unit)? = null,
     headers: Map<String, String> = emptyMap(),
+    /** Sees every remote key before the player does (with whether the controls are showing); return true to consume it. */
+    onKeyEvent: ((android.view.KeyEvent, Boolean) -> Boolean)? = null,
+    /** false: the control bar appears only when a key asks for it (Live TV, so channel surfing isn't interrupted). */
+    autoShowControls: Boolean = true,
 ) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
-    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsVisible by remember { mutableStateOf(autoShowControls) }
     var audioNote by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val progress = remember { ProgressSaver(meta) }
@@ -185,6 +189,7 @@ fun PlayerScreen(
                     this.player = player
                     useController = true
                     controllerShowTimeoutMs = 4000
+                    controllerAutoShow = autoShowControls
                     setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                     setShowSubtitleButton(true) // CC button appears when the stream has subtitles
                     setShowFastForwardButton(true)
@@ -200,6 +205,7 @@ fun PlayerScreen(
                     post { requestFocus() } // remote key presses go to the player
                 }
             },
+            update = { view -> view.keyInterceptor = onKeyEvent },
         )
 
         // Title strip, shown with the controls (Media3's control bar has no title).
