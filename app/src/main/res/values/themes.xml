@@ -1,0 +1,8 @@
+<resources>
+    <!-- Black window background so there is no white flash before the intro draws. -->
+    <style name="Theme.McdTV" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorBackground">@android:color/black</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>
