@@ -7,10 +7,17 @@ name: Build APK
 on:
   push:
     branches: [main]
+    # Docs and web pages do not change the app, so they do not need a new build.
+    paths-ignore: ["docs/**", "**/*.md", "server/**"]
   workflow_dispatch: # adds a "Run workflow" button in the Actions tab
 
 permissions:
   contents: write # needed to create Releases
+
+# A newer push replaces a run still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
