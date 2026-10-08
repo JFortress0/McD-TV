@@ -186,7 +186,7 @@ fun CastBubble(name: String, role: String, photo: String?) {
 }
 
 /** Top navigation, like HuberTV's icon bar, as focusable text tabs. */
-enum class NavTab(val label: String) { Home("Home"), Search("Search"), Library("My List"), Sports("Sports"), Live("Live TV"), Services("Services"), Mindless("Mindless TV"), Calendar("Calendar"), Settings("Settings") }
+enum class NavTab(val label: String) { Home("Home"), Search("Search"), Library("My List"), Sports("Sports"), Live("Live TV"), Services("Services"), Noise("Background Noise"), Calendar("Calendar"), Settings("Settings") }
 
 @Composable
 fun TopNav(current: NavTab, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier) {

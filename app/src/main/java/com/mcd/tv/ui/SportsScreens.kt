@@ -78,6 +78,13 @@ fun SportsScreen(nav: Nav) {
             Text("McD TV ", style = broadcastStyle(30.sp))
             Text("SPORTS CENTER", style = broadcastStyle(30.sp, McdColors.Red))
         }
+        val sites = remember { Prefs.websites }
+        if (sites.isNotEmpty()) {
+            LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { Text("WEBSITES  ", style = broadcastStyle(16.sp, McdColors.Muted)) }
+                items(sites) { (name, url) -> ActionButton("🌐 $name", { nav.push(Screen.Web(url, name)) }) }
+            }
+        }
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(League.entries) { l -> ActionButton(l.label, { league = l; picked = null }, primary = l == league) }
         }

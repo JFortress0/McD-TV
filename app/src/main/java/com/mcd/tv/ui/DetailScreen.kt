@@ -63,7 +63,7 @@ private fun DetailBody(nav: Nav, d: Details) {
     val t = d.title
     var fav by remember { mutableStateOf(Library.isFavorite(t)) }
     var listed by remember { mutableStateOf(Library.inWatchlist(t)) }
-    var mindless by remember { mutableStateOf(Library.inMindless(t)) }
+    var noise by remember { mutableStateOf(Library.inNoise(t)) }
     var note by remember { mutableStateOf("") }
     val playFocus = remember { FocusRequester() }
 
@@ -120,7 +120,7 @@ private fun DetailBody(nav: Nav, d: Details) {
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             if (t.type == "movie") ActionButton("Mark as Watched", { Library.markWatched(meta()); note = "Marked as watched" })
-                            if (t.type == "tv") ActionButton(if (mindless) "✓ In Mindless TV" else "+ Mindless TV", { mindless = Library.toggleMindless(t) })
+                            if (t.type == "tv") ActionButton(if (noise) "✓ In Background Noise" else "+ Background Noise", { noise = Library.toggleNoise(t) })
                             ActionButton("Not for me", { Library.hide(t); note = "Hidden from home rows"; nav.back() })
                         }
                         if (note.isNotBlank()) Text(note, color = McdColors.Red, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))

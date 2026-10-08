@@ -90,6 +90,13 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
             done += runCatching { "Addon added: " + runBlocking { Addons.install(url).name } }
                 .getOrElse { "Addon failed: ${it.message}" }
         }
+        f["site"]?.takeIf { it.isNotBlank() }?.let { raw ->
+            val url = if (raw.startsWith("http")) raw else "https://$raw"
+            val name = f["siteName"]?.takeIf { it.isNotBlank() } ?: url.removePrefix("https://").removePrefix("http://").substringBefore("/")
+            Prefs.websites = Prefs.websites + (name to url)
+            done += "Website added: $name"
+        }
+        f["removeSite"]?.takeIf { it.isNotBlank() }?.let { u -> Prefs.websites = Prefs.websites.filterNot { it.second == u }; done += "Website removed" }
         f["remove"]?.takeIf { it.isNotBlank() }?.let { Addons.remove(it); done += "Addon removed" }
         return done.joinToString(" • ").ifBlank { "Nothing to save" }
     }
@@ -100,6 +107,10 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
         val addons = Prefs.addonUrls.joinToString("") { u ->
             "<li><code>${esc(u.take(60))}${if (u.length > 60) "…" else ""}</code>" +
                 "<form method=post style='display:inline'><input type=hidden name=remove value=\"${esc(u)}\"><button>Remove</button></form></li>"
+        }.ifBlank { "<li>None yet</li>" }
+        val sites = Prefs.websites.joinToString("") { (n, u) ->
+            "<li>${esc(n)} <code>${esc(u.take(50))}</code>" +
+                "<form method=post style='display:inline'><input type=hidden name=removeSite value=\"${esc(u)}\"><button>Remove</button></form></li>"
         }.ifBlank { "<li>None yet</li>" }
         return """
 <!doctype html><html><head><meta name=viewport content="width=device-width,initial-scale=1"><title>McD TV setup</title>
@@ -115,7 +126,10 @@ button{margin-top:12px;background:#D61828;color:#fff;border:0;border-radius:8px;
 <label>Add an addon (manifest URL or stremio:// link)</label><input name=addon placeholder="https://…/manifest.json">
 <label>Live TV playlist (M3U URL). ${if (Prefs.m3uUrl.isNotBlank()) "✅ set" else "Not set"}</label><input name=m3u placeholder="https://…/playlist.m3u">
 <label>Direct stream link (shows as My Stream)</label><input name=stream placeholder="https://…/video.m3u8">
+<label>Add a website (opens in the TV's built-in browser, under Sports &gt; Websites)</label><input name=site placeholder="https://example.com">
+<label>Name for that website (optional)</label><input name=siteName placeholder="My site">
 <button>Save to TV</button></form>
+<h3>Websites</h3><ul>$sites</ul>
 <h3>Installed addons</h3><ul>$addons</ul>
 <p style="color:#9AA3C0;font-size:13px">Real-Debrid connects on the TV itself: Settings &gt; Connect Real-Debrid.</p>
 </body></html>""".trimIndent()

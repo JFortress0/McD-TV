@@ -13,14 +13,14 @@ McD TV copies the HuberTV layout and runs it natively on the TV. It talks straig
 
 - **Intro:** broadcast-style open with the "This is McD TV" voiceover. Any button skips it.
 - **Home:** rotating hero banner, Continue Watching, Watchlist, Favorites, Trending, Popular, Now Playing, Top Rated, Family Movie Night, Browse by Year.
-- **Title page:** backdrop, poster, cast, similar titles, seasons and episodes. Buttons: Play, Choose Source, Favorite, Watchlist, Mark as Watched, Mindless TV, Not for me.
+- **Title page:** backdrop, poster, cast, similar titles, seasons and episodes. Buttons: Play, Choose Source, Favorite, Watchlist, Mark as Watched, Background Noise, Not for me.
 - **Source picker:** every stream your addons return, with quality, size and a CACHED badge. Play picks the best one by itself.
 - **Real-Debrid:** sign in with a code at real-debrid.com/device. You type nothing on the TV.
-- **My List:** Watchlist, Favorites, Mindless TV shows, Watch History.
+- **My List:** Watchlist, Favorites, Background Noise shows, Watch History.
 - **Sports:** live scores and today's games for NFL, college football, NBA, MLB, NHL, college hoops and the Premier League. Select a game to see matching channels from your own playlist.
 - **Live TV:** your M3U playlist, grouped by category.
 - **Services:** browse the Netflix, Prime, Disney+, Hulu, Apple TV+, Peacock, Max, Paramount+, Crunchyroll and Starz catalogs.
-- **Mindless TV:** pick shows once. Random episodes keep playing.
+- **Background Noise:** pick shows once. Random episodes keep playing.
 - **Calendar:** upcoming episodes for shows on your Watchlist.
 - **Phone setup:** paste keys and links from your phone over home Wi-Fi.
 - **Settings:** US only, Slow connection (smaller files first), intro on or off.
@@ -84,7 +84,7 @@ Each build gets a higher version number, so the TV installs it as an update. You
 | 1 | Intro, home, settings, player |
 | 2 | HuberTV-style browsing, sources, Real-Debrid, library, sports, live TV (this version) |
 | 3 | Live TV program guide (XMLTV), Xtream login, network files (SMB / WebDAV) |
-| 4 | Goose-style plain-English search, Trakt sync, profiles with PIN, speed tuning |
+| 4 | Plain-English search, Trakt sync, profiles with PIN, speed tuning |
 
 ## Tech stack
 

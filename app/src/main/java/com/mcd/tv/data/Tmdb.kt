@@ -99,7 +99,24 @@ object Tmdb {
 
     suspend fun trending() = list("/trending/all/week", null)
     suspend fun popular(type: String) = list("/$type/popular", type, region())
-    suspend fun topRated(type: String) = list("/$type/top_rated", type, region())
+    /**
+     * Top Rated, US edition: American titles only, ranked by vote average, with a
+     * minimum vote count so a handful of votes can't top the chart. Movies are limited
+     * to US-certified titles (G through R). Note: no public source splits ratings by
+     * the voter's country or age, so this filters the titles, not the voters.
+     */
+    suspend fun topRated(type: String): List<Title> {
+        val p = mutableMapOf(
+            "sort_by" to "vote_average.desc",
+            "vote_count.gte" to if (type == "movie") "2500" else "800",
+            "with_origin_country" to "US",
+        )
+        if (type == "movie") {
+            p["certification_country"] = "US"
+            p["certification"] = "G|PG|PG-13|R"
+        }
+        return discover(type, p)
+    }
     suspend fun nowPlaying() = list("/movie/now_playing", "movie", region())
     suspend fun search(q: String) = list("/search/multi", null, mapOf("query" to q, "include_adult" to "false"))
 
@@ -107,6 +124,7 @@ object Tmdb {
         val p = params.toMutableMap()
         p["page"] = page.toString()
         p.putIfAbsent("sort_by", "popularity.desc")
+        p["include_adult"] = "false" // adult titles are never shown anywhere in McD TV
         if (Prefs.usOnly) p.putIfAbsent("watch_region", "US")
         return list("/discover/$type", type, p)
     }

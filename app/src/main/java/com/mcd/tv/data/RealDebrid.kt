@@ -135,7 +135,7 @@ object Resolver {
         else -> throw IllegalStateException("This source has no playable link")
     }
 
-    /** Tries the top sources in order until one resolves. Used by Play and Mindless TV. */
+    /** Tries the top sources in order until one resolves. Used by Play and Background Noise. */
     suspend fun best(list: List<StreamSource>): Pair<StreamSource, String> {
         var last: Exception? = null
         for (s in list.take(5)) {

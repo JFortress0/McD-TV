@@ -24,7 +24,7 @@ data class HistoryEntry(val meta: PlayMeta, val positionMs: Long, val durationMs
 }
 
 /**
- * Favorites, Watchlist, watch history (Continue Watching) and the Mindless TV show list.
+ * Favorites, Watchlist, watch history (Continue Watching) and the Background Noise show list.
  * Stored on the device as JSON. Phase 6 adds Trakt sync on top.
  */
 object Library {
@@ -63,9 +63,9 @@ object Library {
     fun inWatchlist(t: Title) = contains("lib_watchlist", t)
     fun toggleWatchlist(t: Title) = toggle("lib_watchlist", t)
 
-    fun mindlessShows() = loadTitles("lib_mindless")
-    fun inMindless(t: Title) = contains("lib_mindless", t)
-    fun toggleMindless(t: Title) = toggle("lib_mindless", t)
+    fun noiseShows() = loadTitles("lib_noise")
+    fun inNoise(t: Title) = contains("lib_noise", t)
+    fun toggleNoise(t: Title) = toggle("lib_noise", t)
 
     /** "Not for me": hidden from home rows. */
     fun hidden() = loadTitles("lib_hidden")

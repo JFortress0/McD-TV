@@ -55,6 +55,14 @@ object Prefs {
         }.getOrDefault(emptyList())
         set(v) = sp.edit().putString("addon_urls", JSONArray(v.distinct()).toString()).apply()
 
+    // ---- Websites you add (opened in the built-in browser): list of name|url ----
+    var websites: List<Pair<String, String>>
+        get() = runCatching {
+            val a = JSONArray(sp.getString("websites", "[]"))
+            List(a.length()) { a.getString(it) }.map { it.substringBefore("|") to it.substringAfter("|") }
+        }.getOrDefault(emptyList())
+        set(v) = sp.edit().putString("websites", JSONArray(v.distinctBy { it.second }.map { "${it.first}|${it.second}" }).toString()).apply()
+
     // ---- Real-Debrid (device-code OAuth; nothing typed on the TV) ----
     var rdClientId: String
         get() = str("rd_client_id")

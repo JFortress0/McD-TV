@@ -116,7 +116,7 @@ fun LibraryScreen(nav: Nav) {
         LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
             item { TitleRow("Watchlist", Library.watchlist(), openTitle) }
             item { TitleRow("Favorites", Library.favorites(), openTitle) }
-            item { TitleRow("Mindless TV Shows", Library.mindlessShows(), openTitle) }
+            item { TitleRow("Background Noise Shows", Library.noiseShows(), openTitle) }
             if (history.isNotEmpty()) item {
                 Column(Modifier.padding(top = 18.dp)) {
                     RailHeader("Watch History", Modifier.padding(start = 48.dp))
@@ -207,21 +207,21 @@ fun CalendarScreen(nav: Nav) {
     }
 }
 
-// ============================== Mindless TV ==============================
+// ============================== Background Noise ==============================
 
 @Composable
-fun MindlessScreen(nav: Nav) {
-    var shows by remember { mutableStateOf(Library.mindlessShows()) }
-    TabPage(nav, NavTab.Mindless) {
+fun NoiseScreen(nav: Nav) {
+    var shows by remember { mutableStateOf(Library.noiseShows()) }
+    TabPage(nav, NavTab.Noise) {
         Column(Modifier.padding(horizontal = 48.dp)) {
-            Text("MINDLESS TV", style = broadcastStyle(32.sp))
+            Text("BACKGROUND NOISE", style = broadcastStyle(32.sp))
             Text(
                 "Pick your shows once. Press play and random episodes keep coming, like leaving a TV on. " +
-                    "Add shows with \"+ Mindless TV\" on any show page.",
+                    "Add shows with \"+ Background Noise\" on any show page.",
                 color = McdColors.Muted, fontSize = 15.sp,
             )
             Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("▶  Play Mindless TV", { if (shows.isNotEmpty()) nav.push(Screen.MindlessRun) }, primary = true)
+                ActionButton("▶  Play Background Noise", { if (shows.isNotEmpty()) nav.push(Screen.NoiseRun) }, primary = true)
                 Text("Your shows: ${shows.size} of 50", color = McdColors.Muted)
             }
         }
@@ -229,7 +229,7 @@ fun MindlessScreen(nav: Nav) {
             items(shows, key = { it.id }) { t ->
                 Column {
                     PosterCard(t, onClick = { nav.push(Screen.Detail("tv", t.id)) })
-                    ActionButton("Remove", { Library.toggleMindless(t); shows = Library.mindlessShows() })
+                    ActionButton("Remove", { Library.toggleNoise(t); shows = Library.noiseShows() })
                 }
             }
         }
@@ -238,7 +238,7 @@ fun MindlessScreen(nav: Nav) {
 
 /** Picks a random show + episode, finds the best source, plays, repeats when it ends. */
 @Composable
-fun MindlessRunScreen(nav: Nav) {
+fun NoiseRunScreen(nav: Nav) {
     var round by remember { mutableIntStateOf(0) }
     var url by remember { mutableStateOf<String?>(null) }
     var meta by remember { mutableStateOf<PlayMeta?>(null) }
@@ -246,7 +246,7 @@ fun MindlessRunScreen(nav: Nav) {
 
     LaunchedEffect(round) {
         url = null
-        val shows = Library.mindlessShows()
+        val shows = Library.noiseShows()
         if (shows.isEmpty()) { status = "Add shows first."; return@LaunchedEffect }
         repeat(6) { attempt ->
             val pick = runCatching {
@@ -270,7 +270,7 @@ fun MindlessRunScreen(nav: Nav) {
     val u = url
     val m = meta
     if (u != null && m != null) {
-        key(u) { PlayerScreen(url = u, title = "Mindless TV  •  ${m.label}", meta = m, onEnded = { round++ }) }
+        key(u) { PlayerScreen(url = u, title = "Background Noise  •  ${m.label}", meta = m, onEnded = { round++ }) }
     } else {
         Box(Modifier.fillMaxSize().background(McdColors.Navy).padding(48.dp)) {
             Column {
