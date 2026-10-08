@@ -193,7 +193,7 @@ main#view{min-height:60vh}
 .ep .t{font-weight:700}
 .ep .d{color:var(--muted);font-size:12px;margin:2px 0 4px}
 .ep .o{color:#c8d0dd;font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:0}
-.ep .btn{margin-top:8px}
+.ep .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .ep.resume{border-color:var(--accent)}
 @media (min-width:900px){.ep .still{width:220px}}
 @media (max-width:420px){.ep .still{width:116px}}
@@ -248,6 +248,44 @@ select:focus-visible,input:focus-visible{outline:2px solid var(--bright);outline
 #toast.on{opacity:1;transform:translate(-50%,0)}
 #toast.ok{border-color:rgba(43,212,110,.6)}#toast.warn{border-color:rgba(224,165,38,.7)}
 footer{padding:30px var(--gut) 40px;color:#59637a;font-size:12px}
+
+/* ---------- play here: sources ---------- */
+.srchead{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+.srchead .lbl{color:var(--muted);font-size:14px}
+.srcstatus{min-height:22px;margin:8px 0;font-weight:600;font-size:14px;color:var(--bright)}
+.srcstatus.bad{color:var(--bad)}
+.srcs{display:flex;flex-direction:column;gap:6px;max-width:980px}
+.src{display:flex;align-items:center;flex-wrap:wrap;gap:6px 9px;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:10px 12px;cursor:pointer;font-size:13px;min-height:46px}
+.src:hover,.src:focus-visible{background:var(--raised);border-color:#33415a}
+.src[disabled]{opacity:.55;cursor:progress}
+.src .st{letter-spacing:1px;color:var(--bright);white-space:nowrap}.src .st i{font-style:normal;color:rgba(255,255,255,.18)}
+.src .bdg{background:#2A3550;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:700;white-space:nowrap}
+.src .bdg.hi{background:#1d3f8f}
+.src .so{color:var(--muted);font-size:12px}
+.src .sz{font-weight:600;white-space:nowrap}
+.src .in{color:var(--bright);font-weight:700;white-space:nowrap}
+.src .dl{color:var(--muted);white-space:nowrap}
+.src .ad{margin-left:auto;color:var(--muted);opacity:.75;font-size:11px;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srcmore{border:0;background:transparent;color:var(--muted);text-align:left;padding:10px 12px;cursor:pointer;font-size:13px;border-radius:8px}
+.srcmore:hover{color:#fff;background:rgba(255,255,255,.05)}
+@media (min-width:900px){.src{flex-wrap:nowrap}}
+
+/* ---------- play here: player ---------- */
+body.playmode{padding-bottom:0;background:#000}
+body.playmode header.top,body.playmode nav.tabbar{display:none}
+.player{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:#000;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.pl-top{display:flex;align-items:center;gap:12px;padding:10px 16px}
+.pl-back{flex:0 0 auto;font-weight:700;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.1)}
+.pl-back:hover{background:rgba(255,255,255,.2)}
+.pl-title{min-width:0;display:flex;flex-direction:column}
+.pl-title b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:16px}
+.pl-title span{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-stage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;min-height:200px}
+.pl-stage video{width:100%;max-height:calc(100dvh - 150px);background:#000;aspect-ratio:16/9}
+.pl-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(90%,460px);text-align:center;background:rgba(17,24,39,.94);border:1px solid var(--line);border-radius:12px;padding:18px}
+.pl-msg p{margin:0 0 12px}
+.pl-bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:12px 16px 18px}
+.btn.big{font-size:17px;padding:14px 26px;min-height:52px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -301,6 +339,8 @@ function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LINK_KEY = "mcdtv_link"; // shared with the Control page (same origin)
 const INIT_KEY = "mcdtv_web_init";
+const RD_KEY = "mcdtv_web_rd"; // {t, exp}: Real-Debrid access token from your TV, for Play here (this browser only)
+const POS_KEY = "mcdtv_web_pos"; // Play here resume positions
 
 // ---------- pairing link ----------
 function parseLink(h) {
@@ -343,7 +383,9 @@ const S = {
   manualMdb: LS.get("mcdtv_web_mdb"),
   originPref: LS.get("mcdtv_web_origin"), // "" = same as the TV
   status: "none", lastInitAsk: 0, initTimer: 0,
+  rd: readJSON(RD_KEY), addonParts: null, streamCache: new Map(), playing: null, cleanup: null,
 };
+const rdWait = new Map(); // "rd_token" req id -> reply handler
 const pending = new Map(); // req id -> timeout
 function keys() {
   const i = S.init || {};
@@ -380,6 +422,11 @@ async function onRelay(raw, live) {
   if (!m || typeof m !== "object") return;
   if (live) { setStatus("online"); clearTimeout(S.initTimer); }
   if (m.type === "web_init") applyInit(m);
+  else if (m.type === "addons") applyAddons(m);
+  else if (m.type === "rd_token") {
+    const w = rdWait.get(m.req);
+    if (w) w(m); else if (m.rd_token) setRd(m.rd_token, +m.rd_expires_at || 0);
+  }
   else if (m.type === "ack" && live) {
     const t = pending.get(m.req);
     if (t) { clearTimeout(t); pending.delete(m.req); toast(m.note || "Done on the TV", "ok"); }
@@ -388,7 +435,13 @@ async function onRelay(raw, live) {
 
 function applyInit(m) {
   const prev = S.init || {};
+  // Real-Debrid access for Play here is kept apart from the rest (never shown, never logged).
+  if (m.rd_token) setRd(m.rd_token, +m.rd_expires_at || 0);
+  else if (m.rd_connected === false && (m.ts || 0) >= (prev.ts || 0)) clearRd();
+  delete m.rd_token; delete m.rd_expires_at;
   if ((m.ts || 0) < (prev.ts || 0)) return;
+  // Long addon lists come in separate "addons" messages: keep the ones we have until they arrive.
+  if (!Array.isArray(m.addon_urls) && Array.isArray(prev.addon_urls)) m.addon_urls = prev.addon_urls;
   const hadKey = !!keys().tmdb;
   const sig = (o) => JSON.stringify([o.watchlist || [], o.favorites || [], o.continue || [], o.origin_filter, o.us_only]);
   const changed = sig(prev) !== sig(m);
@@ -396,6 +449,22 @@ function applyInit(m) {
   S.init = m; saveInit();
   if (!hadKey && keys().tmdb) { route(); return; }
   if (changed) onListsChanged();
+}
+/** "addons" follow-up messages ({req, part, parts, addon_urls}): joined, then saved with the rest of web_init. */
+function applyAddons(m) {
+  if (!Array.isArray(m.addon_urls)) return;
+  let P = S.addonParts;
+  if (!P || P.req !== m.req) {
+    if (P && (m.ts || 0) < P.ts) return;
+    P = S.addonParts = { req: m.req, ts: m.ts || 0, parts: new Array(Math.max(1, Math.min(50, +m.parts || 1))).fill(null) };
+  }
+  const i = Math.max(0, Math.min(P.parts.length - 1, +m.part || 0));
+  P.parts[i] = m.addon_urls;
+  if (P.parts.every(Boolean)) {
+    if (!S.init) S.init = {};
+    S.init.addon_urls = [].concat(...P.parts);
+    saveInit();
+  }
 }
 
 async function askInit() {
@@ -440,7 +509,7 @@ async function pair(l) {
   S.link = l;
   LS.set(LINK_KEY, l.id + "." + l.key);
   if (!changed && S.key) return;
-  if (S.init && S.init.relay_id && S.init.relay_id !== l.id) { S.init = null; LS.del(INIT_KEY); }
+  if (S.init && S.init.relay_id && S.init.relay_id !== l.id) { S.init = null; LS.del(INIT_KEY); clearRd(); }
   try { S.key = await importKey(l.key); } catch { S.link = null; S.key = null; toast("That link is not valid.", "warn"); return; }
   if (S.init) { S.init.relay_id = l.id; saveInit(); }
   connect();
@@ -448,7 +517,7 @@ async function pair(l) {
 function unpair() {
   if (S.es) S.es.close();
   S.es = null; S.link = null; S.key = null; S.init = null;
-  LS.del(LINK_KEY); LS.del(INIT_KEY);
+  LS.del(LINK_KEY); LS.del(INIT_KEY); clearRd();
   setStatus("none");
 }
 
@@ -605,6 +674,12 @@ function playAttrs(t, season, episode) {
   if (t.type === "tv" && season > 0 && episode > 0) a += ` data-season="${season}" data-episode="${episode}"`;
   return a;
 }
+/** "Play here" (this phone or computer): opens the source list for the title or episode. */
+function hereAttrs(t, season, episode) {
+  let a = `data-act="playhere" data-type="${t.type}" data-id="${t.id}"`;
+  if (t.type === "tv" && season > 0 && episode > 0) a += ` data-season="${season}" data-episode="${episode}"`;
+  return a;
+}
 function wlButton(t) {
   const on = inWL(t.type, t.id);
   return `<button class="btn" data-act="wl" data-type="${t.type}" data-id="${t.id}" data-name="${esc(t.name)}" data-poster="${esc(t.poster || "")}" data-backdrop="${esc(t.backdrop || "")}" data-year="${esc(t.year || "")}" aria-pressed="${on}">${on ? "&#10003; In Watchlist" : "+ Watchlist"}</button>`;
@@ -667,6 +742,9 @@ async function route() {
   const v = $("#view");
   const { path, q } = parseRoute();
   const name = path[0] || "home";
+  // Leaving the player: save the position and stop the video before the page is replaced.
+  if (S.cleanup) { const c = S.cleanup; S.cleanup = null; try { c(); } catch {} }
+  document.body.classList.toggle("playmode", name === "play");
   setActive(name);
   const needsKey = !["settings", "pair"].includes(name);
   if (!S.link && !keys().tmdb && needsKey) { renderPair(v); setActive("settings"); return; }
@@ -678,6 +756,8 @@ async function route() {
     case "search": renderSearch(v, tok, q.get("q") || ""); break;
     case "title": renderTitle(v, tok, path[1] === "tv" ? "tv" : "movie", +path[2] || 0); break;
     case "person": renderPerson(v, tok, +path[1] || 0); break;
+    case "sources": renderSources(v, tok, path[1] === "tv" ? "tv" : "movie", +path[2] || 0, q); break;
+    case "play": renderPlayer(v, tok, path[1] === "tv" ? "tv" : "movie", +path[2] || 0, q); break;
     case "list": renderList(v, tok, q.get("tab") || "watchlist"); break;
     case "settings": renderSettings(v); break;
     case "pair": renderPair(v); break;
@@ -935,7 +1015,8 @@ async function renderTitle(v, tok, type, id) {
       ${d.tagline ? `<p class="tagline">${esc(d.tagline)}</p>` : ""}
       <p class="overview">${esc(t.overview || "No description yet.")}</p>
       <div class="actions">
-        <button class="btn primary" ${playAttrs(t, cont && cont.season, cont && cont.episode)}>${resumeLabel}</button>
+        <button class="btn primary" ${hereAttrs(t, cont && cont.season, cont && cont.episode)}>&#9654; Play here</button>
+        <button class="btn" ${playAttrs(t, cont && cont.season, cont && cont.episode)}>${resumeLabel}</button>
         <button class="btn" data-act="open" data-type="${type}" data-id="${id}" data-name="${esc(t.name)}">Open on TV</button>
         ${wlButton(t)}
         ${trailer ? `<button class="btn" data-act="trailer">Trailer</button>` : ""}
@@ -975,7 +1056,8 @@ async function renderTitle(v, tok, type, id) {
             <div class="body"><div class="t">${e.episode_number}. ${esc(e.name || "Episode " + e.episode_number)}</div>
             <div class="d">${esc([fmtDate(e.air_date), e.runtime ? e.runtime + "m" : ""].filter(Boolean).join(" · "))}${isResume ? ` · <span style="color:var(--bright)">Up next for you</span>` : ""}</div>
             <p class="o">${esc(e.overview || "")}</p>
-            <button class="btn small${isResume ? " blue" : ""}" ${playAttrs(t, n, e.episode_number)}>&#9654; ${isResume ? "Resume" : "Play"} on TV</button></div></div>`;
+            <div class="btns"><button class="btn small primary" ${hereAttrs(t, n, e.episode_number)}>&#9654; Play here</button>
+            <button class="btn small${isResume ? " blue" : ""}" ${playAttrs(t, n, e.episode_number)}>&#9654; ${isResume ? "Resume" : "Play"} on TV</button></div></div></div>`;
         }).join("") : `<p class="muted">No episodes listed yet.</p>`;
       } catch (err) { if (tok === routeTok) eps.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
     }
@@ -988,6 +1070,639 @@ function playTrailer() {
   if (box.querySelector("iframe")) return;
   const k = encodeURIComponent(box.dataset.yt);
   box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${k}?autoplay=1&rel=0&playsinline=1" title="Trailer" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+}
+
+// =====================================================================================
+// Play here: plays on this phone or computer with your own addons and Real-Debrid account,
+// the same way the TV does (Addons.kt, StreamInfo.kt, RealDebrid.kt).
+// =====================================================================================
+
+// >>> StreamInfo port (mirrors Addons.parse and StreamInfo.kt; unit-tested in node)
+const SI = (() => {
+  const qualityRx = /(2160p|4k|1080p|720p|480p)/i;
+  const sizeRx = /([0-9]+(?:\.[0-9]+)?)\s?(GB|MB)/i;
+  const seedRx = /\u{1F464}\s?([0-9]+)/u; // the person emoji some addons put before the seeder count
+  const res4k = /(2160p|\b4k\b|\buhd\b)/i;
+  const res1080 = /1080[pi]/i;
+  const res720 = /720p/i;
+  const resSd = /(480p|576p|360p|\bsd\b|dvdrip)/i;
+  const remux = /remux/i;
+  const bluray = /(blu-?ray|bdrip|brrip|\bbd(25|50|66|100)?\b)/i;
+  const webdl = /(web-?dl|\bwebdl\b|\bweb\b|amzn|\bnf\b|dsnp|hmax)/i;
+  const webrip = /web-?rip/i;
+  const hdtv = /(hdtv|pdtv|\btvrip\b)/i;
+  const dvd = /\bdvd/i;
+  const camRx = /\b(cam|camrip|hdcam|ts|hdts|telesync|tc|hdtc|telecine|scr|screener|dvdscr|bdscr)\b/i;
+  const dv = /(\bdv\b|\bdovi\b|dolby[ ._-]?vision)/i;
+  const hdr10p = /hdr10(\+|plus)/i;
+  const hdr = /\bhdr(10)?\b/i;
+  const atmos = /atmos/i;
+  const truehd = /true-?hd/i;
+  const dts = /\bdts/i;
+  const ddp = /(ddp|dd\+|e-?ac-?3)/i;
+  // Kotlin: (?<![0-9.])([57])[ .]1(?![0-9])(?!\s?(gb|mb|gib|mib)). No lookbehind here (older Safari): the
+  // preceding character is matched instead, which finds the same first match.
+  const channels = /(?:^|[^0-9.])([57])[ .]1(?![0-9])(?!\s?(gb|mb|gib|mib))/i;
+  const nonAlnum = /[^a-z0-9]+/g;
+  /** JSONObject.s(): null when missing, null or blank. */
+  const str = (o, k) => { const v = o == null ? null : o[k]; if (v == null) return null; const s = String(v); return s.trim() ? s : null; };
+
+  /** Addons.parse: one stream object from an addon -> StreamSource. */
+  function parseStream(addon, o, season, episode) {
+    const name = str(o, "name") || addon;
+    const title = str(o, "title") || str(o, "description") || "";
+    const text = name + " " + title;
+    const qm = qualityRx.exec(text);
+    let q = qm ? qm[0].toLowerCase() : "Unknown";
+    if (q === "2160p" || q === "4k") q = "4K";
+    const sm = sizeRx.exec(title);
+    let sizeGb = 0;
+    if (sm) { const n = parseFloat(sm[1]) || 0; sizeGb = sm[2].toUpperCase() === "MB" ? n / 1024 : n; }
+    const url = str(o, "url");
+    const cached = name.includes("+]") || name.includes("RD+") || name.includes("⚡") ||
+      (url != null && name.includes("RD") && !/download/i.test(name));
+    const fi = o.fileIdx;
+    const fileIdx = fi == null || fi === "" || !isFinite(+fi) ? null : Math.trunc(+fi);
+    const seed = seedRx.exec(title);
+    const hdrs = (((o.behaviorHints || {}).proxyHeaders || {}).request) || {};
+    return {
+      addon, name: name.replace(/\n/g, " "), title, url, infoHash: str(o, "infoHash"), fileIdx,
+      quality: q, sizeText: sm ? sm[0] : "", sizeGb, seeders: seed ? parseInt(seed[1], 10) : null, cached,
+      headers: hdrs, season: season == null ? null : season, episode: episode == null ? null : episode,
+    };
+  }
+
+  /** StreamInfo.parse */
+  function info(s) {
+    const text = s.name + " " + s.title;
+    let resolution = "";
+    if (res4k.test(text)) resolution = "4K";
+    else if (res1080.test(text)) resolution = "1080p";
+    else if (res720.test(text)) resolution = "720p";
+    else if (resSd.test(text)) resolution = "SD";
+    else if (s.quality === "4K" || s.quality === "1080p" || s.quality === "720p") resolution = s.quality;
+    else if (s.quality === "480p") resolution = "SD";
+    const cam = camRx.test(text);
+    let source = "";
+    if (remux.test(text)) source = "REMUX";
+    else if (webrip.test(text)) source = "WEBRip";
+    else if (bluray.test(text)) source = "BluRay";
+    else if (webdl.test(text)) source = "WEB-DL";
+    else if (hdtv.test(text)) source = "HDTV";
+    else if (cam) source = "CAM";
+    else if (dvd.test(text)) source = "DVD";
+    const hi = resolution === "4K" || resolution === "1080p";
+    let stars;
+    if (cam) stars = 1;
+    else if (source === "REMUX") stars = 5;
+    else if (source === "BluRay" && resolution === "4K") stars = 5;
+    else if ((source === "BluRay" || source === "WEB-DL") && hi) stars = 4;
+    else if ((source === "WEBRip" || source === "HDTV") && resolution === "SD") stars = 2;
+    else if (source === "WEBRip" || source === "HDTV") stars = 3;
+    else if (source === "BluRay" || source === "WEB-DL") stars = 3;
+    else if (hi) stars = 3;
+    else if (resolution === "720p" || source === "DVD") stars = 2;
+    else stars = 1;
+    const hdrList = [];
+    if (dv.test(text)) hdrList.push("DV");
+    if (hdr10p.test(text)) hdrList.push("HDR10+"); else if (hdr.test(text)) hdrList.push("HDR");
+    let codec = null;
+    if (atmos.test(text)) codec = "Atmos";
+    else if (truehd.test(text)) codec = "TrueHD";
+    else if (dts.test(text)) codec = "DTS";
+    else if (ddp.test(text)) codec = "DD+";
+    const cm = channels.exec(text);
+    const ch = cm ? cm[1] + ".1" : null;
+    const audio = codec === "Atmos" ? codec : [codec, ch].filter(Boolean).join(" ");
+    let sizeLabel;
+    if (s.sizeGb >= 1) sizeLabel = s.sizeGb.toFixed(1) + " GB";
+    else if (s.sizeGb > 0) sizeLabel = Math.trunc(s.sizeGb * 1024) + " MB";
+    else sizeLabel = s.sizeText;
+    const notCachedLink = s.url != null && /download/i.test(s.name);
+    const hash = s.infoHash ? s.infoHash.toLowerCase() : null;
+    const firstLine = s.title.split(/\r\n|\r|\n/).find((l) => l.trim()) || "";
+    const fileName = firstLine.toLowerCase().replace(nonAlnum, "");
+    let dedupeKey;
+    if (hash != null) dedupeKey = "h:" + hash + ":" + (s.fileIdx == null ? -1 : s.fileIdx);
+    else if (fileName.length >= 8 && s.sizeGb > 0) dedupeKey = "f:" + fileName + ":" + s.sizeGb.toFixed(1);
+    else dedupeKey = "u:" + (s.url != null ? s.url : s.addon + s.name + s.title);
+    const resolutionRank = { "4K": 4, "1080p": 3, "720p": 2, SD: 1 }[resolution] || 0;
+    return {
+      stars, resolution, source, hdr: hdrList, audio, sizeGb: s.sizeGb, sizeLabel, instant: s.cached,
+      download: !s.cached && (hash != null || notCachedLink), cam, dedupeKey, resolutionRank,
+    };
+  }
+
+  /** StreamInfo.comparator: cached first, then stars, resolution and size (slow connection: 720p/1080p, smaller first). */
+  function compare(slow) {
+    const b = (x) => (x ? 1 : 0);
+    if (slow) {
+      const r = (i) => ({ "720p": 3, "1080p": 2 }[i.resolution] || 0);
+      const sz = (i) => (i.sizeGb > 0 ? i.sizeGb : Number.MAX_VALUE);
+      return (x, y) => (b(y.info.instant) - b(x.info.instant)) || (r(y.info) - r(x.info)) ||
+        (sz(x.info) - sz(y.info)) || (y.info.stars - x.info.stars);
+    }
+    return (x, y) => (b(y.info.instant) - b(x.info.instant)) || (y.info.stars - x.info.stars) ||
+      (y.info.resolutionRank - x.info.resolutionRank) || (y.info.sizeGb - x.info.sizeGb);
+  }
+
+  /** StreamInfo.ranked: parsed, sorted (stable), de-duplicated (the best copy wins). */
+  function ranked(list, slow) {
+    const seen = new Set();
+    return list.map((s) => ({ source: s, info: info(s) })).sort(compare(!!slow)).filter((r) => {
+      if (seen.has(r.info.dedupeKey)) return false;
+      seen.add(r.info.dedupeKey); return true;
+    });
+  }
+
+  /** StreamInfo.arrange: what the list shows, and what it hides (CAM / TS, files over the size limit). */
+  function arrange(list, episode, opts) {
+    const o = opts || {};
+    const limit = episode ? (o.maxEpisodeGb == null ? 12 : o.maxEpisodeGb) : (o.maxMovieGb == null ? 40 : o.maxMovieGb);
+    const visible = [], hidden = [];
+    for (const r of ranked(list, o.slow)) (r.info.cam || (limit > 0 && r.info.sizeGb > limit) ? hidden : visible).push(r);
+    return { visible, hidden };
+  }
+
+  /** StreamInfo.playOrder: the shown sources, or (if every one is hidden) the hidden ones. */
+  function playOrder(list, episode, opts) {
+    const a = arrange(list, episode, opts);
+    return (a.visible.length ? a.visible : a.hidden).map((r) => r.source);
+  }
+
+  /** RealDebrid.chooseFile: fileIdx (Stremio counts from 0, RD from 1), then SxxEyy / 1x05, then the largest video. */
+  const videoExt = /\.(mkv|mp4|avi|m4v|mov|webm|ts)$/i;
+  function chooseFile(files, fileIdx, season, episode) {
+    const isVideo = (f) => videoExt.test(String(f.path || ""));
+    const bytes = (f) => +f.bytes || 0;
+    const biggest = (arr) => arr.reduce((a, f) => (a == null || bytes(f) > bytes(a) ? f : a), null);
+    if (fileIdx != null) {
+      const byId = files.find((f) => +f.id === fileIdx + 1);
+      if (byId && isVideo(byId)) return byId;
+      const byPos = files[fileIdx];
+      if (byPos && isVideo(byPos)) return byPos;
+    }
+    const videos = files.filter(isVideo);
+    if (season > 0 && episode > 0) {
+      // Kotlin: (s0*S[ ._-]?e0*E(?!\d))|((?<!\d)0*Sx0*E(?!\d)), without the lookbehind.
+      const rx = new RegExp(`(s0*${season}[ ._-]?e0*${episode}(?!\\d))|((?:^|\\D)0*${season}x0*${episode}(?!\\d))`, "i");
+      const base = (f) => String(f.path || "").split("/").pop();
+      const a = biggest(videos.filter((f) => rx.test(base(f))));
+      if (a) return a;
+      const b = biggest(videos.filter((f) => rx.test(String(f.path || ""))));
+      if (b) return b;
+    }
+    return biggest(videos);
+  }
+
+  /** RealDebrid.linkFor: RD gives one link per selected file, in file order. */
+  function linkFor(info, chosen) {
+    const links = info.links || [];
+    if (!links.length) return null;
+    const selected = (info.files || []).filter((f) => +f.selected === 1).sort((a, b) => a.id - b.id);
+    const i = chosen == null ? 0 : selected.findIndex((f) => +f.id === +chosen.id);
+    if (i < 0 || i >= links.length) return null;
+    return links[i];
+  }
+
+  return { parseStream, info, ranked, arrange, playOrder, chooseFile, linkFor };
+})();
+// <<< StreamInfo port
+
+const siOpts = () => {
+  const i = S.init || {};
+  return { slow: !!i.slow_connection, maxMovieGb: i.max_movie_gb == null ? 40 : +i.max_movie_gb, maxEpisodeGb: i.max_episode_gb == null ? 12 : +i.max_episode_gb };
+};
+const addonUrls = () => ((S.init && S.init.addon_urls) || []).filter((u) => typeof u === "string" && /^https?:\/\//i.test(u));
+const addonBase = (m) => m.replace(/\/manifest\.json$/, "");
+
+/** fetch with a time limit; the body is read inside the limit too. */
+async function fetchJSON(url, ms, opts) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(url, { ...(opts || {}), signal: ac.signal });
+    if (!r.ok) { const e = new Error("HTTP " + r.status); e.status = r.status; throw e; }
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+// ---------- addons ----------
+const addonNames = new Map(Object.entries(readJSON("mcdtv_web_addon_names") || {}));
+async function addonName(m) {
+  if (addonNames.has(m)) return addonNames.get(m);
+  let n = "";
+  try { n = String((await fetchJSON(m, 10000)).name || "").trim(); } catch {}
+  if (!n) { try { n = new URL(m).hostname.replace(/^www\./, ""); } catch { n = "Addon"; } }
+  addonNames.set(m, n);
+  LS.set("mcdtv_web_addon_names", JSON.stringify(Object.fromEntries(Array.from(addonNames).slice(-40))));
+  return n;
+}
+/** Addons.streams: every addon at once, 10 s each; failures are skipped. */
+async function fetchStreams(type, imdb, season, episode) {
+  const stremioType = type === "tv" ? "series" : "movie";
+  const id = type === "tv" ? `${imdb}:${season}:${episode}` : imdb;
+  const ck = stremioType + "/" + id + "|" + addonUrls().join("|");
+  const c = S.streamCache.get(ck);
+  if (c && Date.now() - c.at < 5 * 60000) return c.list;
+  const per = await Promise.all(addonUrls().map(async (m) => {
+    const [name, data] = await Promise.all([addonName(m), fetchJSON(`${addonBase(m)}/stream/${stremioType}/${id}.json`, 10000).catch(() => null)]);
+    const arr = data && Array.isArray(data.streams) ? data.streams : [];
+    return arr.filter((o) => o && typeof o === "object")
+      .map((o) => SI.parseStream(name, o, type === "tv" ? season : null, type === "tv" ? episode : null));
+  }));
+  const list = [].concat(...per);
+  S.streamCache.set(ck, { at: Date.now(), list });
+  if (S.streamCache.size > 20) S.streamCache.delete(S.streamCache.keys().next().value);
+  return list;
+}
+
+// ---------- Real-Debrid (your own account, through the token your TV shares) ----------
+const RD_API = "https://api.real-debrid.com/rest/1.0";
+const NEED_TV = "Your TV needs to be on once to refresh Real-Debrid access.";
+const NO_RD = "Connect Real-Debrid on the TV first (Settings > Real-Debrid).";
+function fatal(msg) { const e = new Error(msg); e.fatal = true; return e; }
+function setRd(t, exp) {
+  if (!t) return;
+  if (S.rd && S.rd.t && S.rd.t !== t && (S.rd.exp || 0) > exp) return; // an older message: keep the newer token
+  S.rd = { t, exp: exp || 0 };
+  LS.set(RD_KEY, JSON.stringify(S.rd));
+}
+function clearRd() { S.rd = null; LS.del(RD_KEY); }
+const rdAvailable = () => !!(S.rd && S.rd.t) || !!(S.init && S.init.rd_connected && S.link);
+/** Asks the TV for a fresh access token (force: the old one got a 401). 8 s, then NEED_TV. */
+function askRdToken(force) {
+  if (!S.link || !S.key) return Promise.reject(fatal(NEED_TV));
+  const req = newReq();
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => { rdWait.delete(req); reject(fatal(NEED_TV)); }, 8000);
+    rdWait.set(req, (m) => {
+      clearTimeout(t); rdWait.delete(req);
+      if (m.rd_token) { S.rd = null; setRd(m.rd_token, +m.rd_expires_at || 0); resolve(m.rd_token); }
+      else { if (m.error) clearRd(); reject(fatal(NO_RD)); }
+    });
+    relaySend({ cmd: "rd_token", req, ts: Date.now(), force: !!force })
+      .catch(() => { clearTimeout(t); rdWait.delete(req); reject(fatal("Couldn't reach the relay. Check your internet.")); });
+  });
+}
+async function rdToken() {
+  if (S.rd && S.rd.t && (S.rd.exp || 0) - Date.now() > 60000) return S.rd.t;
+  if (!S.link && !(S.rd && S.rd.t)) throw fatal(NO_RD);
+  return askRdToken(false);
+}
+/** One RD API call; on 401 asks the TV for a new token and retries once (RealDebrid.authed). */
+async function rdCall(method, path, fields, retried) {
+  const tok = await rdToken();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 20000);
+  let r, txt = "";
+  try {
+    r = await fetch(RD_API + path, {
+      method, signal: ac.signal, headers: { Authorization: "Bearer " + tok },
+      body: fields ? new URLSearchParams(fields) : undefined,
+    });
+    txt = await r.text();
+  } catch {
+    throw fatal("Couldn't reach Real-Debrid from this browser. Check your internet, or Play on TV.");
+  } finally { clearTimeout(timer); }
+  if (r.status === 401) {
+    if (retried) throw fatal("Real-Debrid needs reconnecting. Go to Settings > Real-Debrid on the TV.");
+    await askRdToken(true);
+    return rdCall(method, path, fields, true);
+  }
+  let o = null; try { o = txt ? JSON.parse(txt) : null; } catch {}
+  if (!r.ok) {
+    const e = new Error("Real-Debrid: " + String((o && o.error) || "error " + r.status).replace(/_/g, " "));
+    e.status = r.status;
+    throw e;
+  }
+  return o; // null for 204 (no content)
+}
+const rdInfo = (id) => rdCall("GET", "/torrents/info/" + encodeURIComponent(id));
+async function rdUnrestrict(link) {
+  const o = await rdCall("POST", "/unrestrict/link", { link });
+  if (!o || !o.download) throw new Error("Real-Debrid gave no link for this source.");
+  return { direct: o.download, rdId: o.id || null, mime: o.mimeType || "", filename: o.filename || "" };
+}
+const notCached = (p) => new Error(`Not cached on Real-Debrid yet (${Math.round(+p || 0)}%). Pick a ⚡ Instant source.`);
+/** RealDebrid.resolveHash: reuse the torrent if it is in your account, else add it, pick the file, unrestrict. */
+async function rdResolveHash(infoHash, fileIdx, season, episode) {
+  const hash = String(infoHash).trim().toLowerCase();
+  const FAILED = ["magnet_error", "error", "virus", "dead"], BUSY = ["queued", "downloading", "compressing", "uploading"];
+  let reuseId = null, existing = null;
+  try {
+    const list = await rdCall("GET", "/torrents?limit=100&page=1");
+    existing = (Array.isArray(list) ? list : []).find((x) => String(x.hash || "").toLowerCase() === hash) || null;
+  } catch (e) { if (e.fatal) throw e; } // listing failed: just add the magnet
+  if (existing) {
+    const st = existing.status;
+    if (st === "downloaded") {
+      const info = await rdInfo(existing.id);
+      const link = SI.linkFor(info, SI.chooseFile(info.files || [], fileIdx, season, episode));
+      if (link) return link; // else the file we want was not selected in that copy: add a fresh one
+    } else if (BUSY.includes(st)) throw notCached(existing.progress);
+    else if (st === "waiting_files_selection" || st === "magnet_conversion") reuseId = existing.id;
+  }
+  const owned = reuseId == null;
+  const id = reuseId || (await rdCall("POST", "/torrents/addMagnet", { magnet: "magnet:?xt=urn:btih:" + hash })).id;
+  try {
+    let info = await rdInfo(id);
+    for (let waited = 0; info.status === "magnet_conversion" && waited < 10000; waited += 1000) { await sleep(1000); info = await rdInfo(id); }
+    let status = info.status;
+    if (status === "magnet_conversion") throw new Error("Real-Debrid is still reading this torrent. Pick another source.");
+    if (FAILED.includes(status)) throw new Error("Real-Debrid: " + status.replace(/_/g, " "));
+    const chosen = SI.chooseFile(info.files || [], fileIdx, season, episode);
+    if (status === "waiting_files_selection") {
+      await rdCall("POST", "/torrents/selectFiles/" + encodeURIComponent(id), { files: chosen ? String(chosen.id) : "all" });
+    }
+    for (let i = 0; i < 8; i++) {
+      info = await rdInfo(id);
+      status = info.status;
+      if (status === "downloaded") {
+        const link = SI.linkFor(info, chosen) || (info.links || [])[0];
+        if (link) return link;
+      }
+      if (FAILED.includes(status)) throw new Error("Real-Debrid: " + status.replace(/_/g, " "));
+      await sleep(1500);
+    }
+    throw notCached(info.progress);
+  } catch (e) {
+    // Not playable here: remove what we added so your RD cloud stays clean.
+    if (owned) rdCall("DELETE", "/torrents/delete/" + encodeURIComponent(id)).catch(() => {});
+    throw e;
+  }
+}
+
+/** Resolver.resolve for the browser: {direct, rdId, mime, filename}. */
+async function resolveHere(s, meta) {
+  const tv = meta.type === "tv" && meta.season > 0 && meta.episode > 0;
+  if (s.url) {
+    if (!rdAvailable()) return { direct: s.url };
+    // Debrid addons often answer with a resolve URL that redirects to an RD download: RD unrestricts many
+    // hoster and RD links directly, which also gives an id for browser-friendly transcodes.
+    try { return await rdUnrestrict(s.url); } catch (e) { if (e.fatal) return { direct: s.url }; } // no RD access right now: play as is
+    try {
+      const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 8000);
+      const r = await fetch(s.url, { method: "HEAD", signal: ac.signal }).finally(() => clearTimeout(t));
+      if (r.url && r.url !== s.url && /(^|\.)real-debrid\.com$/i.test(new URL(r.url).hostname)) return await rdUnrestrict(r.url);
+    } catch {}
+    return { direct: s.url };
+  }
+  if (s.infoHash) {
+    if (!rdAvailable()) throw fatal(NO_RD);
+    const link = await rdResolveHash(s.infoHash, s.fileIdx, s.season != null ? s.season : tv ? meta.season : null,
+      s.episode != null ? s.episode : tv ? meta.episode : null);
+    return rdUnrestrict(link);
+  }
+  throw new Error("This source has no playable link");
+}
+
+function hlsCapable() {
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  let can = "";
+  try { can = document.createElement("video").canPlayType("application/vnd.apple.mpegurl"); } catch {}
+  return ios || !!can;
+}
+/**
+ * What the player tries, in order. iPhone, iPad and Safari: RD's HLS transcode. Others: RD's MP4 transcode
+ * (an .mp4 file plays as is first, so it can seek), then WebM. The direct file is always the last resort.
+ */
+async function playCandidates(res) {
+  let tc = null;
+  if (res.rdId) { try { tc = await rdCall("GET", "/streaming/transcode/" + encodeURIComponent(res.rdId)); } catch {} }
+  const full = (k) => { const x = tc && tc[k]; if (!x) return ""; if (typeof x === "string") return x; return x.full || Object.values(x).find((u) => typeof u === "string") || ""; };
+  const hls = hlsCapable();
+  const isMp4 = /mp4|quicktime/i.test(res.mime || "") || /\.(mp4|m4v|mov)$/i.test(res.filename || "");
+  const out = [];
+  const add = (url, kind) => { if (url && !out.some((c) => c.url === url)) out.push({ url, kind }); };
+  if (hls && full("apple")) add(full("apple"), "hls");
+  if (!hls && isMp4) add(res.direct, "direct");
+  add(full("liveMP4"), "mp4");
+  if (!hls) add(full("h264WebM"), "webm");
+  add(res.direct, "direct");
+  return out;
+}
+
+// ---------- resume positions (this browser) ----------
+const posKey = (m) => m.type + ":" + m.id + (m.type === "tv" ? ":" + m.season + ":" + m.episode : "");
+function getPos(m) { const all = readJSON(POS_KEY) || {}; return all[posKey(m)] || null; }
+function setPos(m, p, d) {
+  const all = readJSON(POS_KEY) || {};
+  all[posKey(m)] = { p: Math.round(p), d: Math.round(d), at: Date.now() };
+  const keys = Object.keys(all);
+  if (keys.length > 300) keys.sort((a, b) => all[a].at - all[b].at).slice(0, keys.length - 300).forEach((k) => delete all[k]);
+  LS.set(POS_KEY, JSON.stringify(all));
+}
+
+// ---------- Sources page (#/sources/type/id?s=&e=) ----------
+function srcRow(r, i) {
+  const f = r.info;
+  const st = `<span class="st" aria-label="${f.stars} of 5 stars">${"&#9733;".repeat(f.stars)}<i>${"&#9733;".repeat(5 - f.stars)}</i></span>`;
+  const parts = [st];
+  if (f.resolution) parts.push(`<span class="bdg${f.resolution === "4K" || f.resolution === "1080p" ? " hi" : ""}">${esc(f.resolution)}</span>`);
+  f.hdr.forEach((h) => parts.push(`<span class="bdg">${esc(h)}</span>`));
+  if (f.audio) parts.push(`<span class="bdg">${esc(f.audio)}</span>`);
+  if (f.source) parts.push(`<span class="so">${esc(f.source)}</span>`);
+  if (f.sizeLabel) parts.push(`<span class="sz">${esc(f.sizeLabel)}</span>`);
+  if (f.instant) parts.push(`<span class="in">&#9889; Instant</span>`);
+  else if (f.download) parts.push(`<span class="dl">&#9203; Download</span>`);
+  parts.push(`<span class="ad">${esc(r.source.addon)}</span>`);
+  const tip = (r.source.name + "\n" + r.source.title).trim();
+  return `<button class="src" data-src="${i}" title="${esc(tip)}">${parts.join("")}</button>`;
+}
+async function renderSources(v, tok, type, id, q) {
+  let season = type === "tv" ? +q.get("s") || 0 : 0, episode = type === "tv" ? +q.get("e") || 0 : 0;
+  v.innerHTML = `<div class="page"><div class="sk sk-line" style="width:40%;height:30px"></div><div class="sk sk-line" style="width:25%"></div>${Array.from({ length: 6 }, () => `<div class="sk" style="height:46px;margin:8px 0;max-width:980px"></div>`).join("")}</div>`;
+  let d;
+  try { d = await api.details(type, id); } catch (e) {
+    if (tok === routeTok) v.innerHTML = `<div class="notice"><h2>Couldn't load this title</h2><p class="muted">${esc(e.message)}</p><button class="btn" data-act="reload">Try again</button></div>`;
+    return;
+  }
+  if (tok !== routeTok) return;
+  const t = norm(d, type);
+  if (!t) { v.innerHTML = `<div class="notice"><h2>Not available</h2></div>`; return; }
+  const imdb = d.imdb_id || (d.external_ids && d.external_ids.imdb_id) || "";
+  if (type === "tv" && (season <= 0 || episode <= 0)) {
+    const c = contFor(type, id);
+    if (c && c.season > 0 && c.episode > 0) { season = c.season; episode = c.episode; }
+    else { const s1 = (d.seasons || []).find((s) => s.season_number > 0); season = s1 ? s1.season_number : 1; episode = 1; }
+  }
+  const runtimeMin = type === "movie" ? d.runtime || 0 : (d.episode_run_time || [])[0] || 0;
+  const meta = { type, id, name: t.name, poster: t.poster, backdrop: t.backdrop, season, episode, runtimeMin,
+    label: type === "tv" ? `${t.name}  S${season} E${episode}` : t.name };
+  document.title = meta.label + " | McD TV";
+  const back = `#/title/${type}/${id}`;
+  const head = `<a class="muted" href="${back}" style="font-size:13px;font-weight:600">&#8249; ${esc(t.name)}</a>
+    <div class="srchead"><h1 style="margin-bottom:0">Play here</h1><div class="lbl">${esc(meta.label)}${siOpts().slow ? " · Slow connection: smaller files first" : ""}</div></div>`;
+  const tvBtn = `<button class="btn" ${playAttrs(t, season, episode)}>&#9654; Play on TV</button>`;
+  if (!imdb) { v.innerHTML = `<div class="page">${head}<p class="muted">This title has no IMDb id yet, so your addons can't look it up.</p><div class="actions">${tvBtn}</div></div>`; return; }
+  if (!addonUrls().length) {
+    v.innerHTML = `<div class="page">${head}<div class="panel" style="margin-top:14px"><h2>No addons yet</h2>
+      <p class="muted">${S.link ? "Play here uses the addons installed on your TV. Add one on the TV or the Control page, then tap Refresh from TV." : "Link your TV first. Play here uses the addons installed on it."}</p>
+      <div class="rowf" style="margin-top:10px">${S.link ? `<button class="btn small primary" data-act="retry">Refresh from TV</button>` : `<a class="btn small primary" href="#/pair">Link your TV</a>`}</div></div></div>`;
+    return;
+  }
+  v.innerHTML = `<div class="page">${head}
+    <div class="actions"><button class="btn primary" id="bestBtn" disabled>&#9889; Best source</button>${tvBtn}</div>
+    <div class="srcstatus" id="srcStatus" role="status" aria-live="polite">Asking your addons…</div>
+    <div class="srcs" id="srcList">${Array.from({ length: 6 }, () => `<div class="sk" style="height:46px"></div>`).join("")}</div></div>`;
+  const status = $("#srcStatus", v), listEl = $("#srcList", v), bestBtn = $("#bestBtn", v);
+  const say = (msg, bad) => { status.textContent = msg; status.classList.toggle("bad", !!bad); };
+  let list;
+  try { list = await fetchStreams(type, imdb, season, episode); } catch (e) { list = []; }
+  if (tok !== routeTok) return;
+  const opts = siOpts();
+  const a = SI.arrange(list, type === "tv", opts);
+  let rows = a.visible, showHidden = false;
+  if (!list.length) { say("Your addons found no sources for this title.", true); listEl.innerHTML = ""; return; }
+  say(`${a.visible.length + a.hidden.length} sources. Tap one, or let Best source pick.`);
+  bestBtn.disabled = false;
+  const draw = () => {
+    const all = showHidden ? a.visible.concat(a.hidden) : a.visible;
+    rows = all;
+    listEl.innerHTML = all.map(srcRow).join("") + (a.hidden.length && !showHidden
+      ? `<button class="srcmore" id="showHidden">Show ${a.hidden.length} hidden source${a.hidden.length === 1 ? "" : "s"} (CAM releases, files over the size limit)</button>` : "");
+  };
+  draw();
+  let busy = false;
+  const lock = (on) => { busy = on; bestBtn.disabled = on; $$(".src", listEl).forEach((b) => { b.disabled = on; }); };
+  async function go(s) {
+    const res = await resolveHere(s, meta);
+    if (tok !== routeTok) return true;
+    say("Getting the stream ready…");
+    const cands = await playCandidates(res);
+    if (tok !== routeTok) return true;
+    if (!cands.length) throw new Error("This source has no playable link");
+    const f = SI.info(s);
+    S.playing = { key: posKey(meta), meta, cands, back: location.hash,
+      line: [f.resolution, f.source, f.sizeLabel, s.addon].filter(Boolean).join(" · ") };
+    location.hash = `#/play/${type}/${id}` + (type === "tv" ? `?s=${season}&e=${episode}` : "");
+    return true;
+  }
+  listEl.addEventListener("click", async (e) => {
+    if (e.target.closest("#showHidden")) {
+      const first = a.visible.length; showHidden = true; draw();
+      const b = listEl.querySelectorAll(".src")[first]; if (b) b.focus();
+      return;
+    }
+    const b = e.target.closest("[data-src]"); if (!b || busy) return;
+    const s = rows[+b.dataset.src].source;
+    lock(true); say(`Getting stream from ${s.addon}…`);
+    try { await go(s); } catch (err) { if (tok === routeTok) { say(err.message || "Could not open this source", true); lock(false); } }
+  });
+  bestBtn.addEventListener("click", async () => {
+    if (busy) return;
+    lock(true);
+    // Resolver.best: the top 5 in list order (CAM and oversized only if nothing else), first that resolves wins.
+    const order = SI.playOrder(list, type === "tv", opts).slice(0, 5);
+    let last = null;
+    for (let i = 0; i < order.length; i++) {
+      if (tok !== routeTok) return;
+      say(`Finding the best source (${i + 1} of ${order.length})…`);
+      try { await go(order[i]); return; } catch (err) { last = err; if (err.fatal) break; }
+    }
+    if (tok === routeTok) { say(((last && last.message) || "No sources found.") + " Pick one below.", true); lock(false); }
+  });
+}
+
+// ---------- Player page (#/play/type/id?s=&e=) ----------
+function fmtTime(sec) { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); }
+function renderPlayer(v, tok, type, id, q) {
+  const P = S.playing;
+  const want = posKey({ type, id, season: +q.get("s") || 0, episode: +q.get("e") || 0 });
+  if (!P || P.key !== want) {
+    document.body.classList.remove("playmode");
+    v.innerHTML = `<div class="notice"><h2>Pick a source</h2><p class="muted">Choose a source to play this here.</p>
+      <div class="actions"><a class="btn primary" href="#/sources/${type}/${id}${type === "tv" && q.get("s") ? `?s=${+q.get("s")}&e=${+q.get("e")}` : ""}">Show sources</a></div></div>`;
+    return;
+  }
+  const m = P.meta;
+  document.title = m.label + " | McD TV";
+  const bd = m.backdrop ? ` poster="${IMG}w1280${esc(m.backdrop)}"` : "";
+  v.innerHTML = `<div class="player">
+    <div class="pl-top"><a class="pl-back" href="${esc(P.back)}" aria-label="Back to sources">&#8249; Back</a>
+      <div class="pl-title"><b>${esc(m.label)}</b><span class="muted" id="plLine">${esc(P.line)}</span></div></div>
+    <div class="pl-stage"><video id="vid" controls playsinline webkit-playsinline preload="auto"${bd}></video>
+      <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><a class="btn small primary" href="${esc(P.back)}">Pick another source</a></div></div>
+    <div class="pl-bar"><button class="btn primary big" id="fsBtn">&#9974; Full screen</button>
+      <a class="btn" href="${esc(P.back)}">Other sources</a>
+      <button class="btn" ${playAttrs({ type, id, name: m.name }, m.season, m.episode)}>&#9654; Play on TV instead</button></div></div>`;
+  const vid = $("#vid", v), msg = $("#plMsg", v);
+  let i = 0, resumed = false, lastSave = 0, lastRelay = 0, gone = false;
+  const BAD_FORMAT = "This file's format can't play in a browser. Try another source.";
+  const showMsg = (text) => { $("#plMsgText", v).textContent = text; msg.classList.remove("hidden"); };
+  const kindLabel = { hls: "Real-Debrid stream", mp4: "Real-Debrid stream (MP4)", webm: "Real-Debrid stream (WebM)", direct: "Original file" };
+  function load() {
+    const c = P.cands[i];
+    msg.classList.add("hidden");
+    $("#plLine", v).textContent = [P.line, kindLabel[c.kind]].filter(Boolean).join(" · ");
+    vid.src = c.url;
+    vid.load();
+    const p = vid.play(); if (p && p.catch) p.catch(() => {}); // blocked autoplay: the controls are there
+  }
+  function next() {
+    if (gone) return;
+    if (i < P.cands.length - 1) { i++; resumed = false; load(); } else showMsg(BAD_FORMAT);
+  }
+  const durMs = () => (isFinite(vid.duration) && vid.duration > 0 ? vid.duration * 1000 : (m.runtimeMin || 0) * 60000);
+  function save(sendTv) {
+    const pos = vid.currentTime * 1000, dur = durMs();
+    if (!(pos > 5000) || !(dur > 0)) return;
+    setPos(m, pos, dur);
+    lastSave = Date.now();
+    if (sendTv && S.link && S.key) {
+      lastRelay = Date.now();
+      relaySend({ cmd: "progress", type: m.type, id: m.id, season: m.season, episode: m.episode,
+        position_ms: Math.round(Math.min(pos, dur)), duration_ms: Math.round(dur), name: m.name,
+        poster: m.poster || "", backdrop: m.backdrop || "", ts: Date.now() }).catch(() => {});
+    }
+  }
+  vid.addEventListener("error", next);
+  vid.addEventListener("loadeddata", () => {
+    // Sound but no picture: the browser can't decode this video (HEVC in some browsers). Try the next way.
+    if (P.cands[i].kind !== "hls" && vid.videoWidth === 0 && vid.videoHeight === 0) { if (i < P.cands.length - 1) next(); else showMsg(BAD_FORMAT); }
+  });
+  vid.addEventListener("loadedmetadata", () => {
+    if (resumed) return;
+    resumed = true;
+    const dur = durMs();
+    const saved = getPos(m);
+    let at = 0;
+    if (saved && saved.p > 30000 && (!dur || saved.p < dur * 0.95)) at = saved.p / 1000;
+    else {
+      // Nothing saved here: pick up where the TV left off (Continue Watching).
+      const c = contFor(m.type, m.id);
+      if (c && dur && (m.type !== "tv" || (c.season === m.season && c.episode === m.episode)) && c.progress > 0.02 && c.progress < 0.92) at = (c.progress * dur) / 1000;
+    }
+    if (at > 0) { try { vid.currentTime = at; toast("Resumed at " + fmtTime(at)); } catch {} }
+  });
+  vid.addEventListener("timeupdate", () => {
+    const now = Date.now();
+    // Every 10 s here; the TV gets one every 2 minutes (the relay has a daily message limit).
+    if (now - lastSave >= 10000) save(now - lastRelay >= 120000);
+  });
+  vid.addEventListener("pause", () => { if (!gone && !vid.ended) save(true); });
+  vid.addEventListener("ended", () => save(true));
+  const onHide = () => save(true);
+  window.addEventListener("pagehide", onHide);
+  $("#fsBtn", v).addEventListener("click", async () => {
+    try {
+      if (vid.requestFullscreen) await vid.requestFullscreen();
+      else if (vid.webkitRequestFullscreen) vid.webkitRequestFullscreen();
+      else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();
+      try { await screen.orientation.lock("landscape"); } catch {}
+    } catch {
+      try { if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen(); } catch {}
+    }
+  });
+  S.cleanup = () => {
+    gone = true;
+    save(true);
+    window.removeEventListener("pagehide", onHide);
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+    vid.pause(); vid.removeAttribute("src"); vid.load();
+  };
+  load();
 }
 
 // ---------- Person page ----------
@@ -1154,6 +1869,11 @@ document.addEventListener("click", async (e) => {
       break;
     }
     case "open": remote({ cmd: "open", type, id, name: d.name || "" }, "Opening on your TV…"); break;
+    case "playhere": {
+      const qs = d.season ? `?s=${+d.season}&e=${+d.episode}` : "";
+      location.hash = `#/sources/${type}/${id}${qs}`;
+      break;
+    }
     case "wl": {
       if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return; }
       const on = !inWL(type, id);
