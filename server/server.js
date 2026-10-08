@@ -62,6 +62,9 @@ function userFor(req) {
   return s ? db.users[s.username] || null : null;
 }
 
+// Pending TV sign-ins (in memory; codes last 10 minutes).
+const pairs = new Map();
+
 // Slow down password guessing: max 10 failed logins per IP per 15 minutes.
 const failures = new Map();
 function tooManyFailures(ip) {
@@ -109,7 +112,13 @@ async function route(req, res) {
   const url = new URL(req.url, "http://x");
   const p = url.pathname;
 
-  if (req.method === "GET" && (p === "/" || p === "/health")) {
+  if (req.method === "GET" && (p === "/" || p === "/admin")) {
+    const html = fs.readFileSync(path.join(__dirname, "admin.html"));
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": html.length, "Cache-Control": "no-store" });
+    return res.end(html);
+  }
+
+  if (req.method === "GET" && p === "/health") {
     return send(res, 200, { ok: true, app: "McD TV server", users: Object.keys(db.users).length, inviteRequired: !!INVITE });
   }
 
@@ -137,9 +146,37 @@ async function route(req, res) {
     return send(res, 200, { token: newSession(user.username), username: user.username });
   }
 
+  // ---- TV pairing: the TV shows a code, you approve it on the web page while signed in. ----
+  if (req.method === "POST" && p === "/api/pair/start") {
+    const code = String(crypto.randomInt(100000, 1000000));
+    const id = crypto.randomBytes(16).toString("hex");
+    pairs.set(id, { code, created: Date.now(), token: null, username: null });
+    return send(res, 200, { id, code, expiresIn: 600 });
+  }
+  if (req.method === "GET" && p === "/api/pair/poll") {
+    const pr = pairs.get(url.searchParams.get("id") || "");
+    if (!pr || Date.now() - pr.created > 600_000) return send(res, 404, { error: "Code expired" });
+    if (!pr.token) return send(res, 202, { waiting: true });
+    pairs.delete(url.searchParams.get("id"));
+    return send(res, 200, { token: pr.token, username: pr.username });
+  }
+
   // Everything below needs a signed-in user.
   const user = userFor(req);
   if (!user) return send(res, 401, { error: "Sign in first" });
+
+  if (req.method === "POST" && p === "/api/pair/approve") {
+    const b = await readJson(req);
+    const code = String(b.code || "").replace(/\D/g, "");
+    for (const pr of pairs.values()) {
+      if (pr.code === code && !pr.token && Date.now() - pr.created < 600_000) {
+        pr.token = newSession(user.username);
+        pr.username = user.username;
+        return send(res, 200, { ok: true });
+      }
+    }
+    return send(res, 404, { error: "No TV is showing that code. Check the code on the TV." });
+  }
 
   if (req.method === "POST" && p === "/api/logout") {
     const m = /^Bearer (\w+)$/.exec(req.headers.authorization || "");
@@ -165,6 +202,24 @@ async function route(req, res) {
     user.dataUpdatedAt = at;
     save();
     return send(res, 200, { ok: true, updatedAt: at });
+  }
+
+  // Checks an addon link for the web page (browsers can't fetch most addons directly).
+  if (req.method === "POST" && p === "/api/addon/check") {
+    const b = await readJson(req);
+    let url = String(b.url || "").trim();
+    if (url.startsWith("stremio://")) url = "https://" + url.slice("stremio://".length);
+    if (!/^https?:\/\//.test(url)) url = "https://" + url;
+    if (!url.endsWith("manifest.json")) url = url.replace(/\/+$/, "") + "/manifest.json";
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) return send(res, 400, { error: `Addon answered ${r.status}` });
+      const m = await r.json();
+      const resources = (m.resources || []).map((x) => (typeof x === "string" ? x : x.name));
+      return send(res, 200, { url, name: m.name || "Addon", description: m.description || "", streams: resources.includes("stream") });
+    } catch (e) {
+      return send(res, 400, { error: "Could not load that addon: " + e.message });
+    }
   }
 
   if (req.method === "POST" && p === "/api/password") {

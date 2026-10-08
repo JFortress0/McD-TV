@@ -25,7 +25,7 @@ import androidx.tv.material3.Text
 import com.mcd.tv.Nav
 import com.mcd.tv.Screen
 import com.mcd.tv.data.Addons
-import com.mcd.tv.data.PhoneSetupServer
+import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.RealDebrid
 import kotlinx.coroutines.delay
@@ -101,29 +101,24 @@ fun SettingsScreen(nav: Nav) {
     }
 }
 
-/** Shows the phone-setup web address while the screen is open. */
+/** Shows the setup page address (the page itself runs whenever McD TV is open). */
 @Composable
 fun PhoneSetupScreen(nav: Nav) {
-    var last by remember { mutableStateOf("Waiting for your phone…") }
-    val server = remember { PhoneSetupServer { msg -> last = msg } }
-    var error by remember { mutableStateOf<String?>(null) }
-    DisposableEffect(server) {
-        runCatching { server.start() }.onFailure { error = it.message }
-        onDispose { server.stop() }
-    }
+    val addrs = remember { LocalWeb.addresses() }
     Column(Modifier.fillMaxSize().background(ScreenBackground).padding(48.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         McdLogo()
-        Text("PHONE SETUP", style = broadcastStyle(36.sp))
-        Text("1.  Connect your phone to the same Wi-Fi as this TV.", fontSize = 20.sp, color = McdColors.White)
-        Text("2.  Open this address in your phone's browser:", fontSize = 20.sp, color = McdColors.White)
+        Text("PHONE AND COMPUTER SETUP", style = broadcastStyle(36.sp))
+        Text("1.  Use a phone or computer on the same Wi-Fi as this TV.", fontSize = 20.sp, color = McdColors.White)
+        Text("2.  Open this address in its web browser:", fontSize = 20.sp, color = McdColors.White)
         Text(
-            server.address(),
+            addrs.first(),
             style = broadcastStyle(44.sp),
             modifier = Modifier.background(McdColors.Red, RoundedCornerShape(8.dp)).padding(horizontal = 20.dp, vertical = 8.dp),
         )
+        if (addrs.size > 1) Text("If that one doesn't load, try: " + addrs.drop(1).joinToString("   "), fontSize = 16.sp, color = McdColors.White)
         Text("3.  Paste your keys and links, then tap Save to TV.", fontSize = 20.sp, color = McdColors.White)
-        Text(error?.let { "Could not start: $it" } ?: last, fontSize = 18.sp, color = McdColors.Muted)
-        Text("Press BACK when done. The page stops when you leave this screen.", fontSize = 14.sp, color = McdColors.Muted)
+        Text(LocalWeb.error?.let { "Could not start: $it" } ?: LocalWeb.lastMessage, fontSize = 18.sp, color = McdColors.Muted)
+        Text("The page works whenever McD TV is open. Bookmark it.", fontSize = 14.sp, color = McdColors.Muted)
     }
 }
 

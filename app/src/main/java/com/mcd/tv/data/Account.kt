@@ -47,6 +47,24 @@ object Account {
     suspend fun login(user: String, pass: String) = signIn("/api/login", user, pass, "")
     suspend fun register(user: String, pass: String, invite: String) = signIn("/api/register", user, pass, invite)
 
+    data class Pairing(val id: String, val code: String, val expiresSec: Int)
+
+    /** TV sign-in by code: the TV shows this code; you approve it on the web page. */
+    suspend fun startPairing(): Pairing {
+        val r = call("POST", "/api/pair/start")
+        return Pairing(r.getString("id"), r.getString("code"), r.optInt("expiresIn", 600))
+    }
+
+    /** Returns true once the code was approved and this TV is signed in. */
+    suspend fun pollPairing(p: Pairing): Boolean {
+        val r = call("GET", "/api/pair/poll?id=${p.id}")
+        if (r.optBoolean("waiting")) return false
+        Prefs.accountToken = r.getString("token")
+        Prefs.accountName = r.optString("username")
+        pull(force = true)
+        return true
+    }
+
     suspend fun logout() {
         runCatching { push() }
         runCatching { call("POST", "/api/logout") }
@@ -67,9 +85,14 @@ object Account {
         }
     }
 
-    /** This TV -> server. */
+    /** This TV -> server. If the web page saved something newer, take that instead. */
     suspend fun push() {
         if (!signedIn) return
+        val server = call("GET", "/api/sync")
+        if (server.optJSONObject("data") != null && server.optLong("updatedAt") > Prefs.lastSyncAt) {
+            pull()
+            return
+        }
         val now = System.currentTimeMillis()
         call("PUT", "/api/sync", JSONObject().put("data", Prefs.exportAll()).put("updatedAt", now))
         Prefs.lastSyncAt = now

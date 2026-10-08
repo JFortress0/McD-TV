@@ -59,6 +59,7 @@ fun AccountScreen(nav: Nav) {
     var pass by remember { mutableStateOf("") }
     var invite by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
+    var pairing by remember { mutableStateOf<Account.Pairing?>(null) }
     val scope = rememberCoroutineScope()
 
     fun run(label: String, block: suspend () -> Unit) {
@@ -86,8 +87,29 @@ fun AccountScreen(nav: Nav) {
                     ActionButton("Sync now", { run("Sync") { Account.push() } }, primary = true)
                     ActionButton("Sign out", { run("Sign out") { Account.logout() } })
                 }
+            } else if (pairing != null) {
+                Text("On your computer or phone, open your McD TV Control page, sign in, and enter this code under Link a TV:", color = McdColors.White, fontSize = 18.sp)
+                Text(
+                    pairing!!.code,
+                    style = broadcastStyle(64.sp),
+                    modifier = Modifier.background(McdColors.Red, RoundedCornerShape(8.dp)).padding(horizontal = 28.dp, vertical = 8.dp),
+                )
+                Text(Prefs.serverUrl, color = McdColors.Muted, fontSize = 16.sp)
+                ActionButton("Cancel", { pairing = null })
             } else {
-                Text("Sign in, or create an account. Each person gets their own lists and Real-Debrid link.", color = McdColors.Muted)
+                ActionButton("Sign in with a code (easiest)", {
+                    run("Getting a code") {
+                        val p = Account.startPairing()
+                        pairing = p
+                        val until = System.currentTimeMillis() + p.expiresSec * 1000L
+                        while (pairing == p && System.currentTimeMillis() < until) {
+                            kotlinx.coroutines.delay(3000)
+                            if (Account.pollPairing(p)) { pairing = null; break }
+                        }
+                        if (pairing == p) { pairing = null; throw IllegalStateException("Code expired. Try again.") }
+                    }
+                }, primary = true)
+                Text("Or sign in, or create an account, here. Each person gets their own lists and Real-Debrid link.", color = McdColors.Muted)
                 Field("Username", user, { user = it })
                 Field("Password", pass, { pass = it }, password = true)
                 Field("Invite code (only to create an account)", invite, { invite = it })

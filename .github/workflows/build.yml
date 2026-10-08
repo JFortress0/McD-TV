@@ -43,6 +43,8 @@ jobs:
           fi
 
       - name: Build release APK
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace

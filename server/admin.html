@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>McD TV Control</title>
+<style>
+:root{--navy:#060B1A;--navy2:#141C3A;--card:#1A2244;--red:#D61828;--muted:#9AA3C0;--ok:#178A3C}
+*{box-sizing:border-box}
+html{background:#060B1A}
+body{margin:0;background:linear-gradient(var(--navy2),var(--navy)) fixed;color:#fff;font:15px/1.45 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;min-height:100vh}
+header{display:flex;align-items:center;gap:14px;padding:18px 24px;border-bottom:4px solid var(--red);background:var(--navy)}
+.logo{font:900 italic 28px Helvetica,Arial}.logo span{background:var(--red);border-radius:5px;padding:0 8px;margin-left:6px}
+header .who{margin-left:auto;color:var(--muted)}
+main{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+h2{font:900 italic 20px Helvetica,Arial;letter-spacing:1px;text-transform:uppercase;border-left:6px solid var(--red);padding-left:10px;margin:30px 0 10px}
+.card{background:var(--card);border-radius:10px;padding:16px;margin-bottom:12px}
+label{display:block;color:var(--muted);font-size:13px;margin:10px 0 4px}
+input[type=text],input[type=password],input[type=url]{width:100%;padding:11px 12px;border-radius:8px;border:1px solid #2c3766;background:#0d1430;color:#fff;font-size:15px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row input{flex:1;min-width:200px}
+button{background:var(--card);color:#fff;border:1px solid #2c3766;border-radius:8px;padding:10px 14px;font-weight:600;cursor:pointer;font-size:14px}
+button.primary{background:var(--red);border-color:var(--red)}
+button.small{padding:5px 10px;font-size:12px}
+button:disabled{opacity:.5;cursor:default}
+ul.list{list-style:none;margin:0;padding:0}
+ul.list li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #26305a}
+ul.list li:last-child{border-bottom:0}
+ul.list .grow{flex:1;min-width:0}
+ul.list .name{font-weight:700}
+ul.list .url{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{font-size:12px;border-radius:12px;padding:2px 10px;background:#2c3766}
+.pill.ok{background:var(--ok)}.pill.no{background:#5a2a2a}
+.toggle{display:flex;align-items:center;gap:10px;padding:8px 0}
+.toggle input{width:20px;height:20px;accent-color:var(--red)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--navy);border-top:1px solid #26305a;padding:12px 16px;display:flex;gap:12px;align-items:center;justify-content:center}
+.msg{color:var(--muted)}.msg.err{color:#ff6b6b}.msg.good{color:#5fd38a}
+.hint{color:var(--muted);font-size:13px}
+.hidden{display:none}
+.center{max-width:420px;margin:60px auto}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">McD<span>TV</span></div>
+  <div style="font:700 15px Helvetica;color:var(--muted)">CONTROL</div>
+  <div class="who" id="who"></div>
+</header>
+
+<!-- ============ sign in ============ -->
+<main id="loginView" class="hidden">
+  <div class="center card">
+    <h2 style="margin-top:0">Sign in</h2>
+    <label>Username</label><input id="lu" type="text" autocomplete="username">
+    <label>Password</label><input id="lp" type="password" autocomplete="current-password">
+    <label>Invite code (only to create an account)</label><input id="li" type="text">
+    <div class="row" style="margin-top:14px">
+      <button class="primary" onclick="auth('/api/login')">Sign in</button>
+      <button onclick="auth('/api/register')">Create account</button>
+    </div>
+    <p class="msg" id="loginMsg"></p>
+  </div>
+</main>
+
+<!-- ============ dashboard ============ -->
+<main id="appView" class="hidden">
+  <p class="hint">Changes here reach your TVs within about two minutes, or right away when McD TV opens. Each account has its own sources.</p>
+
+  <h2>Link a TV</h2>
+  <div class="card">
+    <p class="hint" style="margin-top:0">On the TV: Settings &gt; Account &gt; Sign in with a code. Type the 6-digit code it shows.</p>
+    <div class="row"><input id="pairCode" type="text" inputmode="numeric" placeholder="123456" style="max-width:200px"><button class="primary" onclick="pairTv()">Link TV</button><span class="msg" id="pairMsg"></span></div>
+  </div>
+
+  <h2>Addons (sources)</h2>
+  <div class="card">
+    <ul class="list" id="addons"></ul>
+    <label>Add an addon: paste its manifest.json URL or stremio:// link</label>
+    <div class="row"><input id="addonIn" type="url" placeholder="https://…/manifest.json"><button class="primary" onclick="addAddon()">Add</button></div>
+    <p class="msg" id="addonMsg"></p>
+  </div>
+
+  <h2>Real-Debrid</h2>
+  <div class="card"><span id="rd"></span>
+    <p class="hint">Connect or reconnect on the TV: Settings &gt; Connect Real-Debrid. The link then follows this account to every TV you sign in on. Use one Real-Debrid account per household.</p></div>
+
+  <h2>TMDB (posters and info)</h2>
+  <div class="card">
+    <div id="tmdbState"></div>
+    <label>New TMDB API key or read token (leave blank to keep the current one)</label>
+    <input id="tmdb" type="password" placeholder="Paste to replace">
+  </div>
+
+  <h2>Live TV</h2>
+  <div class="card">
+    <label>M3U playlist URL</label><input id="m3u" type="url" placeholder="https://…/playlist.m3u">
+  </div>
+
+  <h2>Websites (Sports &gt; Websites)</h2>
+  <div class="card">
+    <ul class="list" id="sites"></ul>
+    <div class="row" style="margin-top:8px">
+      <input id="siteName" type="text" placeholder="Name" style="max-width:180px">
+      <input id="siteUrl" type="url" placeholder="https://example.com">
+      <button class="primary" onclick="addSite()">Add</button>
+    </div>
+  </div>
+
+  <h2>My Stream</h2>
+  <div class="card"><label>Direct stream link (HLS, DASH, MP4, MKV)</label><input id="stream" type="url" placeholder="https://…/video.m3u8"></div>
+
+  <h2>Preferences</h2>
+  <div class="card">
+    <label class="toggle"><input type="checkbox" id="usOnly"> US only (lists and Top Rated)</label>
+    <label class="toggle"><input type="checkbox" id="slow"> Slow connection (smaller files first)</label>
+    <label class="toggle"><input type="checkbox" id="intro"> Play the intro when McD TV opens</label>
+  </div>
+
+  <h2>Account</h2>
+  <div class="card row">
+    <button onclick="signOut()">Sign out</button>
+    <input id="oldPw" type="password" placeholder="Current password" style="max-width:200px">
+    <input id="newPw" type="password" placeholder="New password" style="max-width:200px">
+    <button onclick="changePw()">Change password</button>
+  </div>
+</main>
+
+<div class="bar hidden" id="bar">
+  <span class="msg" id="saveMsg">No changes</span>
+  <button class="primary" id="saveBtn" onclick="save()" disabled>Save to my TVs</button>
+</div>
+
+<script>
+// ---- The TV stores settings as {key: {t: type, v: "value"}}. These are the keys this page edits. ----
+let token = localStorage.getItem("mcdtv_token") || "";
+let data = {};           // full settings blob from the server (includes things this page doesn't show)
+let addons = [];         // [{url, name}]
+let sites = [];          // [[name, url]]
+const $ = (id) => document.getElementById(id);
+
+async function api(method, path, body) {
+  const r = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || "Error " + r.status), { status: r.status });
+  return j;
+}
+
+const get = (k, d = "") => (data[k] ? data[k].v : d);
+const getBool = (k, d) => (data[k] ? data[k].v === "true" : d);
+const setStr = (k, v) => { if (v === "" || v == null) delete data[k]; else data[k] = { t: "s", v: String(v) }; };
+const setBool = (k, v) => (data[k] = { t: "b", v: v ? "true" : "false" });
+
+function show(view) {
+  $("loginView").classList.toggle("hidden", view !== "login");
+  $("appView").classList.toggle("hidden", view !== "app");
+  $("bar").classList.toggle("hidden", view !== "app");
+}
+
+async function auth(path) {
+  try {
+    const j = await api("POST", path, { username: $("lu").value.trim(), password: $("lp").value, invite: $("li").value.trim() });
+    token = j.token;
+    localStorage.setItem("mcdtv_token", token);
+    load();
+  } catch (e) { $("loginMsg").textContent = e.message; $("loginMsg").className = "msg err"; }
+}
+
+async function load() {
+  if (!token) return show("login");
+  try {
+    const me = await api("GET", "/api/me");
+    $("who").textContent = "Signed in as " + me.username;
+    const s = await api("GET", "/api/sync");
+    data = s.data || {};
+    render();
+    show("app");
+  } catch (e) {
+    if (e.status === 401) { token = ""; localStorage.removeItem("mcdtv_token"); return show("login"); }
+    alert(e.message);
+  }
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function render() {
+  let urls = []; try { urls = JSON.parse(get("addon_urls", "[]")); } catch {}
+  addons = urls.map((u) => ({ url: u, name: addons.find((a) => a.url === u)?.name || "" }));
+  try { sites = JSON.parse(get("websites", "[]")).map((x) => [x.split("|")[0], x.split("|").slice(1).join("|")]); } catch { sites = []; }
+  drawAddons(); drawSites();
+  $("rd").innerHTML = get("rd_refresh") ? '<span class="pill ok">Connected</span>' : '<span class="pill no">Not connected</span>';
+  $("tmdbState").innerHTML = get("tmdb_key") ? '<span class="pill ok">Key saved</span>' : '<span class="pill no">No key yet</span>';
+  $("m3u").value = get("m3u_url");
+  $("stream").value = get("custom_stream_url");
+  $("usOnly").checked = getBool("us_only", true);
+  $("slow").checked = getBool("slow_connection", false);
+  $("intro").checked = getBool("play_intro", true);
+  dirty(false);
+  addons.filter((a) => !a.name).forEach(async (a) => {
+    try { a.name = (await api("POST", "/api/addon/check", { url: a.url })).name; } catch { a.name = "(not responding)"; }
+    drawAddons();
+  });
+}
+
+function drawAddons() {
+  $("addons").innerHTML = addons.length ? addons.map((a, i) => `
+    <li><div class="grow"><div class="name">${esc(a.name || "…")}</div><div class="url">${esc(a.url)}</div></div>
+    <button class="small" onclick="moveAddon(${i},-1)" ${i === 0 ? "disabled" : ""}>↑</button>
+    <button class="small" onclick="moveAddon(${i},1)" ${i === addons.length - 1 ? "disabled" : ""}>↓</button>
+    <button class="small" onclick="removeAddon(${i})">Remove</button></li>`).join("")
+    : '<li class="hint">No addons yet. McD TV ships with none.</li>';
+}
+function drawSites() {
+  $("sites").innerHTML = sites.length ? sites.map(([n, u], i) => `
+    <li><div class="grow"><div class="name">${esc(n)}</div><div class="url">${esc(u)}</div></div>
+    <button class="small" onclick="removeSite(${i})">Remove</button></li>`).join("")
+    : '<li class="hint">No websites yet.</li>';
+}
+
+async function addAddon() {
+  const m = $("addonMsg"); m.className = "msg"; m.textContent = "Checking…";
+  try {
+    const a = await api("POST", "/api/addon/check", { url: $("addonIn").value });
+    if (addons.some((x) => x.url === a.url)) throw new Error("Already added");
+    addons.push({ url: a.url, name: a.name });
+    $("addonIn").value = ""; m.className = "msg good";
+    m.textContent = `Added ${a.name}` + (a.streams ? "" : " (note: this addon provides no streams)");
+    drawAddons(); dirty(true);
+  } catch (e) { m.className = "msg err"; m.textContent = e.message; }
+}
+function removeAddon(i) { addons.splice(i, 1); drawAddons(); dirty(true); }
+function moveAddon(i, d) { const [a] = addons.splice(i, 1); addons.splice(i + d, 0, a); drawAddons(); dirty(true); }
+
+function addSite() {
+  let u = $("siteUrl").value.trim(); if (!u) return;
+  if (!/^https?:\/\//.test(u)) u = "https://" + u;
+  const n = $("siteName").value.trim() || u.replace(/^https?:\/\//, "").split("/")[0];
+  sites.push([n, u]); $("siteUrl").value = ""; $("siteName").value = ""; drawSites(); dirty(true);
+}
+function removeSite(i) { sites.splice(i, 1); drawSites(); dirty(true); }
+
+function dirty(on) {
+  $("saveBtn").disabled = !on;
+  $("saveMsg").className = "msg";
+  $("saveMsg").textContent = on ? "Unsaved changes" : "All changes saved";
+}
+["m3u", "stream", "tmdb"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
+["usOnly", "slow", "intro"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
+
+async function save() {
+  setStr("addon_urls", JSON.stringify(addons.map((a) => a.url)));
+  setStr("websites", JSON.stringify(sites.map(([n, u]) => n + "|" + u)));
+  setStr("m3u_url", $("m3u").value.trim());
+  setStr("custom_stream_url", $("stream").value.trim());
+  if ($("tmdb").value.trim()) setStr("tmdb_key", $("tmdb").value.trim());
+  setBool("us_only", $("usOnly").checked);
+  setBool("slow_connection", $("slow").checked);
+  setBool("play_intro", $("intro").checked);
+  try {
+    await api("PUT", "/api/sync", { data, updatedAt: Date.now() });
+    $("tmdb").value = "";
+    render();
+    $("saveMsg").className = "msg good"; $("saveMsg").textContent = "Saved. Your TVs pick this up within two minutes.";
+  } catch (e) { $("saveMsg").className = "msg err"; $("saveMsg").textContent = e.message; }
+}
+
+async function pairTv() {
+  const m = $("pairMsg");
+  try { await api("POST", "/api/pair/approve", { code: $("pairCode").value }); m.className = "msg good"; m.textContent = "TV linked. It signs in within a few seconds."; $("pairCode").value = ""; }
+  catch (e) { m.className = "msg err"; m.textContent = e.message; }
+}
+
+async function signOut() { try { await api("POST", "/api/logout"); } catch {} token = ""; localStorage.removeItem("mcdtv_token"); $("who").textContent = ""; show("login"); }
+async function changePw() {
+  try { await api("POST", "/api/password", { old: $("oldPw").value, new: $("newPw").value }); alert("Password changed"); $("oldPw").value = $("newPw").value = ""; }
+  catch (e) { alert(e.message); }
+}
+
+load();
+</script>
+</body>
+</html>

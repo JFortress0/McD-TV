@@ -22,6 +22,9 @@ android {
         targetSdk = 35
         versionCode = runNumber
         versionName = "0.2.$runNumber"
+        // Optional: CI bakes in the TMDB key from the TMDB_API_KEY GitHub secret,
+        // so nobody has to enter it on the TV. A key saved in Phone setup still wins.
+        buildConfigField("String", "TMDB_KEY", "\"${System.getenv("TMDB_API_KEY") ?: ""}\"")
     }
 
     signingConfigs {
@@ -55,6 +58,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     lint {
         // Lint warnings should never block an APK for a personal sideloaded app.

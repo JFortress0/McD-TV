@@ -6,11 +6,34 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+
+/** One shared setup page for the whole app, running while McD TV is open. */
+object LocalWeb {
+    var lastMessage by androidx.compose.runtime.mutableStateOf("Waiting for a browser…")
+    var error by androidx.compose.runtime.mutableStateOf<String?>(null)
+    private var server: PhoneSetupServer? = null
+
+    fun start() {
+        if (server != null) return
+        val s = PhoneSetupServer { lastMessage = it }
+        error = runCatching { s.start() }.exceptionOrNull()?.message
+        server = s
+    }
+
+    fun stop() {
+        server?.stop()
+        server = null
+    }
+
+    fun addresses(): List<String> = (server ?: PhoneSetupServer {}).addresses()
+}
 
 /**
  * Typing long keys and URLs with a TV remote is painful. While the Phone Setup screen is open,
@@ -22,18 +45,26 @@ class PhoneSetupServer(private val onChange: (String) -> Unit) {
     private var server: ServerSocket? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun address(): String {
-        val ip = runCatching {
+    /** Every likely address of this TV on the home network (Wi-Fi first, then Ethernet). */
+    fun addresses(): List<String> {
+        val all = runCatching {
             NetworkInterface.getNetworkInterfaces().toList()
+                .filter { it.isUp && !it.isLoopback }
+                .sortedBy { n -> when { n.name.startsWith("wlan") -> 0; n.name.startsWith("eth") -> 1; else -> 2 } }
                 .flatMap { it.inetAddresses.toList() }
-                .firstOrNull { it is Inet4Address && !it.isLoopbackAddress && it.isSiteLocalAddress }?.hostAddress
-        }.getOrNull() ?: "this-tv-ip"
-        return "http://$ip:$port"
+                .filter { it is Inet4Address && !it.isLoopbackAddress }
+                .mapNotNull { it.hostAddress }
+        }.getOrDefault(emptyList())
+        return all.distinct().map { "http://$it:$port" }.ifEmpty { listOf("http://this-tv-ip:$port") }
     }
+
+    fun address(): String = addresses().first()
 
     fun start() {
         if (server != null) return
-        val s = ServerSocket(port)
+        val s = ServerSocket()
+        s.reuseAddress = true
+        s.bind(java.net.InetSocketAddress("0.0.0.0", port))
         server = s
         scope.launch {
             while (!s.isClosed) {

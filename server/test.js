@@ -36,6 +36,14 @@ server.listen(0, async () => {
     assert.deepEqual((await call("GET", "/api/sync", null, t)).json.data, { watchlist: [1, 2] });
     assert.equal((await call("POST", "/api/password", { old: "secret1", new: "secret2" }, t)).status, 200);
     assert.equal((await call("POST", "/api/login", { username: "jmcd", password: "secret2" })).status, 200);
+    const pr = await call("POST", "/api/pair/start");
+    assert.equal(pr.status, 200);
+    assert.equal((await call("GET", "/api/pair/poll?id=" + pr.json.id)).status, 202);
+    assert.equal((await call("POST", "/api/pair/approve", { code: "000000" }, t)).status, 404);
+    assert.equal((await call("POST", "/api/pair/approve", { code: pr.json.code }, t)).status, 200);
+    const done = await call("GET", "/api/pair/poll?id=" + pr.json.id);
+    assert.equal(done.status, 200);
+    assert.equal((await call("GET", "/api/me", null, done.json.token)).json.username, "jmcd");
     assert.equal((await call("POST", "/api/logout", null, t)).status, 200);
     assert.equal((await call("GET", "/api/me", null, t)).status, 401);
     console.log("ALL TESTS PASSED");

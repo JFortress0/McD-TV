@@ -39,7 +39,7 @@ object Prefs {
 
     // ---- Metadata ----
     var tmdbKey: String
-        get() = str("tmdb_key")
+        get() = str("tmdb_key").ifBlank { com.mcd.tv.BuildConfig.TMDB_KEY }
         set(v) = put("tmdb_key", v)
 
     // ---- Live TV ----

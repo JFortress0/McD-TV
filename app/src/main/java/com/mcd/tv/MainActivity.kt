@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import com.mcd.tv.data.Account
+import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.PlayMeta
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -76,12 +77,25 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
         // Signed in to a McD TV account? Pick up changes made on other TVs.
-        lifecycleScope.launch { runCatching { Account.pull() } }
+        lifecycleScope.launch {
+            // Pick up changes made on the web page or another TV: now, then every 2 minutes.
+            while (true) {
+                runCatching { Account.pull() }
+                kotlinx.coroutines.delay(120_000)
+            }
+        }
         setContent { McdTheme { App() } }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // The home-network setup page runs whenever McD TV is open.
+        LocalWeb.start()
     }
 
     override fun onStop() {
         super.onStop()
+        LocalWeb.stop()
         // Leaving the app (Home button, TV off): save lists and history to the account.
         if (Account.signedIn) Thread { runCatching { runBlocking { Account.push() } } }.start()
     }
