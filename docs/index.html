@@ -57,7 +57,7 @@ li:last-child{border-bottom:0}
 </main>
 
 <main id="app" class="hidden">
-  <p class="hint">Changes are sent to your TV over the internet, encrypted end to end. McD TV must be open on the TV to receive them, or they apply the next time it opens (within 12 hours).</p>
+  <p class="hint">Adding or removing an addon or website saves to the TV right away. For the other boxes, tap <b>Save to TV</b>. Changes are sent to your TV over the internet, encrypted end to end. McD TV must be open on the TV to receive them, or they apply the next time it opens (within 12 hours).</p>
 
   <h2>Addons (sources)</h2>
   <div class="card">
@@ -227,22 +227,26 @@ async function addAddon() {
   let name = "";
   try { const j = await (await fetch(u)).json(); name = j.name || ""; m.className = "good"; m.textContent = "Added " + (name || "addon") + ". Tap Save to TV."; }
   catch { m.className = "msg"; m.textContent = "Added. (This browser couldn't preview it; the TV will check it.) Tap Save to TV."; }
-  addons.push({ url: u, name }); $("addonIn").value = ""; drawAddons(); dirty(true);
+  addons.push({ url: u, name }); $("addonIn").value = ""; drawAddons(); dirty(true); save();
 }
-function removeAddon(i) { addons.splice(i, 1); drawAddons(); dirty(true); }
-function moveAddon(i, d) { const [a] = addons.splice(i, 1); addons.splice(i + d, 0, a); drawAddons(); dirty(true); }
+function removeAddon(i) { addons.splice(i, 1); drawAddons(); dirty(true); save(); }
+function moveAddon(i, d) { const [a] = addons.splice(i, 1); addons.splice(i + d, 0, a); drawAddons(); dirty(true); save(); }
 function addSite() {
   let u = $("siteUrl").value.trim(); if (!u) return;
   if (!/^https?:\/\//.test(u)) u = "https://" + u;
   const n = $("siteName").value.trim() || u.replace(/^https?:\/\//, "").split("/")[0];
-  sites.push([n, u]); $("siteUrl").value = ""; $("siteName").value = ""; drawSites(); dirty(true);
+  sites.push([n, u]); $("siteUrl").value = ""; $("siteName").value = ""; drawSites(); dirty(true); save();
 }
-function removeSite(i) { sites.splice(i, 1); drawSites(); dirty(true); }
+function removeSite(i) { sites.splice(i, 1); drawSites(); dirty(true); save(); }
 function dirty(on) { dirtyFlag = on; $("saveBtn").disabled = !on; if (on) { $("saveMsg").className = "msg"; $("saveMsg").textContent = "Unsaved changes"; } }
+$("siteUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") addSite(); });
+$("addonIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addAddon(); });
 ["m3u", "stream", "tmdb"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
 ["origin", "usOnly", "slow", "intro"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
 
 async function save() {
+  if ($("siteUrl").value.trim()) { addSite(); return; }
+  if ($("addonIn").value.trim()) { addAddon(); return; }
   if (!state) { $("saveMsg").className = "err"; $("saveMsg").textContent = "Waiting for the TV first. Open McD TV on the TV."; return; }
   const data = {
     addon_urls: addons.map((a) => a.url), websites: sites,
