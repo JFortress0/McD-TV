@@ -5,7 +5,9 @@ Pronounced "Mick-Dee Tee Vee."
 
 McD TV is a player and an interface. It ships with no content sources. You add every source (stream links, Real-Debrid, playlists, addons) inside the app.
 
-**First time? Follow [SETUP.md](SETUP.md).** It takes you from this folder to the app on your TV.
+**Install on a TV:** in the Downloader app, type `jfortress0.github.io/McD-TV/get`. Step-by-step guide for Fire TV, Google TV, Android TV and Android phones: [jfortress0.github.io/McD-TV/install.html](https://jfortress0.github.io/McD-TV/install.html).
+
+**Building it yourself? Follow [SETUP.md](SETUP.md).** It takes you from this folder to the app on your TV.
 
 ## What it does (v0.2)
 
@@ -18,7 +20,7 @@ McD TV copies the HuberTV layout and runs it natively on the TV. It talks straig
 - **Real-Debrid:** sign in with a code at real-debrid.com/device. You type nothing on the TV.
 - **My List:** Watchlist, Favorites, Background Noise shows, Watch History.
 - **Sports:** live scores and today's games for NFL, college football, NBA, MLB, NHL, college hoops and the Premier League. Select a game to see matching channels from your own playlist.
-- **Live TV:** your M3U playlist, grouped by category.
+- **Live TV:** your M3U playlist by category, plus live channel and event lists from your addons. Now / next from the playlist's program guide (XMLTV), favorites (Menu button), recent channels, last channel, channel search. In the player, UP / DOWN change the channel.
 - **Services:** browse the Netflix, Prime, Disney+, Hulu, Apple TV+, Peacock, Max, Paramount+, Crunchyroll and Starz catalogs. Title pages show which service carries a title and open that service's own app.
 - **Background Noise:** pick shows once. Random episodes keep playing.
 - **Genres:** movies and shows by genre, sorted by Popular or Top Rated.
@@ -36,6 +38,7 @@ McD TV ships with no content sources. You add the TMDB key, addons, Real-Debrid 
 - LEFT / RIGHT (control bar hidden): jump back or ahead 10 seconds.
 - CC button: subtitles on or off. Gear button: audio track and speed.
 - BACK: hide the control bar, then press BACK again to leave the player.
+- Live TV only: UP / DOWN (control bar hidden) change the channel. Menu adds or removes a favorite.
 
 ## Project map
 
@@ -87,7 +90,7 @@ Each build gets a higher version number, so the TV installs it as an update. You
 |---|---|
 | 1 | Intro, home, settings, player |
 | 2 | HuberTV-style browsing, sources, Real-Debrid, library, sports, live TV (this version) |
-| 3 | Live TV program guide (XMLTV), Xtream login, network files (SMB / WebDAV) |
+| 3 | Live TV now / next guide, favorites and channel surfing (done). Next: full guide grid, Xtream login, network files (SMB / WebDAV) |
 | 4 | Plain-English search, Trakt sync, profiles with PIN, speed tuning |
 
 ## Tech stack
