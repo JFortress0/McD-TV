@@ -160,6 +160,7 @@ fun LivePlayerScreen(nav: Nav, index: Int) {
             PlayerScreen(
                 url = playingChannel.url,
                 title = playingChannel.name,
+                headers = mapOf("User-Agent" to M3u.userAgent),
                 onKeyEvent = onKey,
                 autoShowControls = false,
                 sleepTimerEnabled = false,
