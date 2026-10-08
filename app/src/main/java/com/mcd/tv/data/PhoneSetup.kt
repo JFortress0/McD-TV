@@ -24,7 +24,7 @@ object LocalWeb {
         if (server != null) return
         val s = PhoneSetupServer { lastMessage = it }
         error = runCatching { s.start() }.exceptionOrNull()?.message
-        server = s
+        server = if (error == null) s else null // failed: try again next time
     }
 
     fun stop() {

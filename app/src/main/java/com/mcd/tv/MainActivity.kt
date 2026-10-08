@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
+        LocalWeb.start()
         // Signed in to a McD TV account? Pick up changes made on other TVs.
         lifecycleScope.launch {
             // Pick up changes made on the web page or another TV: now, then every 2 minutes.
@@ -89,13 +90,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        // The home-network setup page runs whenever McD TV is open.
+        // The home-network setup page keeps running while McD TV is in memory,
+        // including when the Fire TV screensaver comes on. start() does nothing if it already runs.
         LocalWeb.start()
     }
 
     override fun onStop() {
         super.onStop()
-        LocalWeb.stop()
         // Leaving the app (Home button, TV off): save lists and history to the account.
         if (Account.signedIn) Thread { runCatching { runBlocking { Account.push() } } }.start()
     }

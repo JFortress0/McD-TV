@@ -112,7 +112,14 @@ fun SettingsScreen(nav: Nav) {
 /** Shows the setup page address (the page itself runs whenever McD TV is open). */
 @Composable
 fun PhoneSetupScreen(nav: Nav) {
+    LocalWeb.start() // in case it stopped; does nothing if already running
     val addrs = remember { LocalWeb.addresses() }
+    // Keep the TV awake (no screensaver) while this screen is open.
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
     Column(Modifier.fillMaxSize().background(ScreenBackground).padding(48.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         McdLogo()
         Text("PHONE AND COMPUTER SETUP", style = broadcastStyle(36.sp))
