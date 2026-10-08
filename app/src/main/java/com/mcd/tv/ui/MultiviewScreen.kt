@@ -1007,6 +1007,18 @@ private fun ChooserSearch(index: LiveIndex, current: String?, onPick: (String) -
         delay(300)
         results = withContext(Dispatchers.Default) { index.search(query, 200) }
     }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val firstResult = remember { FocusRequester() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val toResults: () -> Unit = {
+        keyboard?.hide()
+        results = index.search(query, 200)
+        scope.launch {
+            androidx.compose.runtime.withFrameNanos { }
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { firstResult.requestFocus() }
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         BasicTextField(
             value = query,
@@ -1015,6 +1027,9 @@ private fun ChooserSearch(index: LiveIndex, current: String?, onPick: (String) -
             textStyle = TextStyle(color = McdColors.White, fontSize = 18.sp),
             cursorBrush = SolidColor(McdColors.Red),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, showKeyboardOnFocus = false),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onSearch = { toResults() }, onDone = { toResults() }, onNext = { toResults() }, onGo = { toResults() },
+            ),
             decorationBox = { inner ->
                 Box {
                     if (query.isEmpty()) Text("Channel name… (press OK to type)", color = McdColors.Muted, fontSize = 18.sp)
@@ -1022,6 +1037,14 @@ private fun ChooserSearch(index: LiveIndex, current: String?, onPick: (String) -
                 }
             },
             modifier = Modifier.padding(top = 4.dp, end = 32.dp, bottom = 8.dp).fillMaxWidth()
+                .onPreviewKeyEvent { e ->
+                    if (e.key == Key.DirectionDown && results.isNotEmpty() && query.isNotBlank()) {
+                        if (e.type == KeyEventType.KeyDown) toResults()
+                        true
+                    } else {
+                        false
+                    }
+                }
                 .background(McdColors.Card, HudShape).border(1.5.dp, McdColors.Accent, HudShape)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         )
@@ -1029,13 +1052,13 @@ private fun ChooserSearch(index: LiveIndex, current: String?, onPick: (String) -
         when {
             q.isEmpty() -> StatusText("Search all ${"%,d".format(index.size)} channels by name.")
             results.isEmpty() -> StatusText("No channels match \"$q\".")
-            else -> ChooserGrid(results, index, current, onPick)
+            else -> ChooserGrid(results, index, current, onPick, firstFocus = firstResult)
         }
     }
 }
 
 @Composable
-private fun ChooserGrid(list: IntArray, index: LiveIndex, current: String?, onPick: (String) -> Unit) {
+private fun ChooserGrid(list: IntArray, index: LiveIndex, current: String?, onPick: (String) -> Unit, firstFocus: FocusRequester? = null) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(4),
         state = rememberLazyGridState(),
@@ -1051,7 +1074,8 @@ private fun ChooserGrid(list: IntArray, index: LiveIndex, current: String?, onPi
             Column {
                 HudCard(
                     onClick = { onPick(ch.url) },
-                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                        .then(if (pos == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier),
                 ) { _ ->
                     Box(Modifier.fillMaxSize()) {
                         if (ch.logo != null) {
