@@ -49,6 +49,26 @@ jobs:
             echo "::warning::KEYSTORE_BASE64 secret not set. Building with a temporary key; you may need to uninstall before updating."
           fi
 
+      # Fast JVM unit tests (app/src/test). A failing test stops the build before any APK or Release is made.
+      # Same env as the APK step so the release classes compiled here are reused by assembleRelease.
+      - name: Run unit tests
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          MDBLIST_API_KEY: ${{ secrets.MDBLIST_API_KEY }}
+        run: |
+          chmod +x gradlew
+          ./gradlew testReleaseUnitTest --stacktrace
+
+      - name: Upload unit test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+          if-no-files-found: ignore
+
       - name: Build release APK
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
