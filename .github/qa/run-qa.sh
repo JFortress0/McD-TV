@@ -68,6 +68,8 @@ check_screen noise "BACKGROUND NOISE"
 check_screen library "Real-Debrid Cloud"
 check_screen live "playlist"
 check_screen multiview "MULTIVIEW"
+# Games hub (no playlist yet): the league header shows before the ESPN schedule loads, and even if it fails.
+check_screen games "NFL"
 check_screen search "Search movies"
 check_screen ask "ASK JARVIS"
 check_screen browse "Collections"

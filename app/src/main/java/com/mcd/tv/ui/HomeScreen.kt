@@ -232,6 +232,7 @@ private fun MoreRow(nav: Nav) {
         ) {
             item { CompactTile("Browse", "Genres, years, languages, services", { nav.tab(NavTab.Browse) }) }
             item { CompactTile("Live TV", "Your channels and favorites", { nav.tab(NavTab.Live) }) }
+            item { CompactTile("Games", "Every NFL game this week", { nav.push(Screen.Games(com.mcd.tv.data.League.NFL)) }) }
             item { CompactTile("Websites", "Sites you added on the Control page", { nav.push(Screen.Sports) }) }
             item { CompactTile("Background Noise", "Random episodes of your shows", { nav.push(Screen.Noise) }) }
         }

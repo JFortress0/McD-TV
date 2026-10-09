@@ -81,6 +81,9 @@ import com.mcd.tv.Screen
 import com.mcd.tv.data.Addons
 import com.mcd.tv.data.Channel
 import com.mcd.tv.data.Epg
+import com.mcd.tv.data.Game
+import com.mcd.tv.data.Games
+import com.mcd.tv.data.League
 import com.mcd.tv.data.LiveCatalog
 import com.mcd.tv.data.LiveIndex
 import com.mcd.tv.data.LiveItem
@@ -134,6 +137,10 @@ private const val KEY_FAV = "fav"
 private const val KEY_RECENT = "recent"
 private const val KEY_ALL = "all"
 private const val SEC = "sec:"
+/** League games pane: "game:NFL". */
+private const val GAME = "game:"
+/** Non-focusable rail headings ("GAMES", "CHANNELS"). */
+private const val HDR = "hdr:"
 
 private class RailEntry(val key: String, val label: String, val count: Int?)
 
@@ -174,8 +181,18 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
     var selected by rememberSaveable { mutableStateOf("") }
     var lastPlayed by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val entries = remember(index, favItems.size, recentItems.size) {
+    // Games block first: every game this week for each league in season (schedules load in the background).
+    LaunchedEffect(Unit) { GameBoard.refreshAll() }
+    val gamesUi = rememberGamesUi()
+    val leagues = GameBoard.visibleLeagues()
+    val leagueCounts = leagues.map { GameBoard.gameCount(it) }
+    val entries = remember(index, favItems.size, recentItems.size, leagues, leagueCounts) {
         buildList {
+            if (leagues.isNotEmpty()) {
+                add(RailEntry(HDR + "games", "GAMES", null))
+                leagues.forEachIndexed { i, l -> add(RailEntry(GAME + l.name, l.railLabel, leagueCounts[i])) }
+                add(RailEntry(HDR + "channels", "CHANNELS", null))
+            }
             add(RailEntry(KEY_SEARCH, "⌕  Search", null))
             add(RailEntry(KEY_FAV, "★  Favorites", favItems.size))
             if (recentItems.isNotEmpty()) add(RailEntry(KEY_RECENT, "Recent", recentItems.size))
@@ -188,6 +205,11 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
         favItems.isNotEmpty() -> KEY_FAV
         recentItems.isNotEmpty() -> KEY_RECENT
         else -> index.sections.firstOrNull()?.let { SEC + it.name } ?: KEY_ALL
+    }
+    // A game's channel list closes when another rail entry is picked.
+    LaunchedEffect(sel) {
+        val p = gamesUi.picker
+        if (p != null && sel != GAME + p.league.name) gamesUi.picker = null
     }
     // Favorites as listed when the section opened: un-starring a card keeps it in place (so focus does not jump).
     val favView = remember(index, sel == KEY_FAV) { index.indicesOf(Prefs.liveFavorites) }
@@ -252,7 +274,11 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
             // Back inside the content returns to the rail (Back on the rail leaves Live TV as usual).
             Box(
                 Modifier.weight(1f).fillMaxHeight().onPreviewKeyEvent { e ->
-                    if (e.key == Key.Back) {
+                    if (e.key == Key.Back && gamesUi.picker != null && sel.startsWith(GAME)) {
+                        // Back in a game's channel list returns to the games.
+                        if (e.type == KeyEventType.KeyUp) gamesUi.picker = null
+                        true
+                    } else if (e.key == Key.Back) {
                         if (e.type == KeyEventType.KeyUp) runCatching { requesterFor(sel).requestFocus() }
                         true
                     } else {
@@ -260,8 +286,18 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
                     }
                 },
             ) {
-                if (sel == KEY_SEARCH) {
-                    SearchPane(index, favSet, guide, now, hint, lastPlayed, restoreFocus, play, toggleFavorite)
+                if (sel.startsWith(GAME)) {
+                    val league = League.entries.firstOrNull { GAME + it.name == sel } ?: League.NFL
+                    // Keyed by league: each one starts at its own top (and focus target).
+                    androidx.compose.runtime.key(sel) { GamesPane(league, index, guide, gamesUi, play, restoreFocus) }
+                } else if (sel == KEY_SEARCH) {
+                    SearchPane(
+                        index, favSet, guide, now, hint, lastPlayed, restoreFocus, play, toggleFavorite,
+                        openGames = { g ->
+                            selected = GAME + g.league.name
+                            gamesUi.openPicker(g)
+                        },
+                    )
                 } else {
                     val section = if (sel.startsWith(SEC)) index.sections.firstOrNull { SEC + it.name == sel } else null
                     val (title, base) = when (sel) {
@@ -289,7 +325,7 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
                 }
             }
         }
-        HintBar(hint, favSet)
+        HintBar(hint, favSet, gamesMode = sel.startsWith(GAME))
     }
 }
 
@@ -314,7 +350,18 @@ private fun LiveRail(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         entries.forEach { e ->
-            RailItem(e.label, e.count, e.key == selected, requesterFor(e.key), onFocus = { onSelect(e.key) }, onClick = onOpen)
+            // Keyed, so entries appearing above (Games load in the background) never move focus or state.
+            androidx.compose.runtime.key(e.key) {
+                if (e.key.startsWith(HDR)) {
+                    Text(
+                        e.label,
+                        style = hudLabelStyle(10.sp, McdColors.Muted),
+                        modifier = Modifier.padding(start = 11.dp, top = 6.dp, bottom = 2.dp),
+                    )
+                } else {
+                    RailItem(e.label, e.count, e.key == selected, requesterFor(e.key), onFocus = { onSelect(e.key) }, onClick = onOpen)
+                }
+            }
         }
     }
 }
@@ -442,8 +489,13 @@ private fun SearchPane(
     restoreFocus: FocusRequester,
     onPlay: (IntArray, Int) -> Unit,
     onMenu: (Channel) -> Unit,
+    openGames: (Game) -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    // A team name ("packers", "green bay", "chiefs") also lists that team's games this week, above the channels.
+    val teamGames = remember(query.trim(), GameBoard.version) { Games.forTeamQuery(query) }
+    val teamChannels = rememberGameChannels(teamGames, index, guide)
+    val firstGame = remember { FocusRequester() }
     // First result list is computed right away so Back from a channel can focus it again.
     var results by remember(index) { mutableStateOf(index.search(query, 200)) }
     LaunchedEffect(index, query) {
@@ -457,10 +509,11 @@ private fun SearchPane(
     val toResults: () -> Unit = {
         keyboard?.hide()
         results = index.search(query, 200)
+        val target = if (teamGames.isNotEmpty()) firstGame else firstResult
         scope.launch {
             withFrameNanos { }
             withFrameNanos { }
-            runCatching { firstResult.requestFocus() }
+            runCatching { target.requestFocus() }
         }
     }
     Column(Modifier.fillMaxSize()) {
@@ -482,7 +535,7 @@ private fun SearchPane(
             },
             modifier = Modifier.padding(top = 4.dp, end = 32.dp, bottom = 8.dp).fillMaxWidth()
                 .onPreviewKeyEvent { e ->
-                    if (e.key == Key.DirectionDown && results.isNotEmpty() && query.isNotBlank()) {
+                    if (e.key == Key.DirectionDown && (results.isNotEmpty() || teamGames.isNotEmpty()) && query.isNotBlank()) {
                         if (e.type == KeyEventType.KeyDown) toResults()
                         true
                     } else {
@@ -493,8 +546,21 @@ private fun SearchPane(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         )
         val q = query.trim()
+        if (q.isNotEmpty() && teamGames.isNotEmpty()) {
+            TeamGamesRow(
+                games = teamGames,
+                channels = teamChannels,
+                hasPlaylist = true,
+                firstFocus = firstGame,
+                onOpen = { g ->
+                    val m = teamChannels?.get(g.key)
+                    if (m != null && m.size > 0) onPlay(m.items, 0) else openGames(g)
+                },
+                onMenu = openGames,
+            )
+        }
         when {
-            q.isEmpty() -> StatusText("Search all ${countText(index.size)} channels by name.")
+            q.isEmpty() -> StatusText("Search all ${countText(index.size)} channels by name, or a team for its games.")
             results.isEmpty() -> StatusText("No channels match \"$q\".")
             else -> ChannelGrid(results, index, favSet, guide, now, hint, lastPlayed, restoreFocus, onPlay, onMenu, firstFocus = firstResult)
         }
@@ -502,6 +568,7 @@ private fun SearchPane(
 }
 
 /** Four channel cards per row. Lazy, keyed by stream URL. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ChannelGrid(
     list: IntArray,
@@ -516,18 +583,34 @@ private fun ChannelGrid(
     onMenu: (Channel) -> Unit,
     firstFocus: FocusRequester? = null,
 ) {
+    val gridState = rememberLazyGridState()
+    val ownFirst = remember { FocusRequester() }
+    val first = firstFocus ?: ownFirst
+    // True while the first card is composed (a FocusRequester must be attached before focus is sent to it).
+    var firstShown by remember { mutableStateOf(false) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(4),
-        state = rememberLazyGridState(),
+        state = gridState,
         contentPadding = PaddingValues(start = 6.dp, end = 32.dp, top = 8.dp, bottom = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize(),
+        // Coming in from the rail (now taller with the Games block) lands on the first card while the grid is at
+        // the top, not on whichever row happens to line up with the rail entry.
+        modifier = Modifier
+            .fillMaxSize()
+            .focusProperties { enter = { if (firstShown && gridState.firstVisibleItemIndex == 0) first else FocusRequester.Default } }
+            .focusGroup(),
     ) {
         items(count = list.size, key = { pos -> index.channels[list[pos]].url }) { pos ->
             val i = list[pos]
             val ch = index.channels[i]
             val name = index.names[i]
+            if (pos == 0) {
+                androidx.compose.runtime.DisposableEffect(Unit) {
+                    firstShown = true
+                    onDispose { firstShown = false }
+                }
+            }
             LiveChannelCard(
                 ch = ch,
                 name = name,
@@ -545,7 +628,7 @@ private fun ChannelGrid(
                     }
                 },
                 modifier = (if (ch.url == lastPlayed) Modifier.focusRequester(restoreFocus) else Modifier)
-                    .then(if (pos == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier),
+                    .then(if (pos == 0) Modifier.focusRequester(first) else Modifier),
             )
         }
     }
@@ -638,7 +721,7 @@ private fun LiveChannelCard(
 
 /** Bottom line: what OK and Menu do on the focused card. */
 @Composable
-private fun HintBar(hint: FocusedChannel, favSet: Set<String>) {
+private fun HintBar(hint: FocusedChannel, favSet: Set<String>, gamesMode: Boolean = false) {
     val ch = hint.channel
     Row(
         Modifier.fillMaxWidth().height(30.dp).background(McdColors.Ink.copy(alpha = 0.6f)).drawBehind { drawLine(McdColors.Line, Offset(0f, 0f), Offset(size.width, 0f), 1f) }.padding(start = 32.dp, end = 32.dp),
@@ -650,6 +733,10 @@ private fun HintBar(hint: FocusedChannel, favSet: Set<String>) {
             KeyHint("OK", "Play")
             Spacer(Modifier.width(18.dp))
             KeyHint("☰", if (fav) "★ Favorite (press to remove)" else "☆ Add to favorites")
+        } else if (gamesMode) {
+            KeyHint("OK", "Watch the game on its best channel")
+            Spacer(Modifier.width(18.dp))
+            KeyHint("☰", "Every channel showing it")
         } else {
             Text(
                 "Pick a section on the left, then press ► to browse its channels.  ☰ on a channel adds it to Favorites.",

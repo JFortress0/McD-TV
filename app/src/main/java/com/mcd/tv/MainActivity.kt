@@ -69,6 +69,8 @@ sealed interface Screen {
     data object Live : Screen
     /** Live TV multiview: 1, 2 or 4 playlist channels at once. */
     data object Multiview : Screen
+    /** Every game this week for a league, with the playlist channels showing each one. */
+    data class Games(val league: com.mcd.tv.data.League = com.mcd.tv.data.League.NFL) : Screen
     data object Services : Screen
     data class ServiceGrid(val service: Service) : Screen
     data object Noise : Screen
@@ -150,6 +152,7 @@ class MainActivity : ComponentActivity() {
             "browse" -> Screen.Browse
             "live" -> Screen.Live
             "multiview" -> Screen.Multiview
+            "games" -> Screen.Games(com.mcd.tv.data.League.NFL)
             "services" -> Screen.Services
             "search" -> Screen.Search
             "ask" -> Screen.AskJarvis(askExtra)
@@ -261,6 +264,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.Sports -> SportsScreen(nav)
         Screen.Live -> LiveTvScreen(nav)
         Screen.Multiview -> com.mcd.tv.ui.MultiviewScreen(nav)
+        is Screen.Games -> com.mcd.tv.ui.GamesScreen(nav, s.league)
         Screen.Services -> ServicesScreen(nav)
         is Screen.ServiceGrid -> ServiceGridScreen(nav, s.service)
         Screen.Noise -> NoiseScreen(nav)
