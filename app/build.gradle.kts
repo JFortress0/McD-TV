@@ -61,6 +61,10 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        // JVM unit tests (app/src/test): Android framework calls return 0/null/false instead of throwing "Stub!".
+        unitTests.isReturnDefaultValues = true
+    }
     lint {
         // Lint warnings should never block an APK for a personal sideloaded app.
         abortOnError = false
@@ -82,4 +86,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.org.json)
 }
