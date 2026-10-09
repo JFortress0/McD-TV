@@ -125,18 +125,6 @@ object RealDebrid {
     internal suspend fun apiPost(path: String, fields: Map<String, String>): String = authed { Http.postForm("$API$path", fields, it) }
     internal suspend fun apiDelete(path: String): String = authed { Http.delete("$API$path", it) }
 
-    /**
-     * Access token for the Jarvis web app (your own browser), so it can play on a phone or computer.
-     * Refreshed first when it has less than [minValidMs] left, or when [force] is set (the browser got a 401).
-     * Returns the token and when it expires (epoch ms). The refresh token and client secret never leave the TV.
-     */
-    suspend fun webAccess(force: Boolean = false, minValidMs: Long = 15 * 60_000L): Pair<String, Long> {
-        if (!connected) throw IllegalStateException("Connect Real-Debrid in Settings first")
-        if (force || Prefs.rdExpiresAt - System.currentTimeMillis() < minValidMs) {
-            refresh(stale = Prefs.rdAccessToken, force = true)
-        }
-        return Prefs.rdAccessToken to Prefs.rdExpiresAt
-    }
 
     /** Account status line for Settings, e.g. "jfortress • premium until 2027-01-02". */
     suspend fun accountSummary(): String {
@@ -220,14 +208,95 @@ object RealDebrid {
             .firstOrNull { it.optString("hash").equals(hash, ignoreCase = true) }
     }
 
+    /** A stream for the Jarvis web app: the file link, plus RD's browser-friendly versions when RD has them. */
+    data class WebStream(val direct: String, val rdId: String, val mime: String, val filename: String, val transcode: JSONObject?)
+
+    /**
+     * Resolves a source for the web app's "Play here". Browsers can't call RD's API (it sends no CORS headers),
+     * so the TV does every RD call and the phone only plays the links it gets back. The RD token stays on the TV.
+     * [url] sources play as they are when RD does not know them.
+     */
+    suspend fun resolveForWeb(url: String?, infoHash: String?, fileIdx: Int?, season: Int?, episode: Int?): WebStream {
+        if (!connected) {
+            if (url != null) return WebStream(url, "", "", "", null)
+            throw IllegalStateException("Connect Real-Debrid on the TV first (Settings > Real-Debrid).")
+        }
+        val o: JSONObject = when {
+            infoHash != null -> unrestrictInfo(resolveHashLink(infoHash, fileIdx, season, episode))
+            url != null -> webUnrestrictUrl(url) ?: return WebStream(url, "", "", "", null)
+            else -> throw IllegalStateException("This source has no playable link")
+        }
+        val direct = o.optString("download")
+        if (direct.isBlank()) throw IllegalStateException("Real-Debrid gave no link for this source.")
+        val id = o.optString("id")
+        val tc = if (id.isBlank() || o.optInt("streamable", 1) == 0) null else try {
+            JSONObject(apiGet("/streaming/transcode/$id"))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null // no transcodes: the phone plays the file itself
+        }
+        return WebStream(direct, id, o.optString("mimeType"), o.optString("filename"), tc)
+    }
+
+    private suspend fun unrestrictInfo(link: String): JSONObject = JSONObject(apiPost("/unrestrict/link", mapOf("link" to link)))
+
+    /**
+     * An addon URL through RD: RD unrestricts many links itself. Debrid addons often answer with a resolve URL
+     * that redirects to an RD link, so up to 3 redirects are followed to find one. Null: RD does not know it.
+     */
+    private suspend fun webUnrestrictUrl(url: String): JSONObject? {
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return null
+        try {
+            return unrestrictInfo(url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IllegalStateException) {
+            if (e.message?.startsWith("Real-Debrid needs reconnecting") == true) throw e
+        } catch (e: Exception) {
+            // not an RD link: look where it redirects
+        }
+        var cur = url
+        repeat(3) {
+            val next = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val c = java.net.URL(cur).openConnection() as java.net.HttpURLConnection
+                    try {
+                        c.instanceFollowRedirects = false
+                        c.requestMethod = "HEAD"
+                        c.connectTimeout = 8_000
+                        c.readTimeout = 8_000
+                        if (c.responseCode in 300..399) c.getHeaderField("Location")?.let { java.net.URL(java.net.URL(cur), it).toString() } else null
+                    } finally {
+                        c.disconnect()
+                    }
+                }.getOrNull()
+            } ?: return null
+            cur = next
+            val host = runCatching { java.net.URL(cur).host.lowercase() }.getOrDefault("")
+            if (host == "real-debrid.com" || host.endsWith(".real-debrid.com")) {
+                return runCatching { unrestrictInfo(cur) }.getOrElse {
+                    if (it is CancellationException) throw it
+                    // RD's own download link that it won't unrestrict again: play it as is
+                    JSONObject().put("download", cur)
+                }
+            }
+        }
+        return null
+    }
+
     /**
      * Torrent hash -> direct URL, through your own RD account:
      * reuse the torrent if it is already in your account, otherwise add the magnet,
-     * select the right file, and unrestrict once RD has it.
+     * select the right file, and unrestrict once RD has it. Files RD has but this call did not add stay in your account.
      * Cached torrents finish in a few seconds. Uncached ones throw with the progress,
      * and torrents added here that do not play are deleted again so the RD cloud stays clean.
      */
-    suspend fun resolveHash(infoHash: String, fileIdx: Int?, season: Int? = null, episode: Int? = null): String {
+    suspend fun resolveHash(infoHash: String, fileIdx: Int?, season: Int? = null, episode: Int? = null): String =
+        unrestrict(resolveHashLink(infoHash, fileIdx, season, episode))
+
+    /** [resolveHash] without the last step: the RD link (real-debrid.com/d/...) for the chosen file. */
+    private suspend fun resolveHashLink(infoHash: String, fileIdx: Int?, season: Int?, episode: Int?): String {
         val hash = infoHash.trim().lowercase()
 
         var reuseId: String? = null
@@ -247,7 +316,7 @@ object RealDebrid {
                     val info = torrentInfo(id)
                     val chosen = chooseFile(filesOf(info), fileIdx, season, episode)
                     // If the file we want was not selected in that copy, fall through and add a fresh one.
-                    linkFor(info, chosen)?.let { return unrestrict(it) }
+                    linkFor(info, chosen)?.let { return it }
                 }
                 in busyStatuses ->
                     throw IllegalStateException("Not cached on Real-Debrid yet (${existing.optInt("progress")}% downloaded). Pick a cached source.")
@@ -272,7 +341,7 @@ object RealDebrid {
                 status = info.optString("status")
                 if (status == "downloaded") {
                     val link = linkFor(info, chosen) ?: info.optJSONArray("links")?.takeIf { it.length() > 0 }?.getString(0)
-                    if (link != null) return unrestrict(link)
+                    if (link != null) return link
                 }
                 if (status in failedStatuses) throw IllegalStateException("Real-Debrid: $status")
                 delay(1500)

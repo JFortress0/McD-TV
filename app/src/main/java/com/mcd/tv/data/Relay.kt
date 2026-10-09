@@ -47,6 +47,8 @@ sealed interface RemoteNav {
  */
 object Relay {
     private const val BASE = "https://ntfy.sh/"
+    /** A torrent info hash: 40 hex or 32 base32 characters. */
+    private val HASH = Regex("[A-Fa-f0-9]{40}|[A-Za-z2-7]{32}")
     const val CONTROL_PAGE = "https://jfortress0.github.io/McD-TV/"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -210,8 +212,13 @@ object Relay {
             // ---- McD TV web app (docs/app) ----
             // Optional "profile" (p1/p2/p3): that profile's lists, without changing the TV's active profile.
             "web_init" -> runCatching { publishWebInit(cmd.optString("req"), Library.validProfile(cmd.optString("profile"))) }
-            // The web app's "Play here" needs a fresh Real-Debrid token (its copy is old, or RD answered 401).
-            "rd_token" -> runCatching { publishRdToken(cmd.optString("req"), cmd.optBoolean("force", false)) }
+            // The web app's "Play here": the TV resolves the source through Real-Debrid (browsers can't call RD's API)
+            // and sends back links the phone can play. A cached torrent takes a few seconds, so it runs on its own.
+            "rd_resolve" -> {
+                val ts = cmd.optLong("ts", 0L)
+                if (ts > 0L && System.currentTimeMillis() - ts > 2 * 60_000L) return // the page stopped waiting long ago
+                scope.launch { runCatching { publishResolve(cmd) } }
+            }
             // Progress from "Play here", so Continue Watching on the TV stays in sync.
             "progress" -> runCatching { recordWebProgress(cmd) }
             // Ask Jarvis from the web app. The key stays on the TV; the answer can take up to 30 s,
@@ -321,7 +328,6 @@ object Relay {
                 .put("progress", Math.round(it.progress * 100) / 100.0)
         }
         // Real-Debrid access for "Play here" in the browser: the access token only (refreshed first if near expiry).
-        val rd: Pair<String, Long>? = if (RealDebrid.connected) runCatching { RealDebrid.webAccess() }.getOrNull() else null
         val addons = Prefs.addonUrls
         val sites: List<Any> = Prefs.websites.map { JSONArray().put(it.first).put(it.second) }
         val liveFavs: List<Any> = liveFavoritesOf(pid)
@@ -349,8 +355,6 @@ object Relay {
                 .put("max_movie_gb", Prefs.maxMovieGb)
                 .put("max_episode_gb", Prefs.maxEpisodeGb)
                 .put("rd_connected", RealDebrid.connected)
-                .put("rd_token", rd?.first ?: "")
-                .put("rd_expires_at", rd?.second ?: 0L)
                 .put("addons_separate", !withAddons)
                 .apply { if (withAddons) put("addon_urls", JSONArray(addons)) }
                 .put("websites_separate", !withSites)
@@ -495,21 +499,32 @@ object Relay {
         Http.postText(BASE + outTopic, encrypt(o.toString()))
     }
 
-    /** Reply to "rd_token": a fresh Real-Debrid access token for the web app's "Play here". */
-    private suspend fun publishRdToken(req: String, force: Boolean) {
+    /**
+     * Reply to "rd_resolve" {req, url?, infoHash?, fileIdx?, season?, episode?}:
+     * {type, req, direct, rd_id, mime, filename, transcode?, error}. "error" is blank on success.
+     */
+    private suspend fun publishResolve(cmd: JSONObject) {
         val o = JSONObject()
-            .put("type", "rd_token")
-            .put("req", req)
+            .put("type", "rd_resolve")
+            .put("req", cmd.optString("req"))
             .put("ts", System.currentTimeMillis())
         try {
-            val (token, expiresAt) = RealDebrid.webAccess(force = force)
-            o.put("rd_token", token).put("rd_expires_at", expiresAt)
+            val url = cmd.optString("url").trim().takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            val hash = cmd.optString("infoHash").trim().takeIf { HASH.matches(it) }
+            val fileIdx = if (cmd.has("fileIdx") && !cmd.isNull("fileIdx")) cmd.optInt("fileIdx", -1).takeIf { it >= 0 } else null
+            val season = cmd.optInt("season", 0).takeIf { it > 0 }
+            val episode = cmd.optInt("episode", 0).takeIf { it > 0 }
+            val r = RealDebrid.resolveForWeb(url, hash, fileIdx, season, episode)
+            o.put("direct", r.direct).put("rd_id", r.rdId).put("mime", r.mime).put("filename", r.filename.take(200))
+            r.transcode?.let { o.put("transcode", it) }
+            o.put("error", "")
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            o.put("rd_token", "").put("rd_expires_at", 0L)
-                .put("error", e.message ?: "Real-Debrid is not connected on the TV")
+            o.put("error", e.message?.take(200) ?: "The TV could not get this stream")
         }
-        Http.postText(BASE + outTopic, encrypt(o.toString()))
+        var msg = encrypt(o.toString())
+        if (msg.length > 3500 && o.has("transcode")) { o.remove("transcode"); msg = encrypt(o.toString()) } // too big: file only
+        Http.postText(BASE + outTopic, msg)
     }
 
     /**

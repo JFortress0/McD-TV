@@ -1,6 +1,9 @@
 package com.mcd.tv.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -178,11 +181,7 @@ object Games {
     private fun day(cal: Calendar): String = SimpleDateFormat("yyyyMMdd", Locale.US).format(cal.time)
 
     private suspend fun fetch(league: League): Schedule {
-        // Yesterday (late games still running after midnight) through six days ahead.
-        val from = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-        val to = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 6) }
         val extra = if (league.extraQuery.isNotEmpty()) "&" + league.extraQuery else ""
-        val rangeUrl = "$BASE${league.path}/scoreboard?limit=300&dates=${day(from)}-${day(to)}$extra"
         val byId = LinkedHashMap<String, Game>()
         var week: String? = null
         var firstError: Exception? = null
@@ -199,16 +198,32 @@ object Games {
                 firstError = e
             }
         }
-        try {
-            val body = Http.get(rangeUrl, timeoutMs = 20_000)
-            val (games, w) = withContext(Dispatchers.Default) { parse(body, league) }
-            if (week == null && league.weekly) week = w
-            games.forEach { byId[it.id] = it }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (byId.isEmpty()) throw (firstError ?: e)
+        // Yesterday (late games still running after midnight) through six days ahead, one request per day.
+        // ESPN answers 400 to a date range ("dates=A-B") since October 2026; single days still work.
+        val days = (-1..6).map { offset -> day(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, offset) }) }
+        val results = coroutineScope {
+            days.map { d ->
+                async {
+                    try {
+                        val body = Http.get("$BASE${league.path}/scoreboard?limit=300&dates=$d$extra", timeoutMs = 20_000)
+                        Result.success(withContext(Dispatchers.Default) { parse(body, league) })
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Result.failure(e)
+                    }
+                }
+            }.awaitAll()
         }
+        var dayError: Exception? = null
+        for (r in results) {
+            r.onSuccess { (games, w) ->
+                if (week == null && league.weekly) week = w
+                games.forEach { byId[it.id] = it }
+            }.onFailure { if (dayError == null) dayError = it as? Exception ?: Exception(it) }
+        }
+        // Only fail when nothing loaded at all: one bad day still shows the rest of the week.
+        if (byId.isEmpty() && results.none { it.isSuccess }) throw (firstError ?: dayError ?: IllegalStateException("No schedule"))
         // Drop finals from before today (yesterday's range only matters for games still running).
         val startOfToday = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
