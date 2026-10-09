@@ -2067,6 +2067,21 @@ async function rdResolveHash(infoHash, fileIdx, season, episode) {
   }
 }
 
+/**
+ * Debrid addon links (Torrentio and others) hide the torrent behind the addon's own resolve URL, for example
+ * /resolve/realdebrid/<key>/<infoHash>/<name>/<fileIdx>/<file>. With the hash this device asks RD itself,
+ * which also gets RD's iPhone-friendly versions. Returns {hash, fileIdx} or null.
+ */
+function hashFromUrl(url) {
+  let parts;
+  try { parts = new URL(url).pathname.split("/").map((x) => { try { return decodeURIComponent(x); } catch { return x; } }); } catch { return null; }
+  const at = parts.findIndex((x) => /^[a-f0-9]{40}$/i.test(x));
+  if (at < 0) return null;
+  let fileIdx = null;
+  for (const x of parts.slice(at + 1, at + 4)) if (/^\d{1,4}$/.test(x)) { fileIdx = +x; break; }
+  return { hash: parts[at].toLowerCase(), fileIdx };
+}
+
 /** Resolver.resolve for the browser: {direct, rdId, mime, filename, tc}. */
 async function resolveHere(s, meta) {
   const tv = meta.type === "tv" && meta.season > 0 && meta.episode > 0;
@@ -2074,7 +2089,9 @@ async function resolveHere(s, meta) {
   const episode = s.episode != null ? s.episode : tv ? meta.episode : null;
   if (s.url) {
     if (rdHere()) {
-      // Debrid addons often answer with a link RD can unrestrict, which also gives browser-friendly versions.
+      const h = hashFromUrl(s.url);
+      if (h) return rdUnrestrict(await rdResolveHash(h.hash, s.fileIdx != null ? s.fileIdx : h.fileIdx, season, episode));
+      // Other links: RD unrestricts many hoster links itself, which also gives browser-friendly versions.
       try { return await rdUnrestrict(s.url); } catch (e) { if (e.message === RECONNECT) throw e; }
       return { direct: s.url };
     }
@@ -2110,7 +2127,10 @@ async function playCandidates(res) {
   if (!hls && isMp4) add(res.direct, "direct");
   add(full("liveMP4"), "mp4");
   if (!hls) add(full("h264WebM"), "webm");
-  add(res.direct, "direct");
+  // Safari (iPhone, iPad, Mac) plays MP4 and MOV files only: an MKV would spin forever.
+  if (!hls || isMp4) add(res.direct, "direct");
+  if (!out.length) throw new Error("Real-Debrid has no iPhone version of this file yet, and the original file (" +
+    (String(res.filename || "").split(".").pop() || "MKV").toUpperCase() + ") can't play on iPhone. Pick another source, or use Play on TV.");
   return out;
 }
 
@@ -2264,8 +2284,12 @@ function renderPlayer(v, tok, type, id, q) {
   const BAD_FORMAT = "This file's format can't play in a browser. Try another source.";
   const showMsg = (text) => { $("#plMsgText", v).textContent = text; msg.classList.remove("hidden"); };
   const kindLabel = { hls: "Real-Debrid stream", mp4: "Real-Debrid stream (MP4)", webm: "Real-Debrid stream (WebM)", direct: "Original file" };
+  let watchdog = 0;
   function load() {
     const c = P.cands[i];
+    // Nothing loads within 25 s (the format can't play here, or the server never answers): try the next way.
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => { if (!gone && vid.readyState < 1) next(); }, 25000);
     msg.classList.add("hidden");
     $("#plLine", v).textContent = [P.line, kindLabel[c.kind]].filter(Boolean).join(" · ");
     vid.src = c.url;
@@ -2274,6 +2298,7 @@ function renderPlayer(v, tok, type, id, q) {
   }
   function next() {
     if (gone) return;
+    clearTimeout(watchdog);
     if (i < P.cands.length - 1) { i++; resumed = false; load(); } else showMsg(BAD_FORMAT);
   }
   const durMs = () => (isFinite(vid.duration) && vid.duration > 0 ? vid.duration * 1000 : (m.runtimeMin || 0) * 60000);
@@ -2295,6 +2320,7 @@ function renderPlayer(v, tok, type, id, q) {
     if (P.cands[i].kind !== "hls" && vid.videoWidth === 0 && vid.videoHeight === 0) { if (i < P.cands.length - 1) next(); else showMsg(BAD_FORMAT); }
   });
   vid.addEventListener("loadedmetadata", () => {
+    clearTimeout(watchdog);
     if (resumed) return;
     resumed = true;
     const dur = durMs();
