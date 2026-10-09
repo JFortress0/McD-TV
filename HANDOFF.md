@@ -1,64 +1,98 @@
-# McD TV: handoff notes
+# Jarvis: handoff notes
 
-Read this first when picking the project up in a new session (any model). It records the current state, how the pieces fit, and what comes next.
+Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next.
 
 Last updated: 2026-10-08.
 
+## Names that must not change
+
+The app was called "McD TV" and is now "Jarvis". Only the visible name changed. These identifiers stay as they are, because installed TVs and saved links depend on them:
+
+- Package and application id `com.mcd.tv`, theme `Theme.McdTV`, Kotlin names such as `McdColors` and `McdTheme`.
+- SharedPreferences file `mcdtv_settings` and every preference key.
+- ntfy topics `mcdtv-<id>-in`, `mcdtv-<id>-out` and `mcdtv-<house id>-house`.
+- Browser storage keys `mcdtv_*` on the Control page and web app.
+- Repo `github.com/JFortress0/McD-TV`, Pages site `jfortress0.github.io/McD-TV`, release files `McD-TV.apk` and `McD-TV-v0.2.N.apk` (old install links point at them).
+
 ## Current state
 
-- **Installed on J's Fire TV:** a v0.2.x build. Each new Release replaces it when J reinstalls from Downloader.
-- **TMDB:** the key is built into each APK from the GitHub secret `TMDB_API_KEY`.
-- **Real-Debrid:** connected on the TV with the device code.
-- **GitHub:** repo `github.com/JFortress0/McD-TV` (public). Each push to `main` builds a signed APK and publishes a Release.
-- **Install / update on the TV:** Downloader app, address `jfortress0.github.io/McD-TV/get` (redirects to `https://github.com/JFortress0/McD-TV/releases/latest/download/McD-TV.apk`). Guide for every device: `docs/install.html`.
-- **Phone and computer setup:** the TV shows a QR code (Settings > Phone & Computer Setup). It opens the Control page (`docs/index.html`, GitHub Pages), which talks to the TV through an encrypted ntfy.sh relay (`data/Relay.kt`). This works on any network. The home-Wi-Fi page on port 8642 is a fallback and runs only while that screen is open.
-- **QA:** `.github/workflows/qa.yml` runs the app in an Android TV emulator on every code push (`.github/qa/run-qa.sh`): screens, setup page, relay end to end, a sample M3U playlist, remote navigation, crash and freeze checks. Docs-only pushes skip build and QA.
+- **Install / update:** Downloader app, address `jfortress0.github.io/McD-TV/get`. It redirects to `releases/latest/download/Jarvis.apk`. Guide for every device: `docs/install.html`.
+- **TMDB:** built into each APK from the GitHub secret `TMDB_API_KEY`. A key saved on the Control page wins.
+- **MDBList (IMDb and Rotten Tomatoes scores):** secret `MDBLIST_API_KEY` or the Control page.
+- **Ask Jarvis:** needs a Jarvis key on the Control page. The key is stored on the TV and shared only with linked TVs (HouseSync, encrypted). It never goes to the account server. The UI never names the model provider.
 - **Local copy:** `~/Desktop/McD TV` on J's MacBook Air is a git repo. J pushes with GitHub Desktop.
 - **Secrets:** the signing key is in `keystore/` (git-ignored) and in the GitHub secret `KEYSTORE_BASE64`. Never commit `keystore/`.
 
-## How the app works
+## Architecture
 
-| Piece | File(s) | Notes |
-|---|---|---|
-| Navigation | `MainActivity.kt` | Back stack of `Screen` objects. Each entry keeps its own saved state (`SaveableStateHolder`), so Back restores scroll, search and filters. Account sync runs every 2 minutes. |
-| Theme | `ui/Theme.kt`, `ui/Common.kt`, `ui/Components.kt` | Graphite background, red glow pill buttons, cyan focus, Exo 2 headings (`res/font`). The intro keeps its own italic style (`introStyle`). |
-| Catalog | `data/Tmdb.kt` | Every list passes through `parseList`, which applies the origin filter (All / US only / Hide Asian; default Hide Asian). Top Rated = US titles with high vote counts. Adult titles are always off. |
-| Sources | `data/Addons.kt` | Stremio addon protocol client. The user adds addon URLs; none ship with the app. Sorted cached first, then quality (or smaller files in Slow mode). |
-| Real-Debrid | `data/RealDebrid.kt` | Device-code sign-in (open-source client id). Hash to link: reuse an existing torrent or addMagnet, wait for the file list, pick the file (addon fileIdx, then SxxEyy name, then largest), unrestrict. Torrents added for a play that fails are deleted. Token refresh retries once on 401. `RdCloud` lists and plays the user's RD library. |
-| Player | `player/`, `ui/UpNext.kt` | Media3 ExoPlayer. Remote: LEFT/RIGHT seek 10 s, BACK hides the controls, MENU sets a sleep timer. Saves progress; pauses when the app leaves the screen. Live streams recover from falling behind and retry network errors. Episodes end with a 10 s Up Next card. |
-| Library | `data/Library.kt` | Favorites, Watchlist, history / Continue Watching, Background Noise shows, hidden titles. Stored in SharedPreferences as JSON. |
-| Live TV | `data/Live.kt`, `data/Epg.kt`, `ui/LiveScreens.kt`, `ui/LivePlayer.kt` | M3U playlist (user supplied; movie/series entries skipped) plus addon live catalogs. Now/next from the playlist's XMLTV guide, favorites (MENU), recents, last channel, search. Live player: UP/DOWN change channel. |
-| Websites | `ui/SportsScreens.kt` | User-added websites list (route `Screen.Sports`, QA `--es screen sports`). Sports scores were removed. |
-| Profiles | `ui/ProfilesScreen.kt` | "Who's watching?" picker (Dad, Mom, Kids). Per-profile keys are `<key>@p1..p3` (Prefs.profileKey); old unscoped data migrates to p1. |
-| Websites | `ui/WebScreen.kt` | Built-in browser with a D-pad pointer. Blocks pop-up windows and cross-site redirects without a click. Sites are user-added (Home > More > Websites). |
-| Setup page | `data/PhoneSetup.kt` | Home-Wi-Fi fallback page on port 8642, only while Phone & Computer Setup is open (or a QA launch). Shows addon hosts, never full addon URLs. `/qa-relay` answers only in QA mode. |
-| Accounts | `data/Account.kt`, `ui/AccountScreen.kt`, `server/` | Optional Node server (no dependencies) with accounts, sync and the web Control page (`server/admin.html`). Sign in on the TV with a code. Not deployed yet. |
+The app is one Activity with Compose for TV screens. Code lives in three packages under `app/src/main/java/com/mcd/tv/`.
 
-## Open items for the next session
+### Navigation (`MainActivity.kt`)
 
-1. **J's sources:** J adds addons, playlists and websites himself on the Control page. Do not hardcode third-party addons, piracy sites, IPTV providers or torrent indexers into the repo or the app, and do not configure them for J. The app stays source-agnostic, like Stremio, Kodi and TiviMate.
-2. **MDBList key** (IMDb and Rotten Tomatoes scores): J creates it at mdblist.com and pastes it on the Control page or into the GitHub secret `MDBLIST_API_KEY`.
-3. **Next features** (see the morning report of 2026-10-08): full EPG grid, mini-guide overlay in the live player, profiles with PIN, Trakt sync, subtitle styling, FFmpeg audio (DTS / TrueHD), in-app update check, Android TV Watch Next row.
-4. **Account server** (optional): run it on the spare M1 Mac (`server/setup-mac.sh`), then Tailscale Funnel.
-5. **Housekeeping:** update GitHub Actions versions (Node 20 deprecation warnings).
+A back stack of `Screen` objects. Each entry keeps its own saved state, so Back restores scroll position, search text and filters. The QA run opens screens directly with `--es screen <name>` (for example `settings`, `live`, `games`, `ask`, `detail:movie:603`).
 
-## What HuberTV does (for reference)
+### data/
 
-- Next.js web app plus a native Android TV app (Kotlin, Compose, Hilt, Retrofit, Media3 + FFmpeg extension). The TV app is a thin client of their server.
-- **Server endpoints:**
-  - Catalog: `api/content/*`
-  - Sources: `api/debrid/sources`, which uses a single addon, Torrentio, configured with the owner's Real-Debrid key
-  - Playback: `api/debrid/resolve`
-  - TV sign-in: `api/auth/pair`
-  - Profiles: `api/family`
-  - Updates: `api/app/version`
-- All HuberTV users share the owner's Real-Debrid account. McD TV gives each user their own Real-Debrid link instead, because Real-Debrid flags accounts that stream from several homes at once.
+| File | What it does |
+|---|---|
+| `Prefs.kt` | All settings in SharedPreferences. Per-profile keys end in `@p1`..`@p3`. |
+| `Tmdb.kt` | Catalog. Every list passes the origin filter. Adult titles are always off. |
+| `Addons.kt`, `StreamInfo.kt` | Stremio addon client. Streams are parsed, ranked (cached first, then quality) and de-duplicated. |
+| `RealDebrid.kt` | Device-code sign-in, magnet to link, RD Cloud listing. Retries once on a 401 after a token refresh. |
+| `Library.kt` | Favorites, Watchlist, history and Continue Watching, Background Noise, hidden titles. JSON in Prefs. |
+| `Live.kt`, `LiveCatalog.kt`, `Epg.kt` | M3U or Xtream Codes playlist (movies and series skipped), channel clean-up and sections, XMLTV guide. Cached 6 hours. |
+| `Games.kt` | ESPN schedules and matching of games to playlist channels. |
+| `Jarvis.kt` | Ask Jarvis: model call, JSON parsing, TMDB lookup of each guess. |
+| `Relay.kt` | Encrypted link between the TV and the Control page / web app. |
+| `HouseSync.kt` | Shared settings between linked TVs. |
+| `PhoneSetup.kt` | Home Wi-Fi fallback page on port 8642. Runs only while Phone & Computer Setup is open, or in a QA launch. |
+| `Account.kt` | Optional account server client. See "Open items". |
 
-## Build and release
+### ui/ and player/
 
-- Push to `main`, or click "Run workflow" in the Actions tab. The build takes about 2 minutes; QA about 10.
-- A newer push cancels a build or QA run still in progress.
-- When nobody can push from the Mac, changes can go up through the GitHub website (Add file > Upload files, one folder per commit). After that, run `git pull` in the Mac copy so GitHub Desktop stays in step.
-- Versions are `0.2.<run number>`; the version code is the run number, so each build updates over the last.
-- Cloud sessions can't reach Google Maven or Gradle, so local builds there fail. CI is the build. `tree-sitter-kotlin` (pip) is a quick syntax check before pushing.
+- `HomeScreen.kt`, `BrowseScreens.kt` (Jarvis search, Library, Services, Noise, Genres), `CatalogScreens.kt` (Browse menu and grids), `DetailScreen.kt`, `SourcesScreen.kt`, `PersonScreen.kt`.
+- Live TV: `LiveScreens.kt` (channel list and Games block), `GamesScreen.kt`, `LivePlayer.kt` (channel up / down), `MultiviewScreen.kt` (one ExoPlayer per tile, released on exit).
+- `AskJarvisScreen.kt` is the stand-alone Ask Jarvis page (QA screen `ask`). The search box uses the same `Jarvis.ask`.
+- `ProfilesScreen.kt`, `SettingsScreen.kt` (also Phone & Computer Setup and Real-Debrid sign-in), `AccountScreen.kt`, `RdCloudScreen.kt`, `WebScreen.kt` (browser with a D-pad pointer; route `Screen.Sports` in `SportsScreens.kt`).
+- Look: `Theme.kt`, `Hud.kt`, `Common.kt`, `Components.kt`.
+- `player/PlayerScreen.kt`: Media3 ExoPlayer. Saves progress every 15 s and on exit, pauses when the app leaves the screen, retries network errors, jumps back to the live edge. `TvPlayerView.kt` handles LEFT / RIGHT seek and BACK. `ui/UpNext.kt` shows the 10 s Up Next card between episodes.
+
+### Relay protocol
+
+- The TV makes a random link id and a 256-bit key and shows them as a QR code. The key sits after `#` in the link, so browsers never send it anywhere.
+- Messages go through ntfy.sh. The page posts to `mcdtv-<id>-in`; the TV answers on `mcdtv-<id>-out`.
+- Each message is `"v1:" + base64url(iv(12) || AES-256-GCM(deflate-raw(JSON)))`. The relay only sees random bytes.
+- Commands include `hello`, `set` (settings), `house_join`, `house_leave`, `magnet`, `web_init`, `rd_token`, `progress`, `ask`, `open`, `play` and `watchlist`.
+- "New link" in Phone & Computer Setup makes a new id and key, which disconnects old devices.
+
+### HouseSync
+
+- Every TV has a house id and key. TVs in the same house share keys, addons, playlist, Real-Debrid and preferences. Profile data (history, My List, favorites) syncs separately through `data/sync/ProfileSync.kt` on the same topic; see `docs/ROADMAP-sync.md`.
+- Each TV listens on `mcdtv-<house id>-house`. Changes are sent encrypted (same format as the relay), in parts under ntfy's 4 KB limit, stamped with the change time. A TV takes a copy only when it is newer.
+- "Use its settings here" on the Control page joins another TV's house. "Copy once" copies everything except Real-Debrid and does not link the TVs.
+
+### Web pages (`docs/`, GitHub Pages)
+
+- `docs/index.html`: the Control page (QR link target).
+- `docs/app/`: the Jarvis web app (PWA with a service worker).
+- `docs/install.html`: install guide. `docs/get.html`: redirect to the newest APK.
+
+## Build, CI and QA
+
+- Push to `main`, or "Run workflow" in the Actions tab. `build.yml` runs unit tests, builds a signed release APK and publishes a Release (about 2 minutes). Version is `0.2.<run number>`; the version code is the run number.
+- `qa.yml` runs the APK in an Android TV emulator (`.github/qa/run-qa.sh`): screens open and show the right text, setup page, relay end to end, a sample M3U, remote navigation, crash and freeze checks. Results are in the run summary and the `qa-results` artifact.
+- Pushes that only touch `docs/`, Markdown or `server/` skip build and QA. A newer push cancels a run in progress.
+- Cloud sessions cannot reach Google Maven, so they cannot build. CI is the build. Before pushing, syntax-check Kotlin with `tree-sitter-kotlin` (pip) and web scripts with `node --check`.
 - Server tests: `cd server && node test.js`.
+
+## House rules
+
+1. J adds addons, playlists and websites himself on the Control page. Do not hardcode third-party addons, piracy sites, IPTV providers or torrent indexers, and do not configure them for J. The app stays source-agnostic, like Stremio, Kodi and TiviMate.
+2. User-facing text: plain short sentences, no em dashes. Do not name the model provider in the app UI (the provider console link next to the Jarvis key field is the one exception).
+3. Android regexes are ICU: escape `]` and `}` inside `Regex(...)`.
+
+## Open items
+
+1. **Account server:** `server/` works and has tests, but nothing in the app or the Control page sets the server address (`server_url`), so the Account page cannot be used. Either add a field for it or remove the feature. HouseSync covers most of what it was for.
+2. **Next features:** full EPG grid, mini-guide overlay in the live player, profile PINs, Trakt sync, subtitle styling, FFmpeg audio (DTS / TrueHD), in-app update check, Android TV Watch Next row.
+3. **Housekeeping:** update GitHub Actions versions (Node 20 deprecation warnings).
