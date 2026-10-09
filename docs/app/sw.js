@@ -2,7 +2,7 @@
 // index.html is network-first (updates show up right away). API, relay, image and stream requests
 // are never handled or cached here: they go straight to the network.
 "use strict";
-const CACHE = "jarvis-shell-v1";
+const CACHE = "jarvis-shell-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const scopeUrl = new URL(self.registration.scope);
 

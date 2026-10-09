@@ -548,7 +548,7 @@ function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LINK_KEY = "mcdtv_link"; // shared with the Control page (same origin)
 const INIT_KEY = "mcdtv_web_init";
-const RD_KEY = "mcdtv_web_rd"; // {t, exp}: Real-Debrid access token from your TV, for Play here (this browser only)
+const RD_KEY = "mcdtv_web_rd"; // old: a copy of the TV's Real-Debrid token. No longer used: removed at start.
 const POS_KEY = "mcdtv_web_pos"; // Play here resume positions
 const PROFILE_KEY = "mcdtv_web_profile"; // the profile watching on this device: "p1", "p2" or "p3"
 const PLISTS_KEY = "mcdtv_web_plists"; // each profile's lists from the TV: {p1: {watchlist, favorites, continue, live_favorites, ts}, ...}
@@ -599,13 +599,14 @@ const S = {
   manualMdb: LS.get("mcdtv_web_mdb"),
   originPref: LS.get("mcdtv_web_origin"), // "" = same as the TV
   status: "none", lastInitAsk: 0, initTimer: 0,
-  rd: readJSON(RD_KEY), addonParts: null, listParts: {}, streamCache: new Map(), playing: null, cleanup: null,
+  addonParts: null, listParts: {}, streamCache: new Map(), playing: null, cleanup: null,
   profile: PIDS.includes(LS.get(PROFILE_KEY)) ? LS.get(PROFILE_KEY) : "",
   plists: readJSON(PLISTS_KEY) || {},
 };
 // Lists used to be stored with the rest of web_init (one profile only): they now come per profile.
 if (S.init) { delete S.init.watchlist; delete S.init.favorites; delete S.init.continue; delete S.init.live_favorites; delete S.init.jarvis_key; }
-const rdWait = new Map(); // "rd_token" req id -> reply handler
+const resWait = new Map(); // "rd_resolve" req id -> reply handler
+LS.del(RD_KEY);
 const pending = new Map(); // req id -> timeout
 const askWait = new Map(); // "ask" req id -> reply handler
 function keys() {
@@ -675,9 +676,9 @@ async function onRelay(raw, live) {
   if (m.type === "web_init") applyInit(m);
   else if (m.type === "addons") applyAddons(m);
   else if (m.type === "web_list") applyWebList(m);
-  else if (m.type === "rd_token") {
-    const w = rdWait.get(m.req);
-    if (w) w(m); else if (m.rd_token) setRd(m.rd_token, +m.rd_expires_at || 0);
+  else if (m.type === "rd_resolve") {
+    const w = resWait.get(m.req);
+    if (w) w(m);
   }
   else if (m.type === "ask") {
     const w = askWait.get(m.req);
@@ -691,10 +692,7 @@ async function onRelay(raw, live) {
 
 function applyInit(m) {
   const prev = S.init || {};
-  // Real-Debrid access for Play here is kept apart from the rest (never shown, never logged).
-  if (m.rd_token) setRd(m.rd_token, +m.rd_expires_at || 0);
-  else if (m.rd_connected === false && (m.ts || 0) >= (prev.ts || 0)) clearRd();
-  delete m.rd_token; delete m.rd_expires_at;
+  delete m.rd_token; delete m.rd_expires_at; // older TVs sent a token: never kept
   // The Jarvis key is kept apart too: saved on this device only while "Use Jarvis on this device" is on.
   const hasJk = Object.prototype.hasOwnProperty.call(m, "jarvis_key");
   const jk = typeof m.jarvis_key === "string" ? m.jarvis_key.trim() : "";
@@ -810,7 +808,7 @@ async function pair(l) {
   S.link = l;
   LS.set(LINK_KEY, l.id + "." + l.key);
   if (!changed && S.key) return;
-  if (S.init && S.init.relay_id && S.init.relay_id !== l.id) { S.init = null; LS.del(INIT_KEY); clearRd(); S.plists = {}; LS.del(PLISTS_KEY); LS.del(JKEY); LV.reset(); }
+  if (S.init && S.init.relay_id && S.init.relay_id !== l.id) { S.init = null; LS.del(INIT_KEY); S.plists = {}; LS.del(PLISTS_KEY); LS.del(JKEY); LV.reset(); }
   try { S.key = await importKey(l.key); } catch { S.link = null; S.key = null; toast("That link is not valid.", "warn"); return; }
   if (S.init) { S.init.relay_id = l.id; saveInit(); }
   connect();
@@ -818,7 +816,7 @@ async function pair(l) {
 function unpair() {
   if (S.es) S.es.close();
   S.es = null; S.link = null; S.key = null; S.init = null; S.plists = {};
-  LS.del(LINK_KEY); LS.del(INIT_KEY); LS.del(PLISTS_KEY); LS.del(JKEY); clearRd(); LV.reset();
+  LS.del(LINK_KEY); LS.del(INIT_KEY); LS.del(PLISTS_KEY); LS.del(JKEY); LV.reset();
   updateProfileUI();
   setStatus("none");
 }
@@ -1890,75 +1888,138 @@ async function fetchStreams(type, imdb, season, episode) {
   return list;
 }
 
-// ---------- Real-Debrid (your own account, through the token your TV shares) ----------
-const RD_API = "https://api.real-debrid.com/rest/1.0";
-const NEED_TV = "Your TV needs to be on once to refresh Real-Debrid access.";
-const NO_RD = "Connect Real-Debrid on the TV first (Settings > Real-Debrid).";
+// ---------- Real-Debrid (your own account) ----------
+// Browsers can't call Real-Debrid's API directly: it sends no CORS headers, so every reply is blocked.
+// Two ways round that, tried in order:
+//  1. This device signed in to RD (Settings > Real-Debrid on this device): calls go through the Jarvis RD
+//     relay (rd-proxy/, a Netlify function that only adds CORS headers). No TV needed.
+//  2. Otherwise the linked TV makes the RD calls ("rd_resolve" on the relay) and sends back playable links.
+const RD_PROXY = "https://jarvis-rd.netlify.app/rd/";
+const RD_CLIENT = "X245A4XAIBGVM"; // Real-Debrid's published client id for open-source apps (device sign-in)
+const RD_GRANT = "http://oauth.net/grant_type/device/1.0";
+const RDC_KEY = "mcdtv_web_rdc"; // {id, secret, t, r, exp}: this device's own RD sign-in (this browser only)
+const NO_RD = "Connect Real-Debrid first: Settings > Real-Debrid on this device.";
+const TV_OFF = "Your TV didn't answer. Sign in to Real-Debrid on this device (Settings) to play without the TV, or use Play on TV.";
+const RECONNECT = "Real-Debrid signed this device out. Connect it again in Settings.";
 function fatal(msg) { const e = new Error(msg); e.fatal = true; return e; }
-function setRd(t, exp) {
-  if (!t) return;
-  if (S.rd && S.rd.t && S.rd.t !== t && (S.rd.exp || 0) > exp) return; // an older message: keep the newer token
-  S.rd = { t, exp: exp || 0 };
-  LS.set(RD_KEY, JSON.stringify(S.rd));
-}
-function clearRd() { S.rd = null; LS.del(RD_KEY); }
-const rdAvailable = () => !!(S.rd && S.rd.t) || !!(S.init && S.init.rd_connected && S.link);
-/** Asks the TV for a fresh access token (force: the old one got a 401). 8 s, then NEED_TV. */
-function askRdToken(force) {
-  if (!S.link || !S.key) return Promise.reject(fatal(NEED_TV));
-  const req = newReq();
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => { rdWait.delete(req); reject(fatal(NEED_TV)); }, 8000);
-    rdWait.set(req, (m) => {
-      clearTimeout(t); rdWait.delete(req);
-      if (m.rd_token) { S.rd = null; setRd(m.rd_token, +m.rd_expires_at || 0); resolve(m.rd_token); }
-      else { if (m.error) clearRd(); reject(fatal(NO_RD)); }
-    });
-    relaySend({ cmd: "rd_token", req, ts: Date.now(), force: !!force })
-      .catch(() => { clearTimeout(t); rdWait.delete(req); reject(fatal("Couldn't reach the relay. Check your internet.")); });
-  });
-}
-async function rdToken() {
-  if (S.rd && S.rd.t && (S.rd.exp || 0) - Date.now() > 60000) return S.rd.t;
-  if (!S.link && !(S.rd && S.rd.t)) throw fatal(NO_RD);
-  return askRdToken(false);
-}
-/** One RD API call; on 401 asks the TV for a new token and retries once (RealDebrid.authed). */
-async function rdCall(method, path, fields, retried) {
-  const tok = await rdToken();
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 20000);
-  let r, txt = "";
+let rdc = readJSON(RDC_KEY);
+const rdHere = () => !!(rdc && rdc.r && rdc.id && rdc.secret);
+function saveRdc(o) { rdc = o; if (o) LS.set(RDC_KEY, JSON.stringify(o)); else LS.del(RDC_KEY); }
+const rdViaTv = () => !!(S.init && S.init.rd_connected && S.link);
+const rdAvailable = () => rdHere() || rdViaTv();
+
+async function rdFetch(method, path, fields, auth) {
+  const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 25000);
   try {
-    r = await fetch(RD_API + path, {
-      method, signal: ac.signal, headers: { Authorization: "Bearer " + tok },
+    const r = await fetch(RD_PROXY + path, {
+      method, signal: ac.signal, headers: auth ? { Authorization: "Bearer " + auth } : undefined,
       body: fields ? new URLSearchParams(fields) : undefined,
     });
-    txt = await r.text();
+    const txt = await r.text();
+    let o = null; try { o = txt ? JSON.parse(txt) : null; } catch {}
+    return { status: r.status, ok: r.ok, o };
   } catch {
-    throw fatal("Couldn't reach Real-Debrid from this browser. Check your internet, or Play on TV.");
+    throw fatal("Couldn't reach Real-Debrid. Check your internet, or use Play on TV.");
   } finally { clearTimeout(timer); }
-  if (r.status === 401) {
-    if (retried) throw fatal("Real-Debrid needs reconnecting. Go to Settings > Real-Debrid on the TV.");
-    await askRdToken(true);
-    return rdCall(method, path, fields, true);
-  }
-  let o = null; try { o = txt ? JSON.parse(txt) : null; } catch {}
-  if (!r.ok) {
-    const e = new Error("Real-Debrid: " + String((o && o.error) || "error " + r.status).replace(/_/g, " "));
-    e.status = r.status;
+}
+let rdRefreshing = null;
+/** New access token from the refresh token (one at a time). A refused refresh signs this device out. */
+function rdRefresh() {
+  if (!rdRefreshing) rdRefreshing = (async () => {
+    const res = await rdFetch("POST", "oauth/v2/token", { client_id: rdc.id, client_secret: rdc.secret, code: rdc.r, grant_type: RD_GRANT });
+    if (res.status === 400 || res.status === 401 || res.status === 403) { saveRdc(null); throw fatal(RECONNECT); }
+    if (!res.ok || !res.o || !res.o.access_token) throw fatal("Real-Debrid sign-in failed (" + res.status + "). Try again.");
+    saveRdc({ ...rdc, t: res.o.access_token, r: res.o.refresh_token || rdc.r, exp: Date.now() + (+res.o.expires_in || 3600) * 1000 - 60000 });
+  })().finally(() => { rdRefreshing = null; });
+  return rdRefreshing;
+}
+/** One RD API call (path under rest/1.0/) with this device's sign-in. A 401 refreshes once and retries. */
+async function rdCall(method, path, fields, retried) {
+  if (!rdHere()) throw fatal(NO_RD);
+  if (!rdc.t || Date.now() > (rdc.exp || 0)) await rdRefresh();
+  const res = await rdFetch(method, "rest/1.0" + path, fields, rdc.t);
+  if (res.status === 401 && !retried) { await rdRefresh(); return rdCall(method, path, fields, true); }
+  if (res.status === 401) throw fatal(RECONNECT);
+  if (!res.ok) {
+    const e = new Error("Real-Debrid: " + String((res.o && res.o.error) || "error " + res.status).replace(/_/g, " "));
+    e.status = res.status;
     throw e;
   }
-  return o; // null for 204 (no content)
+  return res.o; // null for 204 (no content)
 }
+
+// Device sign-in, like the TV: show a code, the user enters it at real-debrid.com/device.
+const RDL = { code: null, user: "", url: "", until: 0, timer: 0 };
+async function rdLoginStart() {
+  const res = await rdFetch("GET", "oauth/v2/device/code?client_id=" + RD_CLIENT + "&new_credentials=yes");
+  if (!res.ok || !res.o || !res.o.device_code) throw new Error("Real-Debrid didn't answer. Try again.");
+  clearTimeout(RDL.timer);
+  Object.assign(RDL, { code: res.o.device_code, user: res.o.user_code, url: res.o.direct_verification_url || res.o.verification_url || "https://real-debrid.com/device",
+    until: Date.now() + (+res.o.expires_in || 600) * 1000 });
+  const every = Math.min(60, Math.max(2, +res.o.interval || 5)) * 1000;
+  const poll = async () => {
+    if (!RDL.code) return;
+    if (Date.now() > RDL.until) { RDL.code = null; rdLoginUi(); return; }
+    try {
+      const c = await rdFetch("GET", "oauth/v2/device/credentials?client_id=" + RD_CLIENT + "&code=" + encodeURIComponent(RDL.code));
+      if (c.ok && c.o && c.o.client_id && c.o.client_secret) {
+        const tk = await rdFetch("POST", "oauth/v2/token", { client_id: c.o.client_id, client_secret: c.o.client_secret, code: RDL.code, grant_type: RD_GRANT });
+        if (tk.ok && tk.o && tk.o.access_token) {
+          saveRdc({ id: c.o.client_id, secret: c.o.client_secret, t: tk.o.access_token, r: tk.o.refresh_token, exp: Date.now() + (+tk.o.expires_in || 3600) * 1000 - 60000 });
+          RDL.code = null; rdLoginUi(); toast("Real-Debrid connected on this device", "ok");
+          return;
+        }
+      }
+    } catch {}
+    RDL.timer = setTimeout(poll, every);
+  };
+  RDL.timer = setTimeout(poll, every);
+  rdLoginUi();
+}
+function rdPanelHTML() {
+  if (rdHere()) return `<p class="muted">Connected. Play here works on this device without the TV.</p>
+    <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rdout">Disconnect this device</button></div>`;
+  if (RDL.code) return `<p>On any device, open <a href="${esc(RDL.url)}" target="_blank" rel="noopener">real-debrid.com/device</a> and enter this code:</p>
+    <p style="font-size:30px;font-weight:700;letter-spacing:4px;margin:8px 0">${esc(RDL.user)}</p><p class="muted">Waiting for you to approve it…</p>
+    <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rdcancel">Cancel</button></div>`;
+  return `<p class="muted">Sign in once so Play here works on this device without the TV on. Use your own Real-Debrid account.</p>
+    <div class="rowf" style="margin-top:10px"><button class="btn small primary" data-act="rdlogin">Connect Real-Debrid</button></div>`;
+}
+function rdLoginUi() { const p = $("#rdPanel"); if (p) p.innerHTML = rdPanelHTML(); }
+
+/** The TV resolves source [s] for this page: {direct, rdId, mime, filename, tc}. 45 s, then TV_OFF. */
+function tvResolve(s, season, episode) {
+  if (!S.link || !S.key) return Promise.reject(fatal(TV_OFF));
+  const req = newReq();
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => { resWait.delete(req); reject(fatal(TV_OFF)); }, 45000);
+    resWait.set(req, (m) => {
+      clearTimeout(t); resWait.delete(req);
+      if (m.error || !m.direct) { reject(new Error(m.error || "The TV could not get this stream.")); return; }
+      resolve({ direct: m.direct, rdId: m.rd_id || null, mime: m.mime || "", filename: m.filename || "",
+        tc: m.transcode && typeof m.transcode === "object" ? m.transcode : null });
+    });
+    const cmd = { cmd: "rd_resolve", req, ts: Date.now() };
+    if (s.url) cmd.url = s.url;
+    if (s.infoHash) cmd.infoHash = s.infoHash;
+    if (s.fileIdx != null) cmd.fileIdx = s.fileIdx;
+    if (season != null) cmd.season = season;
+    if (episode != null) cmd.episode = episode;
+    relaySend(cmd).catch(() => { clearTimeout(t); resWait.delete(req); reject(fatal("Couldn't reach the relay. Check your internet.")); });
+  });
+}
+
+// ---- this device's own RD calls (mirror RealDebrid.kt) ----
 const rdInfo = (id) => rdCall("GET", "/torrents/info/" + encodeURIComponent(id));
 async function rdUnrestrict(link) {
   const o = await rdCall("POST", "/unrestrict/link", { link });
   if (!o || !o.download) throw new Error("Real-Debrid gave no link for this source.");
-  return { direct: o.download, rdId: o.id || null, mime: o.mimeType || "", filename: o.filename || "" };
+  let tc = null;
+  if (o.id && o.streamable !== 0) { try { tc = await rdCall("GET", "/streaming/transcode/" + encodeURIComponent(o.id)); } catch {} }
+  return { direct: o.download, rdId: o.id || null, mime: o.mimeType || "", filename: o.filename || "", tc };
 }
 const notCached = (p) => new Error(`Not cached on Real-Debrid yet (${Math.round(+p || 0)}%). Pick a ⚡ Instant source.`);
-/** RealDebrid.resolveHash: reuse the torrent if it is in your account, else add it, pick the file, unrestrict. */
+/** RealDebrid.resolveHash: reuse the torrent if it is in your account, else add it, pick the file. Returns the RD link. */
 async function rdResolveHash(infoHash, fileIdx, season, episode) {
   const hash = String(infoHash).trim().toLowerCase();
   const FAILED = ["magnet_error", "error", "virus", "dead"], BUSY = ["queued", "downloading", "compressing", "uploading"];
@@ -2006,26 +2067,24 @@ async function rdResolveHash(infoHash, fileIdx, season, episode) {
   }
 }
 
-/** Resolver.resolve for the browser: {direct, rdId, mime, filename}. */
+/** Resolver.resolve for the browser: {direct, rdId, mime, filename, tc}. */
 async function resolveHere(s, meta) {
   const tv = meta.type === "tv" && meta.season > 0 && meta.episode > 0;
+  const season = s.season != null ? s.season : tv ? meta.season : null;
+  const episode = s.episode != null ? s.episode : tv ? meta.episode : null;
   if (s.url) {
-    if (!rdAvailable()) return { direct: s.url };
-    // Debrid addons often answer with a resolve URL that redirects to an RD download: RD unrestricts many
-    // hoster and RD links directly, which also gives an id for browser-friendly transcodes.
-    try { return await rdUnrestrict(s.url); } catch (e) { if (e.fatal) return { direct: s.url }; } // no RD access right now: play as is
-    try {
-      const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 8000);
-      const r = await fetch(s.url, { method: "HEAD", signal: ac.signal }).finally(() => clearTimeout(t));
-      if (r.url && r.url !== s.url && /(^|\.)real-debrid\.com$/i.test(new URL(r.url).hostname)) return await rdUnrestrict(r.url);
-    } catch {}
+    if (rdHere()) {
+      // Debrid addons often answer with a link RD can unrestrict, which also gives browser-friendly versions.
+      try { return await rdUnrestrict(s.url); } catch (e) { if (e.message === RECONNECT) throw e; }
+      return { direct: s.url };
+    }
+    if (rdViaTv()) { try { return await tvResolve(s, season, episode); } catch (e) { if (e.fatal) return { direct: s.url }; throw e; } }
     return { direct: s.url };
   }
   if (s.infoHash) {
-    if (!rdAvailable()) throw fatal(NO_RD);
-    const link = await rdResolveHash(s.infoHash, s.fileIdx, s.season != null ? s.season : tv ? meta.season : null,
-      s.episode != null ? s.episode : tv ? meta.episode : null);
-    return rdUnrestrict(link);
+    if (rdHere()) return rdUnrestrict(await rdResolveHash(s.infoHash, s.fileIdx, season, episode));
+    if (S.link && !(S.init && S.init.rd_connected === false)) return tvResolve(s, season, episode);
+    throw fatal(NO_RD);
   }
   throw new Error("This source has no playable link");
 }
@@ -2041,8 +2100,7 @@ function hlsCapable() {
  * (an .mp4 file plays as is first, so it can seek), then WebM. The direct file is always the last resort.
  */
 async function playCandidates(res) {
-  let tc = null;
-  if (res.rdId) { try { tc = await rdCall("GET", "/streaming/transcode/" + encodeURIComponent(res.rdId)); } catch {} }
+  const tc = res.tc || null; // RD's browser-friendly versions (fetched with the link)
   const full = (k) => { const x = tc && tc[k]; if (!x) return ""; if (typeof x === "string") return x; return x.full || Object.values(x).find((u) => typeof u === "string") || ""; };
   const hls = hlsCapable();
   const isMp4 = /mp4|quicktime/i.test(res.mime || "") || /\.(mp4|m4v|mov)$/i.test(res.filename || "");
@@ -2790,6 +2848,7 @@ function renderSettings(v) {
       <p class="muted">Watchlist, favorites and Continue Watching here are ${S.profile ? `<b style="color:var(--white)">${esc(profileName(S.profile))}</b>'s` : "the chosen profile's"}, the same as on the TV. Switching here doesn't change the TV.</p>
       <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small${p.id === S.profile ? " primary" : ""}" data-act="setprofile" data-pid="${p.id}"${p.id === S.profile ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</div>
     </div>
+    <div class="panel"><h2>Real-Debrid on this device</h2><div id="rdPanel">${rdPanelHTML()}</div></div>
     <div class="panel"><h2>Ask Jarvis</h2>
       <label class="switch"><input type="checkbox" id="jvLocal" ${jarvisLocalOn() ? "checked" : ""}> Use Jarvis on this device without the TV</label>
       <p>${jarvisKey() ? `<span class="pill ok">Key saved on this device</span>` : `<span class="pill no">No key on this device</span>`}</p>
@@ -2908,6 +2967,9 @@ document.addEventListener("click", async (e) => {
       if (location.hash === next) route(); else location.hash = next;
       break;
     }
+    case "rdlogin": rdLoginStart().catch((err) => toast(err.message || "Real-Debrid didn't answer", "warn")); break;
+    case "rdcancel": RDL.code = null; clearTimeout(RDL.timer); rdLoginUi(); break;
+    case "rdout": if (confirm("Disconnect Real-Debrid on this device?")) { saveRdc(null); rdLoginUi(); toast("Real-Debrid disconnected on this device", "ok"); } break;
     case "rmjarvis": LS.set(JLOCAL, "0"); LS.del(JKEY); toast("Jarvis key removed from this device", "ok"); renderSettings($("#view")); break;
     case "live": LV.play(+d.idx); break;
     case "livesec": LV.section(d.sec); break;
