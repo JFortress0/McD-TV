@@ -1963,6 +1963,13 @@ async function rdFetch(method, path, fields, auth) {
     throw fatal("Couldn't reach Real-Debrid. Check your internet, or use Play on TV.");
   } finally { clearTimeout(timer); }
 }
+const RD_BLOCKED = "Real-Debrid blocked this release because a copyright holder flagged it. Other releases of this title are often blocked too. Try a different title, or watch this one on a streaming service you subscribe to.";
+/** A readable error for a failed RD call. "infringing_file": RD refuses releases a rights holder flagged. */
+function rdError(res) {
+  const code = String((res.o && res.o.error) || "");
+  if (code === "infringing_file") { const e = new Error(RD_BLOCKED); e.blocked = true; return e; }
+  return new Error("Real-Debrid: " + (code || "error " + res.status).replace(/_/g, " "));
+}
 let rdRefreshing = null;
 /** New access token from the refresh token (one at a time). A refused refresh signs this device out. */
 function rdRefresh() {
@@ -1981,7 +1988,7 @@ async function rdCall(method, path, fields, retried) {
     const res = await rdFetch(method, "rest/1.0" + path, fields, rdToken());
     if (res.status === 401) throw fatal("Real-Debrid refused your API token. Paste a new one in Settings.");
     if (!res.ok) {
-      const e = new Error("Real-Debrid: " + String((res.o && res.o.error) || "error " + res.status).replace(/_/g, " "));
+      const e = rdError(res);
       e.status = res.status;
       throw e;
     }
@@ -1992,7 +1999,7 @@ async function rdCall(method, path, fields, retried) {
   if (res.status === 401 && !retried) { await rdRefresh(); return rdCall(method, path, fields, true); }
   if (res.status === 401) throw fatal(RECONNECT);
   if (!res.ok) {
-    const e = new Error("Real-Debrid: " + String((res.o && res.o.error) || "error " + res.status).replace(/_/g, " "));
+    const e = rdError(res);
     e.status = res.status;
     throw e;
   }
@@ -2342,7 +2349,7 @@ async function renderSources(v, tok, type, id, q) {
       say(`Finding the best source (${i + 1} of ${order.length})…`);
       try { await go(order[i]); return; } catch (err) { last = err; if (err.fatal) break; }
     }
-    if (tok === routeTok) { say(((last && last.message) || "No sources found.") + " Pick one below.", true); lock(false); }
+    if (tok === routeTok) { say(((last && last.message) || "No sources found.") + (last && last.blocked ? "" : " Pick one below."), true); lock(false); }
   });
 }
 
@@ -3166,7 +3173,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-09.3";
+const BUILD = "2026-10-09.4";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
