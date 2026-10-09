@@ -2976,7 +2976,8 @@ function renderSettings(v) {
       ${jarvisKey() ? `<div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rmjarvis">Remove key from this device</button></div>` : ""}
     </div>
     <div class="panel"><h2>Install as an app</h2>
-      <p class="muted">${isStandalone() ? "Jarvis is installed on this device." : "iPhone and iPad: in Safari, tap Share, then Add to Home Screen. Android and computers: use the browser menu and choose Install app (or Add to Home screen)."}</p>
+      <p class="muted">${isStandalone() ? "Jarvis is installed on this device. iPhone keeps the app's settings apart from Safari's. To bring your setup over: open Jarvis in Safari, go to Settings and tap Copy setup for the app, then paste it under Your TV here and tap Link." : "iPhone and iPad: in Safari, tap Share, then Add to Home Screen. Then tap Copy setup for the app below and paste it in the app's Settings, under Your TV. (iPhone keeps the app's settings apart from Safari's.) Android and computers: use the browser menu and choose Install app."}</p>
+      ${isStandalone() ? "" : `<div class="rowf" style="margin-top:10px"><button class="btn small primary" data-act="copysetup">Copy setup for the app</button></div>`}
     </div>
     <div class="panel"><h2>TMDB key</h2>
       <p>${k.fromTv ? `<span class="pill ok">Using the TV's key</span>` : S.manualTmdb ? `<span class="pill ok">Using the key saved here</span>` : `<span class="pill no">No key</span>`}</p>
@@ -3005,8 +3006,34 @@ function renderSettings(v) {
   $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
   $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
 }
+// ---------- moving setup between Safari and the Home Screen app ----------
+// iPhone gives a Home Screen app its own storage, separate from Safari's. "Copy setup" packs this device's Jarvis
+// settings into one link; pasting it in the other one restores them (TV link, Real-Debrid, addons, profile, keys).
+const SETUP_KEYS = () => [LINK_KEY, INIT_KEY, PROFILE_KEY, PLISTS_KEY, JKEY, JLOCAL, RDC_KEY, RDT_KEY, ADDON_BAK, ADDON_MINE, EXT_KEY,
+  "mcdtv_web_tmdb", "mcdtv_web_mdb", "mcdtv_web_origin"];
+function setupLink() {
+  const o = {};
+  for (const k of SETUP_KEYS()) { const v = LS.get(k); if (v != null && v !== "") o[k] = v; }
+  return location.origin + location.pathname + "#setup." + b64u.enc(new TextEncoder().encode(JSON.stringify(o)));
+}
+function importSetup(text) {
+  const m = /#setup\.([A-Za-z0-9_-]+)/.exec(String(text || ""));
+  if (!m) return false;
+  let o;
+  try { o = JSON.parse(new TextDecoder().decode(b64u.dec(m[1]))); } catch { return false; }
+  if (!o || typeof o !== "object") return false;
+  const allowed = new Set(SETUP_KEYS());
+  for (const [k, v] of Object.entries(o)) if (allowed.has(k) && typeof v === "string") LS.set(k, v);
+  return true;
+}
 async function doPaste() {
-  const inp = $("#pasteLink"); const l = parseLink(inp && inp.value);
+  const inp = $("#pasteLink");
+  if (inp && /#setup\./.test(inp.value)) {
+    if (importSetup(inp.value)) { toast("Setup copied to this app", "ok"); setTimeout(() => { location.hash = "#/"; location.reload(); }, 600); }
+    else toast("That setup link is damaged. Copy it again.", "warn");
+    return;
+  }
+  const l = parseLink(inp && inp.value);
   if (!l) { toast("That doesn't look like a Jarvis link.", "warn"); return; }
   await pair(l); toast("Linked to your TV", "ok"); location.hash = "#/";
   route();
@@ -3069,6 +3096,12 @@ document.addEventListener("click", async (e) => {
     case "reload": route(); break;
     case "paste": doPaste(); break;
     case "unpair": if (confirm("Unlink this browser from your TV?")) { unpair(); toast("Unlinked"); location.hash = "#/pair"; } break;
+    case "copysetup": {
+      const url = setupLink();
+      try { await navigator.clipboard.writeText(url); toast("Setup copied. Open the Jarvis app, Settings, paste under Your TV, tap Link.", "ok"); }
+      catch { prompt("Copy this setup link:", url); }
+      break;
+    }
     case "copylink": {
       const url = location.origin + location.pathname + "#" + S.link.id + "." + S.link.key;
       try { await navigator.clipboard.writeText(url); toast("Link copied. Open it on your other device.", "ok"); } catch { prompt("Copy this link:", url); }
