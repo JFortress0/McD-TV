@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>McD TV Control</title>
+<title>Jarvis Control</title>
 <style>
 :root{--navy:#07090D;--navy2:#12161D;--card:#161B23;--red:#E11D2E;--muted:#9AA3AF;--ok:#178A3C}
 *{box-sizing:border-box}
@@ -43,7 +43,7 @@ ul.list .url{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ell
 </head>
 <body>
 <header>
-  <div class="logo">McD<span>TV</span></div>
+  <div class="logo">JARVIS</div>
   <div style="font:700 15px Helvetica;color:var(--muted)">CONTROL</div>
   <div class="who" id="who"></div>
 </header>
@@ -65,7 +65,7 @@ ul.list .url{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ell
 
 <!-- ============ dashboard ============ -->
 <main id="appView" class="hidden">
-  <p class="hint">Changes here reach your TVs within about two minutes, or right away when McD TV opens. Each account has its own sources.</p>
+  <p class="hint">Changes here reach your TVs within about two minutes, or right away when Jarvis opens. Each account has its own sources.</p>
 
   <h2>Link a TV</h2>
   <div class="card">
@@ -120,7 +120,7 @@ ul.list .url{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ell
     </select>
     <label class="toggle"><input type="checkbox" id="usOnly"> Use US release dates</label>
     <label class="toggle"><input type="checkbox" id="slow"> Slow connection (smaller files first)</label>
-    <label class="toggle"><input type="checkbox" id="intro"> Play the intro when McD TV opens</label>
+    <label class="toggle"><input type="checkbox" id="intro"> Play the intro when Jarvis opens</label>
   </div>
 
   <h2>Account</h2>
@@ -219,7 +219,7 @@ function drawAddons() {
     <button class="small" onclick="moveAddon(${i},-1)" ${i === 0 ? "disabled" : ""}>↑</button>
     <button class="small" onclick="moveAddon(${i},1)" ${i === addons.length - 1 ? "disabled" : ""}>↓</button>
     <button class="small" onclick="removeAddon(${i})">Remove</button></li>`).join("")
-    : '<li class="hint">No addons yet. McD TV ships with none.</li>';
+    : '<li class="hint">No addons yet. Jarvis ships with none.</li>';
 }
 function drawSites() {
   $("sites").innerHTML = sites.length ? sites.map(([n, u], i) => `

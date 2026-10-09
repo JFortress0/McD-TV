@@ -1,4 +1,4 @@
-# McD TV server (optional)
+# Jarvis server (optional)
 
 You need this server only if you want accounts: each person signs in and gets their own lists, history, addons and Real-Debrid link on any TV. Without it, each TV keeps its own setup.
 
@@ -7,7 +7,7 @@ It is one file (`server.js`) with no extra packages. It needs Node.js 20 or newe
 ## What it stores
 
 - Accounts: username and a scrambled (hashed) password. Nobody can read the passwords.
-- Each account's McD TV data: lists, history, settings, addons and Real-Debrid sign-in.
+- Each account's Jarvis data: lists, history, settings, addons and Real-Debrid sign-in.
 - Everything lives in `~/mcdtv-server/data/db.json` on the Mac.
 
 ## Set up on the Mac
@@ -19,7 +19,7 @@ It is one file (`server.js`) with no extra packages. It needs Node.js 20 or newe
 5. Enter an invite code when asked. Only people with the code can create an account.
 6. Enter the Mac's password when asked. This stops the Mac from sleeping.
 7. Terminal prints the server address, for example `http://192.168.1.50:8787`.
-8. On each TV: **Settings > Phone setup**, paste the server address. Then **Settings > Account** to sign in or create an account.
+8. On each TV, set the server address. Note: the current TV app has no field for it yet (no setup page writes `server_url`), so this step needs a small app change first. Then **Settings > Account** to sign in or create an account.
 
 The server starts by itself whenever the Mac restarts and you sign in.
 
@@ -29,7 +29,7 @@ The address above works only on your home Wi-Fi. For TVs in other homes, the ser
 
 ## Real-Debrid and other homes
 
-Real-Debrid flags accounts that stream from several internet connections at the same time. Every home should connect its own Real-Debrid account under its own McD TV account.
+Real-Debrid flags accounts that stream from several internet connections at the same time. Every home should connect its own Real-Debrid account under its own Jarvis account.
 
 ## Test
 
