@@ -651,7 +651,7 @@ const jarvisLocalOn = () => LS.get(JLOCAL) !== "0";
 const jarvisKey = () => (jarvisLocalOn() ? LS.get(JKEY) : "");
 const inWL = (type, id) => lists().watchlist.some((r) => r.type === type && +r.id === +id);
 const contFor = (type, id) => lists().cont.find((r) => r.type === type && +r.id === +id);
-function saveInit() { if (S.init) LS.set(INIT_KEY, JSON.stringify(S.init)); }
+function saveInit() { if (S.init) { LS.set(INIT_KEY, JSON.stringify(S.init)); if (typeof backupAddons === "function") backupAddons(); } }
 
 // ---------- relay ----------
 function setStatus(s) {
@@ -1844,7 +1844,28 @@ const siOpts = () => {
   const i = S.init || {};
   return { slow: !!i.slow_connection, maxMovieGb: i.max_movie_gb == null ? 40 : +i.max_movie_gb, maxEpisodeGb: i.max_episode_gb == null ? 12 : +i.max_episode_gb };
 };
-const addonUrls = () => ((S.init && S.init.addon_urls) || []).filter((u) => typeof u === "string" && /^https?:\/\//i.test(u));
+// Addons: the TV's list, else the last one any TV sent (kept on this device, so a reinstalled or new TV with none yet
+// doesn't leave the phone empty), plus addons added on this device in Settings.
+const ADDON_BAK = "mcdtv_web_addons_bak", ADDON_MINE = "mcdtv_web_addons_mine";
+const okUrl = (u) => typeof u === "string" && /^https?:\/\//i.test(u);
+const myAddons = () => (readJSON(ADDON_MINE) || []).filter(okUrl);
+function addonUrls() {
+  const tv = ((S.init && S.init.addon_urls) || []).filter(okUrl);
+  const base = tv.length ? tv : (readJSON(ADDON_BAK) || []).filter(okUrl);
+  return [...new Set(base.concat(myAddons()))];
+}
+function addonPanelHTML() {
+  const tv = ((S.init && S.init.addon_urls) || []).filter(okUrl), bak = (readJSON(ADDON_BAK) || []).filter(okUrl), mine = myAddons();
+  const from = tv.length ? `${tv.length} from your TV` : bak.length ? `${bak.length} saved from your TV earlier` : "none from your TV yet";
+  const host = (u) => { try { return new URL(u).host; } catch { return u.slice(0, 40); } };
+  return `<p class="muted">Play here uses ${from}${mine.length ? `, plus ${mine.length} added here` : ""}. To add one here, paste its manifest link (the https link that ends in manifest.json).</p>
+    ${mine.map((u, i) => `<div class="rowf" style="margin-top:8px"><span>${esc(host(u))}</span><button class="btn small" data-act="addondel" data-i="${i}">Remove</button></div>`).join("")}
+    <div class="rowf" style="margin-top:10px"><input id="addonIn" type="url" placeholder="https://…/manifest.json" autocomplete="off"><button class="btn small primary" data-act="addonadd">Add</button></div>`;
+}
+function backupAddons() {
+  const tv = ((S.init && S.init.addon_urls) || []).filter(okUrl);
+  if (tv.length) LS.set(ADDON_BAK, JSON.stringify(tv));
+}
 const addonBase = (m) => m.replace(/\/manifest\.json$/, "");
 
 /** fetch with a time limit; the body is read inside the limit too. */
@@ -2211,8 +2232,8 @@ async function renderSources(v, tok, type, id, q) {
   if (!imdb) { v.innerHTML = `<div class="page">${head}<p class="muted">This title has no IMDb id yet, so your addons can't look it up.</p><div class="actions">${tvBtn}</div></div>`; return; }
   if (!addonUrls().length) {
     v.innerHTML = `<div class="page">${head}<div class="panel" style="margin-top:14px"><h2>No addons yet</h2>
-      <p class="muted">${S.link ? "Play here uses the addons installed on your TV. Add one on the TV or the Control page, then tap Refresh from TV." : "Link your TV first. Play here uses the addons installed on it."}</p>
-      <div class="rowf" style="margin-top:10px">${S.link ? `<button class="btn small primary" data-act="retry">Refresh from TV</button>` : `<a class="btn small primary" href="#/pair">Link your TV</a>`}</div></div></div>`;
+      <p class="muted">${S.link ? "Your TV hasn't sent any addons. Add one on the TV or the Control page, then tap Refresh from TV. Or add one on this phone in Settings > Addons on this device." : "Add an addon in Settings > Addons on this device, or link your TV to use its addons."}</p>
+      <div class="rowf" style="margin-top:10px">${S.link ? `<button class="btn small primary" data-act="retry">Refresh from TV</button>` : `<a class="btn small primary" href="#/pair">Link your TV</a>`}<a class="btn small" href="#/settings">Settings</a></div></div></div>`;
     return;
   }
   v.innerHTML = `<div class="page">${head}
@@ -2923,6 +2944,7 @@ function renderSettings(v) {
       <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small${p.id === S.profile ? " primary" : ""}" data-act="setprofile" data-pid="${p.id}"${p.id === S.profile ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</div>
     </div>
     <div class="panel"><h2>Real-Debrid on this device</h2><div id="rdPanel">${rdPanelHTML()}</div></div>
+    <div class="panel"><h2>Addons on this device</h2>${addonPanelHTML()}</div>
     <div class="panel"><h2>Ask Jarvis</h2>
       <label class="switch"><input type="checkbox" id="jvLocal" ${jarvisLocalOn() ? "checked" : ""}> Use Jarvis on this device without the TV</label>
       <p>${jarvisKey() ? `<span class="pill ok">Key saved on this device</span>` : `<span class="pill no">No key on this device</span>`}</p>
@@ -3039,6 +3061,18 @@ document.addEventListener("click", async (e) => {
       setProfile(d.pid);
       const next = d.next && d.next.startsWith("#/") && !d.next.startsWith("#/profiles") ? d.next : "#/";
       if (location.hash === next) route(); else location.hash = next;
+      break;
+    }
+    case "addonadd": {
+      let u = (($("#addonIn") || {}).value || "").trim().replace(/^stremio:\/\//i, "https://");
+      if (!okUrl(u)) { toast("Paste the addon's https link", "warn"); break; }
+      const list = myAddons(); if (!list.includes(u)) list.push(u);
+      LS.set(ADDON_MINE, JSON.stringify(list)); S.streamCache.clear(); toast("Addon added on this device", "ok"); renderSettings($("#view"));
+      break;
+    }
+    case "addondel": {
+      const list = myAddons(); list.splice(+d.i, 1);
+      LS.set(ADDON_MINE, JSON.stringify(list)); S.streamCache.clear(); toast("Addon removed from this device", "ok"); renderSettings($("#view"));
       break;
     }
     case "rdtsave": {
