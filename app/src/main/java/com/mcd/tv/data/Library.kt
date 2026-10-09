@@ -1,5 +1,6 @@
 package com.mcd.tv.data
 
+import com.mcd.tv.data.sync.ProfileSync
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -30,10 +31,19 @@ data class HistoryEntry(val meta: PlayMeta, val positionMs: Long, val durationMs
  * Most functions take an optional [profile] id ("p1", "p2", "p3"). null (the default) means the active
  * profile. The web app passes its own profile, so it reads and writes that profile's lists without
  * changing which profile the TV is using.
+ *
+ * Every change is also reported to [ProfileSync] (inside [lock]), which shares it with the other TVs of the
+ * house. ProfileSync writes changes from other TVs back into these blobs while holding [lock] too.
  */
 object Library {
     /** Guards read-modify-write of the stored lists (TV UI, player and relay run on different threads). */
     private val lock = Any()
+
+    /** For ProfileSync: runs [block] under the same lock as every Library write. */
+    internal fun <T> withLock(block: () -> T): T = synchronized(lock) { block() }
+
+    /** The profile a call with [profile] reads and writes: [profile] when it is a known id, else the active one. */
+    private fun resolve(profile: String?): String = if (profile != null && profile in Prefs.PROFILE_IDS) profile else Prefs.activeProfile
 
     /** The storage key for [key] in [profile], or in the active profile when [profile] is null or unknown. */
     private fun keyFor(key: String, profile: String?): String =
@@ -61,9 +71,11 @@ object Library {
         Prefs.putJson(keyFor(key, profile), JSONArray().apply { list.forEach { put(it.toJson()) } }.toString())
 
     private fun toggle(key: String, t: Title, profile: String? = null): Boolean = synchronized(lock) {
-        val list = loadTitles(key, profile)
+        val pid = resolve(profile)
+        val list = loadTitles(key, pid)
         val has = list.any { it.id == t.id && it.type == t.type }
-        saveTitles(key, if (has) list.filterNot { it.id == t.id && it.type == t.type } else listOf(t) + list, profile)
+        saveTitles(key, if (has) list.filterNot { it.id == t.id && it.type == t.type } else listOf(t) + list, pid)
+        ProfileSync.onTitleList(pid, key, "${t.type}:${t.id}", if (has) null else t.toJson().toString())
         !has
     }
 
@@ -136,18 +148,19 @@ object Library {
         history().firstOrNull { it.meta.historyKey == meta.historyKey && it.meta.season == meta.season && it.meta.episode == meta.episode }
             ?.takeIf { !it.finished }?.positionMs ?: 0L
 
+    private fun HistoryEntry.toJson() = JSONObject().put("meta", meta.toJson()).put("pos", positionMs).put("dur", durationMs).put("at", updatedAt)
+
     fun record(meta: PlayMeta, positionMs: Long, durationMs: Long, profile: String? = null): Unit = synchronized(lock) {
-        if (meta.type == "tv" && meta.season > 0 && durationMs > 0) recordEpisode(meta, positionMs.toFloat() / durationMs, profile)
-        val rest = history(profile).filterNot { it.meta.historyKey == meta.historyKey }
-        val list = listOf(HistoryEntry(meta, positionMs, durationMs, System.currentTimeMillis())) + rest
+        val pid = resolve(profile)
+        if (meta.type == "tv" && meta.season > 0 && durationMs > 0) recordEpisode(meta, positionMs.toFloat() / durationMs, pid)
+        val rest = history(pid).filterNot { it.meta.historyKey == meta.historyKey }
+        val entry = HistoryEntry(meta, positionMs, durationMs, System.currentTimeMillis())
+        val list = listOf(entry) + rest
         Prefs.putJson(
-            keyFor("lib_history", profile),
-            JSONArray().apply {
-                list.take(200).forEach {
-                    put(JSONObject().put("meta", it.meta.toJson()).put("pos", it.positionMs).put("dur", it.durationMs).put("at", it.updatedAt))
-                }
-            }.toString(),
+            keyFor("lib_history", pid),
+            JSONArray().apply { list.take(200).forEach { put(it.toJson()) } }.toString(),
         )
+        ProfileSync.onHistory(pid, meta.historyKey, entry.toJson().toString())
     }
 
     fun markWatched(meta: PlayMeta) = record(meta, 1, 1)
@@ -162,8 +175,9 @@ object Library {
     private fun recordEpisode(meta: PlayMeta, progress: Float, profile: String? = null) {
         val o = loadEpisodes(profile)
         val k = "${meta.tmdbId}:${meta.season}:${meta.episode}"
+        val value = progress.coerceIn(0f, 1f).toDouble()
         o.remove(k) // re-insert so the newest entries stay at the end
-        o.put(k, progress.coerceIn(0f, 1f).toDouble())
+        o.put(k, value)
         if (o.length() > EPISODES_MAX) {
             val drop = mutableListOf<String>()
             val keys = o.keys()
@@ -171,6 +185,7 @@ object Library {
             drop.forEach { k2 -> o.remove(k2) }
         }
         Prefs.putJson(keyFor(EPISODES_KEY, profile), o.toString())
+        ProfileSync.onEpisode(resolve(profile), k, value)
     }
 
     /** Watched fraction (0..1) of one episode, or null if it was never played. */

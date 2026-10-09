@@ -2,6 +2,8 @@ package com.mcd.tv.data
 
 import android.os.Build
 import android.util.Base64
+import com.mcd.tv.data.sync.Backoff
+import com.mcd.tv.data.sync.ProfileSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,13 +30,21 @@ import java.security.SecureRandom
  *  - A TV takes a copy only when its stamp is newer than the one it has. A TV that just joined has stamp 0,
  *    so it takes the first copy it gets. It also asks the others to send theirs ("sync_req").
  *  - ntfy keeps messages for about 12 hours, so a TV that was off picks up changes when it opens.
+ *
+ * Profile data (history, progress, My List, favorites, Live TV favorites, profile names) travels on the same
+ * topic as "pdelta", "pdigest" and "pstate" messages, handled by [ProfileSync]. It is paused while a TV is
+ * joining (until the first settings copy arrives) and during "Copy once", so a friend's TV that copies
+ * settings never gets or sends anyone's profiles.
  */
 object HouseSync {
     private const val BASE = "https://ntfy.sh/"
     /** One encrypted message must stay under ntfy's 4 KB, so the settings are sent in parts of this size. */
     private const val CHUNK = 1800
 
-    /** The settings all linked TVs share. Profile data (watch history, lists, Live TV favorites and recents) stays per TV. */
+    /**
+     * The settings all linked TVs share. Profile data is not here: ProfileSync merges it entry by entry
+     * (a whole-copy "newest wins" like this would lose changes made on two TVs at once).
+     */
     private val SHARED = listOf(
         "addon_urls", "websites",
         "m3u_url", "custom_stream_url",
@@ -94,6 +104,65 @@ object HouseSync {
 
     private fun snapshot(): String = Prefs.exportKeys(SHARED).toString()
 
+    /** Profile sync runs only in a house this TV fully belongs to: not while joining, not during "Copy once". */
+    fun profileSyncAllowed(): Boolean = !joining() && !copyOnce()
+
+    /** For ProfileSync: [json] encrypted with the house key (the length is what counts against ntfy's limit). */
+    internal fun sealForHouse(json: String): String = Relay.encryptWith(Prefs.houseKey, json)
+
+    /**
+     * Backoff for every post to the house topic (settings and profile sync). ntfy.sh limits messages per day
+     * per home IP, shared by all TVs: after a 429 this TV stops posting for 30 minutes (doubling up to 6 hours)
+     * instead of retrying in a loop; after a 5xx or a network error it waits 30 s, doubling up to 30 minutes.
+     * Saved, so a restart does not start hammering again. Nothing is dropped: it is sent after the pause.
+     */
+    private val backoff = Backoff()
+    @Volatile private var backoffLoaded = false
+    @Volatile private var lastRequestAt = 0L
+
+    private fun loadBackoffLocked() {
+        if (backoffLoaded) return
+        backoffLoaded = true
+        val p = Prefs.json("sync_pause").split(",").mapNotNull { it.trim().toLongOrNull() }
+        if (p.size == 3) backoff.restore(p[0], p[1], p[2])
+    }
+
+    /** False while posts are paused after a 429 or errors. */
+    fun canPublish(now: Long = System.currentTimeMillis()): Boolean = synchronized(backoff) {
+        loadBackoffLocked()
+        backoff.canSend(now)
+    }
+
+    /** Posts one sealed message to the house and updates the backoff. Returns the HTTP status (-1: no answer). */
+    internal suspend fun postSealed(sealed: String): Int {
+        val code = try {
+            Http.postText(BASE + topic, sealed)
+            200
+        } catch (e: HttpException) {
+            e.code
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            -1
+        }
+        val now = System.currentTimeMillis()
+        synchronized(backoff) {
+            loadBackoffLocked()
+            val before = backoff.pausedUntil
+            // Jitter keeps the TVs of a house from all coming back at the same moment.
+            val jitter = when {
+                code == 429 -> rng.nextInt(5 * 60_000).toLong()
+                code !in 200..299 -> rng.nextInt(10_000).toLong()
+                else -> 0L
+            }
+            backoff.onResult(code, now, jitter)
+            if (backoff.pausedUntil != before || code == 429) {
+                Prefs.putJson("sync_pause", "${backoff.pausedUntil},${backoff.rateWindowMs},${backoff.lastRateLimitAt}")
+            }
+        }
+        return code
+    }
+
     @Synchronized
     fun start() {
         if (started) return
@@ -104,7 +173,8 @@ object HouseSync {
         val gen = generation
         scope.launch { listen(gen) }
         scope.launch { watch() }
-        scope.launch { runCatching { publishRequest() } }
+        scope.launch { if (canPublish()) runCatching { publishRequest() } }
+        ProfileSync.start()
     }
 
     /** Settings copied by "Copy once": everything shared except Real-Debrid, so the other person keeps their own. */
@@ -131,11 +201,12 @@ object HouseSync {
             Prefs.houseStamp = 0L // take the first copy from the other TVs
             lastText = snapshot()
         }
+        ProfileSync.onHouseChanged()
         val gen = ++generation
         scope.launch { listen(gen) }
         scope.launch {
             delay(1500)
-            runCatching { publishRequest() }
+            if (canPublish()) runCatching { publishRequest() } // else watch() asks again after the pause
         }
     }
 
@@ -146,14 +217,26 @@ object HouseSync {
             newHouse()
             lastText = snapshot()
         }
+        ProfileSync.onHouseChanged()
         val gen = ++generation
         scope.launch { listen(gen) }
     }
 
-    /** Sends this TV's settings to the house whenever they change. */
+    /**
+     * Sends this TV's settings to the house whenever they change. A failed send is retried after the
+     * backoff (the change is not lost). While joining, asks the house again every 5 minutes.
+     */
     private suspend fun watch() {
         while (true) {
             delay(4000)
+            if (!canPublish()) continue
+            if (joining()) {
+                val t = System.currentTimeMillis()
+                if (t - lastRequestAt > 5 * 60_000L) runCatching { publishRequest() }
+                continue
+            }
+            var previous = ""
+            var current = ""
             val stamp = synchronized(lock) {
                 if (joining()) {
                     0L // wait for the other TV's copy before sending ours
@@ -162,29 +245,37 @@ object HouseSync {
                     if (now == lastText) {
                         0L
                     } else {
+                        previous = lastText
+                        current = now
                         lastText = now
                         System.currentTimeMillis().also { Prefs.houseStamp = it }
                     }
                 }
             }
-            if (stamp > 0L) runCatching { publishSync(stamp) }
+            if (stamp > 0L) {
+                val ok = runCatching { publishSync(stamp) }.getOrDefault(false)
+                // Not sent: mark it unsent again, so the next round (after the backoff) sends it.
+                if (!ok) synchronized(lock) { if (lastText == current) lastText = previous }
+            }
         }
     }
 
-    private suspend fun post(o: JSONObject) {
-        Http.postText(BASE + topic, Relay.encryptWith(Prefs.houseKey, o.toString()))
-    }
+    private suspend fun post(o: JSONObject): Boolean = postSealed(Relay.encryptWith(Prefs.houseKey, o.toString())) in 200..299
 
     private suspend fun publishRequest() {
-        post(JSONObject().put("type", "sync_req").put("from", Prefs.deviceId).put("ts", System.currentTimeMillis()))
+        lastRequestAt = System.currentTimeMillis()
+        // "once": a friend's TV doing "Copy once". The house does not count it as one of its TVs.
+        post(JSONObject().put("type", "sync_req").put("from", Prefs.deviceId).put("ts", System.currentTimeMillis()).put("once", copyOnce()))
     }
 
-    private suspend fun publishSync(stamp: Long) {
+    /** True when every part was sent. */
+    private suspend fun publishSync(stamp: Long): Boolean {
         val text = snapshot()
         val parts = text.chunked(CHUNK).ifEmpty { listOf("{}") }
         val sid = randomId()
         parts.forEachIndexed { i, chunk ->
-            post(
+            if (i > 0) delay(500L) // ntfy's burst limit is shared by the whole house
+            val ok = post(
                 JSONObject()
                     .put("type", "sync")
                     .put("from", Prefs.deviceId)
@@ -194,7 +285,9 @@ object HouseSync {
                     .put("ts", stamp)
                     .put("chunk", chunk),
             )
+            if (!ok) return false
         }
+        return true
     }
 
     private suspend fun listen(gen: Int) {
@@ -230,13 +323,16 @@ object HouseSync {
     }
 
     private suspend fun handle(m: JSONObject) {
-        if (m.optString("from") == Prefs.deviceId) return
+        val from = m.optString("from")
+        if (from == Prefs.deviceId) return
+        if (profileSyncAllowed() && !m.optBoolean("once", false)) ProfileSync.notePeer(from)
         when (m.optString("type")) {
+            "pdelta", "pstate", "pdigest" -> if (profileSyncAllowed()) runCatching { ProfileSync.onMessage(m) }
             "sync_req" -> {
                 // A TV joined or opened: send ours, unless we have nothing yet ourselves.
                 if (joining()) return
                 val now = System.currentTimeMillis()
-                if (now - lastReplyAt < 20_000L) return
+                if (now - lastReplyAt < 20_000L || !canPublish(now)) return
                 lastReplyAt = now
                 runCatching { publishSync(Prefs.houseStamp) }
             }
@@ -257,6 +353,7 @@ object HouseSync {
                 val data = runCatching { JSONObject(full) }.getOrNull() ?: return
                 val ts = m.optLong("ts", 0L)
                 val once = copyOnce()
+                val wasJoining = joining()
                 val applied = synchronized(lock) {
                     if (ts <= Prefs.houseStamp) return@synchronized false
                     Prefs.importKeys(if (once) ONCE else SHARED, data)
@@ -271,6 +368,7 @@ object HouseSync {
                     runCatching { Relay.publishState("Settings copied. This TV keeps its own settings from now on.") }
                     return
                 }
+                if (applied && wasJoining) ProfileSync.onJoinedHouse() // now compare profiles with the house
                 if (applied) {
                     LocalWeb.lastMessage = "Settings updated from your other TV"
                     runCatching { Relay.publishState("Settings copied from your other TV") }

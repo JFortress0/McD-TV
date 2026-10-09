@@ -39,7 +39,7 @@ data class AddonInfo(val manifestUrl: String, val name: String, val description:
 
 /**
  * Client for the open Stremio addon protocol (manifest.json + /stream/{type}/{id}.json).
- * McD TV ships with no addons: you add manifest URLs yourself in Settings.
+ * Jarvis ships with no addons: you add manifest URLs yourself in Settings.
  */
 object Addons {
     /** Accepts stremio:// links and bare addon URLs. Returns the manifest.json URL. */

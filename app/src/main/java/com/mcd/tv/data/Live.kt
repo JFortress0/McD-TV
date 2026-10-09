@@ -18,6 +18,21 @@ data class Channel(
 object M3u {
     private val attr = Regex("([a-zA-Z-]+)=\"([^\"]*)\"")
 
+    /**
+     * The channel title of an #EXTINF line: everything after the first comma outside a quoted attribute, so
+     * group-title="Sports, Live" and titles with commas ("Packers @ Bears, 1:00 PM") stay whole.
+     * "" when the line has no title comma (the caller then falls back to tvg-name).
+     */
+    private fun titleOf(line: String): String {
+        var quoted = false
+        for (i in line.indices) {
+            val c = line[i]
+            if (c == '"') quoted = !quoted else if (c == ',' && !quoted) return line.substring(i + 1)
+        }
+        // Unbalanced quotes: fall back to the last comma.
+        return if (quoted) line.substringAfterLast(",", "") else ""
+    }
+
     /** Parses a standard #EXTM3U playlist. */
     fun parse(text: String): List<Channel> = parseLines(text.lineSequence())
 
@@ -48,7 +63,7 @@ object M3u {
                     group = attrs["group-title"]?.ifBlank { null } ?: "Other"
                     tvgId = attrs["tvg-id"]?.trim()?.ifBlank { null }
                     tvgName = attrs["tvg-name"]?.trim()?.ifBlank { null }
-                    pendingName = line.substringAfterLast(",").trim().ifBlank { attrs["tvg-name"] ?: "Channel" }
+                    pendingName = titleOf(line).trim().ifBlank { attrs["tvg-name"] ?: "Channel" }
                 }
                 line.isNotEmpty() && !line.startsWith("#") && pendingName != null -> {
                     val vod = line.contains("/movie/") || line.contains("/series/")
@@ -70,7 +85,6 @@ object M3u {
     private var cache: List<Channel> = emptyList()
     private val lock = kotlinx.coroutines.sync.Mutex()
 
-    /** Downloads and parses off the main thread; shared by Live TV and Sports, refreshed every 6 hours. */
     /** User agents tried for playlist servers, most widely accepted first. */
     private val USER_AGENTS = listOf(
         "IPTVSmartersPro",
@@ -159,6 +173,7 @@ object M3u {
         return null
     }
 
+    /** Downloads and parses off the main thread; shared by Live TV, Multiview and Games, refreshed every 6 hours. */
     suspend fun load(force: Boolean = false): List<Channel> {
         val url = Prefs.m3uUrl
         if (url.isBlank()) return emptyList()

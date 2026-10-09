@@ -51,7 +51,8 @@ data class StreamInfo(
         private val truehd = Regex("true-?hd", opt)
         private val dts = Regex("\\bdts", opt)
         private val ddp = Regex("(ddp|dd\\+|e-?ac-?3)", opt)
-        private val channels = Regex("(?<![0-9.])([57])[ .]1(?![0-9])(?!\\s?(gb|mb|gib|mib))", opt)
+        // "DDP5.1", "AAC 5.1", "DTS-HD.MA.7.1"; not "15.1 GB" or "1.5.1" (digit, or digit + dot, before it).
+        private val channels = Regex("(?<![0-9])(?<![0-9]\\.)([57])[ .]1(?![0-9])(?!\\s?(gb|mb|gib|mib))", opt)
         private val nonAlnum = Regex("[^a-z0-9]+")
 
         fun parse(s: StreamSource): StreamInfo {

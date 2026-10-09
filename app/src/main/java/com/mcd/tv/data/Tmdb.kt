@@ -152,7 +152,7 @@ fun JSONObject.s(key: String): String? = if (isNull(key)) null else optString(ke
 
 /**
  * TMDB client: posters, descriptions, cast, seasons. Needs a free TMDB API key,
- * entered from your phone (Settings > Phone setup). Accepts a v3 key or a v4 read token.
+ * entered on the Control page (Settings > Phone & Computer Setup). Accepts a v3 key or a v4 read token.
  */
 object Tmdb {
     private const val BASE = "https://api.themoviedb.org/3"
@@ -162,7 +162,7 @@ object Tmdb {
 
     private suspend fun get(path: String, params: Map<String, String> = emptyMap()): JSONObject {
         val key = Prefs.tmdbKey
-        if (key.isBlank()) throw IllegalStateException("Add your TMDB API key: Settings > Phone setup")
+        if (key.isBlank()) throw IllegalStateException("Add your TMDB API key: Settings > Phone & Computer Setup")
         val all = params.toMutableMap()
         val headers = mutableMapOf<String, String>()
         if (key.length > 40) headers["Authorization"] = "Bearer $key" else all["api_key"] = key
@@ -338,7 +338,7 @@ object Tmdb {
         val p = params.toMutableMap()
         p["page"] = page.toString()
         p.putIfAbsent("sort_by", "popularity.desc")
-        p["include_adult"] = "false" // adult titles are never shown anywhere in McD TV
+        p["include_adult"] = "false" // adult titles are never shown anywhere in Jarvis
         originParams().forEach { (k, v) -> p.putIfAbsent(k, v) }
         if (Prefs.usOnly) p.putIfAbsent("watch_region", "US")
         return list("/discover/$type", type, p)
@@ -380,13 +380,6 @@ object Tmdb {
         val arr = get("/discover/$type", p).optJSONArray("results") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { parse(arr.getJSONObject(it), type) }
     }
-
-    /** Family-friendly picks for Family Movie Night (genre 10751 = Family). */
-    suspend fun familyMovies(page: Int) = discover(
-        "movie",
-        mapOf("with_genres" to "10751", "vote_count.gte" to "300", "certification_country" to "US", "certification.lte" to "PG"),
-        page,
-    )
 
     /**
      * Kids profile rows: US-rated G or PG movies in one genre (default 10751 = Family; 16 = Animation).

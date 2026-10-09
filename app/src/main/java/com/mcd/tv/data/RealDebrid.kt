@@ -30,7 +30,7 @@ object RealDebrid {
             deviceCode = o.getString("device_code"),
             userCode = o.getString("user_code"),
             verifyUrl = o.s("direct_verification_url") ?: o.s("verification_url") ?: "https://real-debrid.com/device",
-            intervalSec = o.optInt("interval", 5),
+            intervalSec = o.optInt("interval", 5).coerceIn(1, 60), // never poll in a tight loop
             expiresSec = o.optInt("expires_in", 600),
         )
     }
@@ -125,11 +125,8 @@ object RealDebrid {
     internal suspend fun apiPost(path: String, fields: Map<String, String>): String = authed { Http.postForm("$API$path", fields, it) }
     internal suspend fun apiDelete(path: String): String = authed { Http.delete("$API$path", it) }
 
-    /** Valid access token (refreshed if needed), for other RD helpers. */
-    suspend fun accessToken(): String = token()
-
     /**
-     * Access token for the McD TV web app (your own browser), so it can play on a phone or computer.
+     * Access token for the Jarvis web app (your own browser), so it can play on a phone or computer.
      * Refreshed first when it has less than [minValidMs] left, or when [force] is set (the browser got a 401).
      * Returns the token and when it expires (epoch ms). The refresh token and client secret never leave the TV.
      */

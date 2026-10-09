@@ -2,6 +2,7 @@ package com.mcd.tv.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.mcd.tv.data.sync.ProfileSync
 import org.json.JSONArray
 
 /**
@@ -14,6 +15,7 @@ object Prefs {
     fun init(context: Context) {
         sp = context.applicationContext.getSharedPreferences("mcdtv_settings", Context.MODE_PRIVATE)
         migrateToProfiles()
+        ProfileSync.init(context)
     }
 
     // ---- Profiles (no login): Dad, Mom, Kids on this TV ----
@@ -26,6 +28,8 @@ object Prefs {
     /**
      * Settings stored once per profile (watch history, progress, My List, favorites, Live TV favorites,
      * recents and last channel). The stored key is "<key>@<profile id>". Everything else is shared by the whole TV.
+     * All of these except Live TV recents and the last channel also sync between the house's TVs (ProfileSync),
+     * and so do the profile names.
      */
     private val PROFILE_KEYS = listOf(
         "lib_favorites", "lib_watchlist", "lib_noise", "lib_hidden", "lib_history", "lib_episodes",
@@ -41,7 +45,17 @@ object Prefs {
 
     fun profileName(id: String): String = str("profile_name_$id").ifBlank { PROFILE_DEFAULT_NAMES[id] ?: "Profile" }
 
-    fun setProfileName(id: String, name: String) = put("profile_name_$id", name.take(20))
+    /** Renames a profile here and on the other TVs of the house. */
+    fun setProfileName(id: String, name: String) {
+        put("profile_name_$id", name.take(20))
+        ProfileSync.onProfileName(id, str("profile_name_$id"))
+    }
+
+    /** The name typed for [id] ("" when it still has its default name). */
+    fun customProfileName(id: String): String = str("profile_name_$id")
+
+    /** A name that came from another TV (not sent back). */
+    internal fun applySyncedProfileName(id: String, name: String) = put("profile_name_$id", name.take(20))
 
     val activeProfileName: String get() = profileName(activeProfile)
 
@@ -148,12 +162,17 @@ object Prefs {
 
     /** Adds or removes a favorite channel. Returns true when it is now a favorite. */
     fun toggleLiveFavorite(url: String): Boolean = synchronized(listLock) {
-        val k = profileKey("live_favorites")
+        val profile = activeProfile
+        val k = "live_favorites@$profile"
         val cur = strList(k)
         val nowFav = url !in cur
         putStrList(k, if (nowFav) cur + url else cur - url)
+        ProfileSync.onLiveFavorite(profile, url, nowFav)
         nowFav
     }
+
+    /** For ProfileSync: runs [block] under the lock of the JSON list settings (Live TV favorites). */
+    internal fun <T> withListLock(block: () -> T): T = synchronized(listLock) { block() }
 
     /** Recently watched Live TV channels (stream URLs), most recent first, at most 20. */
     val liveRecents: List<String> get() = strList(profileKey("live_recents"))
@@ -253,7 +272,7 @@ object Prefs {
 
     /** Keys that belong to this TV only and never sync to the account. */
     private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key",
-        "house_id", "house_key", "house_since", "house_stamp", "device_id", "active_profile")
+        "house_id", "house_key", "house_since", "house_stamp", "device_id", "active_profile", "sync_peers", "sync_budget", "sync_pause")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String
@@ -349,6 +368,8 @@ object Prefs {
         e.apply()
         // A copy saved by an older version has data without a profile: it goes to the first profile.
         migrateToProfiles()
+        // Profile data from the copy is added to the house's (never deletes): see ProfileSync.onBulkImport.
+        ProfileSync.onBulkImport()
     }
 
     // ---- Raw JSON blobs used by Library ----

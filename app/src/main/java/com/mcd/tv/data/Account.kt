@@ -7,7 +7,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Optional McD TV account on your own server (see server/README.md).
+ * Optional Jarvis account on your own server (see server/README.md).
  * Signed in, your lists, history, addons and Real-Debrid link follow you to any TV.
  */
 object Account {
@@ -15,7 +15,7 @@ object Account {
 
     private suspend fun call(method: String, path: String, body: JSONObject? = null): JSONObject = withContext(Dispatchers.IO) {
         val base = Prefs.serverUrl
-        if (base.isBlank()) throw IllegalStateException("Add your server address first (Phone setup)")
+        if (base.isBlank()) throw IllegalStateException("No account server is set on this TV.")
         val c = URL(base + path).openConnection() as HttpURLConnection
         try {
             c.requestMethod = method

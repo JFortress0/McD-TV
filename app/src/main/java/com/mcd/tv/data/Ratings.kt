@@ -19,7 +19,7 @@ data class Ratings(
 /**
  * IMDb, Rotten Tomatoes (critics and audience) and Metacritic scores from MDBList,
  * a free ratings service (mdblist.com). Needs a free MDBList API key: GitHub secret
- * MDBLIST_API_KEY, or the McD TV Control page.
+ * MDBLIST_API_KEY, or the Jarvis Control page.
  */
 object RatingsSource {
     /** Results per IMDb id ("tt…") or TMDB id ("tm:movie:603"), including "no scores" results, so misses are not asked for again. */
