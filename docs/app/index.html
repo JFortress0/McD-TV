@@ -1903,7 +1903,11 @@ const TV_OFF = "Your TV didn't answer. Sign in to Real-Debrid on this device (Se
 const RECONNECT = "Real-Debrid signed this device out. Connect it again in Settings.";
 function fatal(msg) { const e = new Error(msg); e.fatal = true; return e; }
 let rdc = readJSON(RDC_KEY);
-const rdHere = () => !!(rdc && rdc.r && rdc.id && rdc.secret);
+// Optional: your personal API token (real-debrid.com/apitoken), pasted in Settings. RD lets it use the streaming
+// feature (iPhone-ready versions), which the device sign-in that open-source apps use is refused ("not_allowed_method").
+const RDT_KEY = "mcdtv_web_rdt";
+const rdToken = () => LS.get(RDT_KEY) || "";
+const rdHere = () => !!rdToken() || !!(rdc && rdc.r && rdc.id && rdc.secret);
 function saveRdc(o) { rdc = o; if (o) LS.set(RDC_KEY, JSON.stringify(o)); else LS.del(RDC_KEY); }
 const rdViaTv = () => !!(S.init && S.init.rd_connected && S.link);
 const rdAvailable = () => rdHere() || rdViaTv();
@@ -1936,6 +1940,16 @@ function rdRefresh() {
 /** One RD API call (path under rest/1.0/) with this device's sign-in. A 401 refreshes once and retries. */
 async function rdCall(method, path, fields, retried) {
   if (!rdHere()) throw fatal(NO_RD);
+  if (rdToken()) {
+    const res = await rdFetch(method, "rest/1.0" + path, fields, rdToken());
+    if (res.status === 401) throw fatal("Real-Debrid refused your API token. Paste a new one in Settings.");
+    if (!res.ok) {
+      const e = new Error("Real-Debrid: " + String((res.o && res.o.error) || "error " + res.status).replace(/_/g, " "));
+      e.status = res.status;
+      throw e;
+    }
+    return res.o;
+  }
   if (!rdc.t || Date.now() > (rdc.exp || 0)) await rdRefresh();
   const res = await rdFetch(method, "rest/1.0" + path, fields, rdc.t);
   if (res.status === 401 && !retried) { await rdRefresh(); return rdCall(method, path, fields, true); }
@@ -1977,6 +1991,15 @@ async function rdLoginStart() {
   rdLoginUi();
 }
 function rdPanelHTML() {
+  return rdSignInHTML() + `<div style="margin-top:16px"><b>Play inside Jarvis on iPhone</b>
+    <p class="muted">Optional. Real-Debrid only gives its iPhone-ready versions to your personal API token. Copy it from
+    <a href="https://real-debrid.com/apitoken" target="_blank" rel="noopener">real-debrid.com/apitoken</a> and paste it here. It stays on this device.
+    Without it, Jarvis opens MKV files in VLC instead.</p>
+    <div class="rowf" style="margin-top:8px">${rdToken() ? `<span class="muted">Token saved.</span><button class="btn small" data-act="rdtclear">Remove token</button>` :
+      `<input id="rdtIn" type="password" placeholder="Paste API token" autocomplete="off"><button class="btn small primary" data-act="rdtsave">Save</button>`}</div></div>`;
+}
+function rdSignInHTML() {
+  if (rdToken() && !(rdc && rdc.r)) return `<p class="muted">Using your API token. Play here works on this device without the TV.</p>`;
   if (rdHere()) return `<p class="muted">Connected. Play here works on this device without the TV.</p>
     <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rdout">Disconnect this device</button></div>`;
   if (RDL.code) return `<p>On any device, open <a href="${esc(RDL.url)}" target="_blank" rel="noopener">real-debrid.com/device</a> and enter this code:</p>
@@ -2129,9 +2152,7 @@ async function playCandidates(res) {
   if (!hls) add(full("h264WebM"), "webm");
   // Safari (iPhone, iPad, Mac) plays MP4 and MOV files only: an MKV would spin forever.
   if (!hls || isMp4) add(res.direct, "direct");
-  if (!out.length) throw new Error("Real-Debrid has no iPhone version of this file yet, and the original file (" +
-    (String(res.filename || "").split(".").pop() || "MKV").toUpperCase() + ") can't play on iPhone. Pick another source, or use Play on TV.");
-  return out;
+  return out; // empty: nothing this browser can play (go() offers VLC and Infuse instead)
 }
 
 // ---------- resume positions (this browser) ----------
@@ -2224,12 +2245,39 @@ async function renderSources(v, tok, type, id, q) {
     say("Getting the stream ready…");
     const cands = await playCandidates(res);
     if (tok !== routeTok) return true;
-    if (!cands.length) throw new Error("This source has no playable link");
+    if (!cands.length) {
+      if (!res.direct) throw new Error("This source has no playable link");
+      showExternal(res, s);
+      return true;
+    }
     const f = SI.info(s);
     S.playing = { key: posKey(meta), meta, cands, back: location.hash,
       line: [f.resolution, f.source, f.sizeLabel, s.addon].filter(Boolean).join(" · ") };
     location.hash = `#/play/${type}/${id}` + (type === "tv" ? `?s=${season}&e=${episode}` : "");
     return true;
+  }
+  /** The file is ready but this browser can't play it (MKV on iPhone): hand it to a player app. */
+  function showExternal(res, s) {
+    const u = encodeURIComponent(res.direct);
+    const ext = (String(res.filename || "").split(".").pop() || "MKV").toUpperCase();
+    say("");
+    const box = document.createElement("div");
+    box.className = "panel"; box.id = "extBox"; box.style.margin = "12px 0";
+    box.innerHTML = `<h2>Ready. Open it in a player app</h2>
+      <p class="muted">${esc(SI.info(s).sizeLabel || "")} ${esc(ext)} file. iPhone's browser can't play ${esc(ext)}${rdToken() ? "" : ", and Real-Debrid only makes its iPhone version for your API token (Settings)"}. VLC (free on the App Store) plays it, sound and all.</p>
+      <div class="rowf" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+        <a class="btn small primary" href="vlc-x-callback://x-callback-url/stream?url=${u}">Open in VLC</a>
+        <a class="btn small" href="infuse://x-callback-url/play?url=${u}">Open in Infuse</a>
+        <button class="btn small" type="button" id="extCopy">Copy link</button>
+        ${res.rdId ? `<a class="btn small" href="https://real-debrid.com/streaming-${encodeURIComponent(res.rdId)}" target="_blank" rel="noopener">Real-Debrid player</a>` : ""}
+      </div>`;
+    const old = $("#extBox", v); if (old) old.remove();
+    status.after(box);
+    $("#extCopy", box).addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(res.direct); toast("Link copied", "ok"); } catch { toast("Couldn't copy here", "warn"); }
+    });
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+    lock(false);
   }
   listEl.addEventListener("click", async (e) => {
     if (e.target.closest("#showHidden")) {
@@ -2993,6 +3041,16 @@ document.addEventListener("click", async (e) => {
       if (location.hash === next) route(); else location.hash = next;
       break;
     }
+    case "rdtsave": {
+      const val = ($("#rdtIn") || {}).value || "";
+      const t = val.trim();
+      if (!/^[A-Za-z0-9]{20,80}$/.test(t)) { toast("That doesn't look like a Real-Debrid API token", "warn"); break; }
+      const r = await rdFetch("GET", "rest/1.0/user", null, t).catch(() => null);
+      if (!r || !r.ok) { toast("Real-Debrid didn't accept that token", "warn"); break; }
+      LS.set(RDT_KEY, t); rdLoginUi(); toast("API token saved on this device", "ok");
+      break;
+    }
+    case "rdtclear": LS.del(RDT_KEY); rdLoginUi(); toast("API token removed from this device", "ok"); break;
     case "rdlogin": rdLoginStart().catch((err) => toast(err.message || "Real-Debrid didn't answer", "warn")); break;
     case "rdcancel": RDL.code = null; clearTimeout(RDL.timer); rdLoginUi(); break;
     case "rdout": if (confirm("Disconnect Real-Debrid on this device?")) { saveRdc(null); rdLoginUi(); toast("Real-Debrid disconnected on this device", "ok"); } break;
