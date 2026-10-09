@@ -9,6 +9,8 @@ media3 = "1.5.1"
 coil = "2.7.0"
 coroutines = "1.9.0"
 zxing = "3.5.3"
+junit = "4.13.2"
+orgJson = "20240303"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -24,6 +26,9 @@ media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "medi
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+# JVM unit tests only (app/src/test). org.json: Android's copy is a stub in unit tests, so tests use the real one.
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
