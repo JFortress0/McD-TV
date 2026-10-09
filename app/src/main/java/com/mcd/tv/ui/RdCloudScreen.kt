@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,7 +21,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,7 +53,7 @@ private fun RowCard(title: String, subtitle: String, modifier: Modifier = Modifi
 
 /**
  * Your Real-Debrid cloud: everything in your own RD account, playable here.
- * Add more from your phone (Phone setup > magnet link) or on real-debrid.com.
+ * Add more on the Control page (magnet link) or on real-debrid.com.
  */
 @Composable
 fun RdCloudScreen(nav: Nav) {

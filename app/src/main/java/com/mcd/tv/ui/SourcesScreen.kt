@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -123,7 +122,7 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
             }
             is Load.Ok -> if (l.value.isEmpty()) {
                 StatusText(
-                    if (Prefs.addonUrls.isEmpty()) "No addons installed. Add one from your phone: Settings > Phone setup."
+                    if (Prefs.addonUrls.isEmpty()) "No addons installed. Add one on the Control page: Settings > Phone & Computer Setup."
                     else "Your addons found no sources for this title.",
                 )
             } else LazyColumn(

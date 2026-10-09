@@ -3,11 +3,8 @@ package com.mcd.tv.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -21,7 +18,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -40,7 +36,6 @@ import kotlin.math.sin
  * Jarvis palette: an original holographic heads-up display. Near-black glass, cyan light, amber alerts.
  * Property names are kept from the first theme so every screen picks up the new look:
  * Red / RedBright / RedDark map to the cyan accents, Navy / NavyLight to the dark glass.
- * The intro keeps its own red constants.
  */
 object McdColors {
     val Navy = Color(0xFF02060A)       // page background (darkest)
@@ -69,13 +64,6 @@ object McdColors {
 
     /** Live badges: warning amber (the name is kept from the old red badge). */
     val LiveRed = Amber
-
-    /** The intro animation keeps the original red broadcast look. */
-    val IntroRed = Color(0xFFE11D2E)
-    val IntroRedBright = Color(0xFFFF3B4A)
-    val IntroRedDark = Color(0xFF8F0F1A)
-    val IntroNavy = Color(0xFF07090D)
-    val IntroNavyLight = Color(0xFF10141B)
 }
 
 /** Base gradient for every page: a faint cyan-lit top fading into near-black. */
@@ -132,9 +120,6 @@ val HudText = FontFamily(
     Font(R.font.hud_text_bold, FontWeight.Bold),
 )
 
-/** Old name kept for compatibility: headings now use the HUD display face. */
-val HeadingFont = HudDisplay
-
 /**
  * Headlines, section titles, card titles: Orbitron Bold. Orbitron is wide, so sizes are scaled down
  * (big titles top out at 30sp) and small sizes get extra letter spacing.
@@ -167,15 +152,6 @@ fun hudLabelStyle(size: TextUnit = 10.sp, color: Color = McdColors.Accent) = Tex
     fontSize = size,
     color = color,
     letterSpacing = 1.5.sp,
-)
-
-/** The intro keeps its heavy italic sports-broadcast lettering. */
-fun introStyle(size: TextUnit, color: Color = McdColors.White) = TextStyle(
-    fontFamily = FontFamily.SansSerif,
-    fontWeight = FontWeight.Black,
-    fontStyle = FontStyle.Italic,
-    fontSize = size,
-    color = color,
 )
 
 /** Every Material text style in Rajdhani, so plain Text() calls pick up the HUD body face. */
@@ -260,17 +236,5 @@ fun McdLogo(modifier: Modifier = Modifier, scale: Float = 1f) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
         HudRing((30 * scale).dp)
         Text("JARVIS", style = style, maxLines = 1)
-    }
-}
-
-/** Small "TV" badge in the intro's broadcast style (kept for the intro). */
-@Composable
-fun TvBadge(scale: Float = 1f, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(McdColors.IntroRed, RoundedCornerShape((6 * scale).dp))
-            .padding(horizontal = (10 * scale).dp, vertical = (2 * scale).dp),
-    ) {
-        Text(text = "TV", style = introStyle((30 * scale).sp))
     }
 }

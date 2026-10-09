@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,15 +60,6 @@ internal fun guideTime(ms: Long): String = guideTimeFormat.format(Date(ms))
 internal fun programmeProgress(p: Programme, now: Long): Float {
     val len = (p.end - p.start).coerceAtLeast(1L)
     return ((now - p.start).toFloat() / len).coerceIn(0f, 1f)
-}
-
-/** "Now: Title  •  Next 8:00 PM Title", or "" without guide data. */
-internal fun nowNextLine(cur: Programme?, next: Programme?): String = buildString {
-    if (cur != null) append("Now: ").append(cur.title)
-    if (next != null) {
-        if (isNotEmpty()) append("  •  ")
-        append("Next ").append(guideTime(next.start)).append(' ').append(next.title)
-    }
 }
 
 /**

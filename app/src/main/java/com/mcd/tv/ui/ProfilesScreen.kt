@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.sync.ProfileSync
 
 /** Start-up switch for the profile picker. The automated QA launch ("--ez qa true") skips it. */
 object ProfileStart {
@@ -60,6 +61,11 @@ fun ProfilePickerScreen(onPicked: () -> Unit) {
         Text("WHO'S WATCHING?", style = broadcastStyle(30.sp))
         Spacer(Modifier.height(6.dp))
         Text("Each profile keeps its own history, My List and Live TV favorites.", color = McdColors.Muted, fontSize = 14.sp)
+        val syncLine = remember { ProfileSync.statusLine() }
+        if (syncLine.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text(syncLine, color = McdColors.Muted, fontSize = 13.sp)
+        }
         Spacer(Modifier.height(30.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
             Prefs.PROFILE_IDS.forEachIndexed { i, id ->

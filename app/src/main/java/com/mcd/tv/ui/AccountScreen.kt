@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -79,7 +78,7 @@ fun AccountScreen(nav: Nav) {
         ) {
             Text("JARVIS ACCOUNT", style = broadcastStyle(32.sp))
             Text(
-                "Server: " + Prefs.serverUrl.ifBlank { "not set. Add it in Phone setup." },
+                "Server: " + Prefs.serverUrl.ifBlank { "not set." },
                 color = McdColors.White, fontSize = 15.sp,
             )
             if (signedIn) {

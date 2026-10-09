@@ -51,7 +51,7 @@ fun SettingsScreen(nav: Nav) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Phone setup")
+                RailHeader("Jarvis Control")
                 Text(
                     "Paste your TMDB key, addon links, playlist and stream links from your phone instead of typing with the remote.",
                     color = McdColors.Muted, fontSize = 16.sp,
@@ -100,7 +100,7 @@ fun SettingsScreen(nav: Nav) {
             HudPanel(Modifier.fillMaxWidth()) {
                 RailHeader("Sources")
                 Text(
-                    "TMDB: " + (if (Prefs.tmdbKey.isNotBlank()) "connected" else "add a key in Phone setup") +
+                    "TMDB: " + (if (Prefs.tmdbKey.isNotBlank()) "connected" else "add a key on the Control page") +
                         "\nAddons: " + when (val a = addons) { is Load.Ok -> a.value.joinToString(", ").ifBlank { "none" }; else -> "…" } +
                         "\nLive TV playlist: " + (if (Prefs.m3uUrl.isNotBlank()) "set" else "none") +
                         "\nWebsites: " + Prefs.websites.joinToString(", ") { it.first }.ifBlank { "none" } +

@@ -34,13 +34,15 @@ fun SportsScreen(nav: Nav) {
     // Re-read every few seconds so a save from the phone shows up right away.
     var sites by remember { mutableStateOf(Prefs.websites) }
     LaunchedEffect(Unit) { while (true) { sites = Prefs.websites; delay(3000) } }
+    // Lazy grid keys must be unique: a list synced from another TV could repeat a URL.
+    val unique = remember(sites) { sites.distinctBy { it.second } }
 
     TabPage(nav, NavTab.Sports) {
         Row(Modifier.padding(horizontal = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("JARVIS ", style = broadcastStyle(30.sp))
             Text("WEBSITES", style = broadcastStyle(30.sp, McdColors.Accent))
         }
-        if (sites.isEmpty()) {
+        if (unique.isEmpty()) {
             StatusText("None yet. Add them in Jarvis Control (Settings > Phone & Computer Setup).", Modifier.padding(start = 48.dp))
         } else {
             LazyVerticalGrid(
@@ -49,7 +51,7 @@ fun SportsScreen(nav: Nav) {
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                items(sites, key = { it.second }) { (name, url) ->
+                items(unique, key = { it.second }) { (name, url) ->
                     CompactTile(name, url.removePrefix("https://").removePrefix("http://").removePrefix("www."), { nav.push(Screen.Web(url, name)) })
                 }
             }

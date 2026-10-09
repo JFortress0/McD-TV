@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -204,7 +203,7 @@ fun SearchScreen(nav: Nav) {
                             contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            items(r.value.take(30), key = { "${it.type}-${it.id}" }) { t ->
+                            items(r.value.distinctBy { "${it.type}-${it.id}" }.take(30), key = { "${it.type}-${it.id}" }) { t ->
                                 PosterCard(t, onClick = { nav.push(Screen.Detail(t.type, t.id)) }, width = 150.dp)
                             }
                         }
