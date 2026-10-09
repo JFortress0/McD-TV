@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
         // with a QA extra ("--ez qa true", or "--es screen ...") starts it here too.
         if (intent?.hasExtra("qa") == true || !intent?.getStringExtra("screen").isNullOrEmpty()) LocalWeb.start()
         Relay.start() // internet setup link (works from any network)
-        // Signed in to a McD TV account? Pick up changes made on other TVs.
+        // Signed in to a Jarvis account? Pick up changes made on other TVs.
         lifecycleScope.launch {
             // Pick up changes made on the web page or another TV: now, then every 2 minutes.
             while (true) {
@@ -207,7 +207,7 @@ private fun App(startScreen: Screen? = null) {
 
     BackHandler(enabled = stack.size > 1) { pop() }
 
-    // "Open on TV" / "Play on TV" from the McD TV web app. In the background this still runs,
+    // "Open on TV" / "Play on TV" from the Jarvis web app. In the background this still runs,
     // so the new screen is simply there when the app comes back to the front.
     LaunchedEffect(Unit) {
         Relay.navRequests.collect { r ->
