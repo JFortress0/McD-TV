@@ -25,7 +25,7 @@ Jarvis is a player and an interface. It ships with no content sources. You add e
 - **Websites:** a built-in browser with a remote-controlled pointer, for sites you add on the Control page.
 - **Shared settings across TVs:** on the Control page, "Use its settings here" links two TVs. Keys, addons, the playlist, Real-Debrid and preferences then stay the same on both. "Copy once" gives another TV a one-time copy without your Real-Debrid. Each profile's history, Continue Watching and My List also sync between linked TVs.
 - **Control page:** scan the QR code in Settings > Phone & Computer Setup. The page talks to the TV through an encrypted relay, so it works from any network.
-- **Web app:** [jfortress0.github.io/McD-TV/app/](https://jfortress0.github.io/McD-TV/app/) is Jarvis in a phone or computer browser. Browse, then Play on TV, or Play here with your TV's Real-Debrid link. It installs as an app (PWA).
+- **Web app:** [jfortress0.github.io/McD-TV/app/](https://jfortress0.github.io/McD-TV/app/) is Jarvis in a phone or computer browser. Browse, then Play on TV, or Play here on the phone. Sign in to Real-Debrid once on each phone to play with the TV off. It installs as an app (PWA).
 
 ## Remote controls in the player
 

@@ -62,7 +62,8 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 - The TV makes a random link id and a 256-bit key and shows them as a QR code. The key sits after `#` in the link, so browsers never send it anywhere.
 - Messages go through ntfy.sh. The page posts to `mcdtv-<id>-in`; the TV answers on `mcdtv-<id>-out`.
 - Each message is `"v1:" + base64url(iv(12) || AES-256-GCM(deflate-raw(JSON)))`. The relay only sees random bytes.
-- Commands include `hello`, `set` (settings), `house_join`, `house_leave`, `magnet`, `web_init`, `rd_token`, `progress`, `ask`, `open`, `play` and `watchlist`.
+- Commands include `hello`, `set` (settings), `house_join`, `house_leave`, `magnet`, `web_init`, `rd_resolve`, `progress`, `ask`, `open`, `play` and `watchlist`.
+- Browsers can't call the Real-Debrid API: it sends no CORS headers. The web app's Play here uses one of two routes. (1) The device signed in to Real-Debrid itself (Settings > Real-Debrid on this device). Its calls go through `rd-proxy/`, a Netlify function at `jarvis-rd.netlify.app` that adds CORS headers and stores nothing. (2) Otherwise it sends `rd_resolve` to the TV, the TV makes the RD calls and sends back playable links. The TV's RD token never leaves the TV.
 - "New link" in Phone & Computer Setup makes a new id and key, which disconnects old devices.
 
 ### HouseSync
