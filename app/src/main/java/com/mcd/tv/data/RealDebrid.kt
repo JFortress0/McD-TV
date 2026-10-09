@@ -223,7 +223,8 @@ object RealDebrid {
         }
         val o: JSONObject = when {
             infoHash != null -> unrestrictInfo(resolveHashLink(infoHash, fileIdx, season, episode))
-            url != null -> webUnrestrictUrl(url) ?: return WebStream(url, "", "", "", null)
+            url != null -> hashInUrl(url)?.let { (h, idx) -> unrestrictInfo(resolveHashLink(h, fileIdx ?: idx, season, episode)) }
+                ?: webUnrestrictUrl(url) ?: return WebStream(url, "", "", "", null)
             else -> throw IllegalStateException("This source has no playable link")
         }
         val direct = o.optString("download")
@@ -238,6 +239,20 @@ object RealDebrid {
         }
         return WebStream(direct, id, o.optString("mimeType"), o.optString("filename"), tc)
     }
+
+    /**
+     * Debrid addon links (Torrentio and others) carry the torrent hash in the path, for example
+     * /resolve/realdebrid/<key>/<infoHash>/<name>/<fileIdx>/<file>. Resolving the hash directly gets RD's
+     * browser-friendly versions, which the addon's redirect hides. Returns the hash and file index, or null.
+     */
+    internal fun hashInUrl(url: String): Pair<String, Int?>? {
+        val parts = runCatching { java.net.URI(url).rawPath.split('/').map { java.net.URLDecoder.decode(it, "UTF-8") } }.getOrNull() ?: return null
+        val at = parts.indexOfFirst { HASH40.matches(it) }
+        if (at < 0) return null
+        val idx = parts.drop(at + 1).take(3).firstOrNull { it.length in 1..4 && it.all(Char::isDigit) }?.toInt()
+        return parts[at].lowercase() to idx
+    }
+    private val HASH40 = Regex("[A-Fa-f0-9]{40}")
 
     private suspend fun unrestrictInfo(link: String): JSONObject = JSONObject(apiPost("/unrestrict/link", mapOf("link" to link)))
 
