@@ -3158,7 +3158,23 @@ document.addEventListener("click", async (e) => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && S.link && Date.now() - S.lastInitAsk > 60000) askInit();
+  if (document.visibilityState === "visible") checkForUpdate();
 });
+// ---------- updates ----------
+// iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
+// to the screen, compare BUILD with the published page and reload if it changed (not during playback).
+const BUILD = "2026-10-09.2";
+let lastUpdateCheck = 0;
+async function checkForUpdate() {
+  if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
+  lastUpdateCheck = Date.now();
+  try {
+    const t = await (await fetch("./index.html?u=" + Date.now(), { cache: "no-store" })).text();
+    const m = /const BUILD = "([^"]+)"/.exec(t);
+    if (m && m[1] !== BUILD) location.reload();
+  } catch {}
+}
+setTimeout(checkForUpdate, 3000);
 window.addEventListener("hashchange", () => { document.title = "Jarvis"; route(); });
 
 // ---------- install (PWA) ----------
