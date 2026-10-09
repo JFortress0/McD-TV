@@ -223,7 +223,7 @@ main#view{min-height:60vh}
 @media (hover:hover){.tile:hover{transform:translateY(-2px);border-color:var(--bright);box-shadow:0 8px 24px rgba(0,0,0,.4)}}
 .svc{min-height:72px;font-size:17px;color:#fff;border:0}
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
-select,input[type=text],input[type=search],input[type=password]{background:#0B1220;color:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;font-size:16px}
+select,input[type=text],input[type=search],input[type=password],input[type=url]{background:#0B1220;color:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;font-size:16px}
 select:focus-visible,input:focus-visible{outline:2px solid var(--bright);outline-offset:1px}
 .more{display:flex;justify-content:center;margin:24px 0}
 
@@ -391,7 +391,7 @@ nav.tabbar a.on{color:var(--accent)}nav.tabbar a.on svg{color:var(--accent);filt
 .trailer .pb{background:var(--accent);color:var(--ink);box-shadow:0 0 18px rgba(0,229,255,.6)}
 .panel{background:var(--card);border-color:var(--line)}
 .pill{background:var(--raised)}.pill.ok{background:rgba(0,229,255,.18);color:var(--accent)}.pill.no{background:rgba(255,77,109,.15);color:#FF4D6D}
-select,input[type=text],input[type=search],input[type=password]{border-radius:0;clip-path:var(--cut-s);background:rgba(2,6,10,.7);color:var(--white);border-color:var(--line)}
+select,input[type=text],input[type=search],input[type=password],input[type=url]{border-radius:0;clip-path:var(--cut-s);background:rgba(2,6,10,.7);color:var(--white);border-color:var(--line)}
 select:focus-visible,input:focus-visible{outline:none;border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .searchbox svg{color:var(--accent)}
 .sk{background:linear-gradient(90deg,#061722 0,#0A2230 45%,#061722 90%);background-size:220% 100%}
@@ -1862,6 +1862,22 @@ function addonPanelHTML() {
     ${mine.map((u, i) => `<div class="rowf" style="margin-top:8px"><span>${esc(host(u))}</span><button class="btn small" data-act="addondel" data-i="${i}">Remove</button></div>`).join("")}
     <div class="rowf" style="margin-top:10px"><input id="addonIn" type="url" placeholder="https://…/manifest.json" autocomplete="off"><button class="btn small primary" data-act="addonadd">Add</button></div>`;
 }
+// Which app opens files this browser can't play (MKV on iPhone): "vlc" (default), "infuse" or "ask".
+const EXT_KEY = "mcdtv_web_extplayer";
+const extPref = () => { const v = LS.get(EXT_KEY); return v === "infuse" || v === "ask" ? v : "vlc"; };
+const extUrl = (app, direct) => app === "infuse" ? "infuse://x-callback-url/play?url=" + encodeURIComponent(direct)
+  : "vlc-x-callback://x-callback-url/stream?url=" + encodeURIComponent(direct);
+function extPrefSelect(id) {
+  const o = [["vlc", "Open in VLC automatically"], ["infuse", "Open in Infuse automatically"], ["ask", "Ask me each time"]];
+  return `<select id="${id}" data-extpref>${o.map(([v, t]) => `<option value="${v}"${extPref() === v ? " selected" : ""}>${t}</option>`).join("")}</select>`;
+}
+document.addEventListener("change", (e) => {
+  const sel = e.target.closest && e.target.closest("[data-extpref]");
+  if (!sel) return;
+  LS.set(EXT_KEY, sel.value);
+  $$("[data-extpref]").forEach((x) => { x.value = sel.value; });
+  toast(sel.value === "ask" ? "Jarvis will ask each time" : "Files open in " + (sel.value === "infuse" ? "Infuse" : "VLC") + " automatically", "ok");
+});
 function backupAddons() {
   const tv = ((S.init && S.init.addon_urls) || []).filter(okUrl);
   if (tv.length) LS.set(ADDON_BAK, JSON.stringify(tv));
@@ -2284,14 +2300,16 @@ async function renderSources(v, tok, type, id, q) {
     say("");
     const box = document.createElement("div");
     box.className = "panel"; box.id = "extBox"; box.style.margin = "12px 0";
-    box.innerHTML = `<h2>Ready. Open it in a player app</h2>
+    const auto = extPref();
+    box.innerHTML = `<h2>${auto === "ask" ? "Ready. Open it in a player app" : "Opening in " + (auto === "infuse" ? "Infuse" : "VLC") + "…"}</h2>
       <p class="muted">${esc(SI.info(s).sizeLabel || "")} ${esc(ext)} file. iPhone's browser can't play ${esc(ext)}${rdToken() ? "" : ", and Real-Debrid only makes its iPhone version for your API token (Settings)"}. VLC (free on the App Store) plays it, sound and all.</p>
       <div class="rowf" style="margin-top:10px;flex-wrap:wrap;gap:8px">
         <a class="btn small primary" href="vlc-x-callback://x-callback-url/stream?url=${u}">Open in VLC</a>
         <a class="btn small" href="infuse://x-callback-url/play?url=${u}">Open in Infuse</a>
         <button class="btn small" type="button" id="extCopy">Copy link</button>
         ${res.rdId ? `<a class="btn small" href="https://real-debrid.com/streaming-${encodeURIComponent(res.rdId)}" target="_blank" rel="noopener">Real-Debrid player</a>` : ""}
-      </div>`;
+      </div>
+      <div class="rowf" style="margin-top:10px"><span class="muted">Next time:</span>${extPrefSelect("extPrefBox")}</div>`;
     const old = $("#extBox", v); if (old) old.remove();
     status.after(box);
     $("#extCopy", box).addEventListener("click", async () => {
@@ -2299,6 +2317,8 @@ async function renderSources(v, tok, type, id, q) {
     });
     box.scrollIntoView({ behavior: "smooth", block: "start" });
     lock(false);
+    // Hand the file straight to the chosen app. iPhone may ask "Open in VLC?" the first time: tap Open.
+    if (auto !== "ask") setTimeout(() => { if (tok === routeTok) location.href = extUrl(auto, res.direct); }, 400);
   }
   listEl.addEventListener("click", async (e) => {
     if (e.target.closest("#showHidden")) {
@@ -2944,6 +2964,8 @@ function renderSettings(v) {
       <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small${p.id === S.profile ? " primary" : ""}" data-act="setprofile" data-pid="${p.id}"${p.id === S.profile ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</div>
     </div>
     <div class="panel"><h2>Real-Debrid on this device</h2><div id="rdPanel">${rdPanelHTML()}</div></div>
+    <div class="panel"><h2>Player app on iPhone</h2><p class="muted">iPhone's browser can't play MKV files. Jarvis hands them to this app. VLC and Infuse are on the App Store.</p>
+      <div class="rowf" style="margin-top:10px">${extPrefSelect("extPrefSet")}</div></div>
     <div class="panel"><h2>Addons on this device</h2>${addonPanelHTML()}</div>
     <div class="panel"><h2>Ask Jarvis</h2>
       <label class="switch"><input type="checkbox" id="jvLocal" ${jarvisLocalOn() ? "checked" : ""}> Use Jarvis on this device without the TV</label>
