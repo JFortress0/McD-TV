@@ -138,6 +138,17 @@ fun SettingsScreen(nav: Nav) {
             }
 
             HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("App updates")
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val up = com.mcd.tv.data.Updater.available
+                Text(
+                    "Version ${com.mcd.tv.data.Updater.installedName(ctx)}" + (if (up != null) ". Version ${up.name} is ready to install." else ". Jarvis checks for updates when it starts."),
+                    color = McdColors.White, fontSize = 16.sp,
+                )
+                ActionButton(if (up != null) "Update now" else "Check for updates", { nav.push(Screen.Update) }, primary = up != null)
+            }
+
+            HudPanel(Modifier.fillMaxWidth()) {
                 RailHeader("Player test")
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ActionButton("Play test stream", { nav.push(Screen.Player(PLAYER_TEST_URL, "Player test")) })
