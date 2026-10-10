@@ -2833,7 +2833,8 @@ const LV = (() => {
       const vlc = st.msg === LIVE_NO && /^https?:\/\//i.test(m3u);
       const app = isMac ? "iina" : "vlc";
       v.innerHTML = `<div class="page"><h1>Live TV</h1><div class="panel"><h2>Live TV</h2><p>${vlc ? `Your provider blocks web browsers, so the channel list can't load here. ${EXT_NAME[app]} can open it: ${isMac ? "click" : "tap"} below, then pick a channel in its playlist${isMac ? " (the list button in IINA's player)" : ""}. A big list can take a minute to load the first time.${isMac ? ` Get IINA free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : ""}` : esc(st.msg)}</p>
-        <div class="rowf" style="margin-top:10px">${vlc ? `<a class="btn small primary" href="${esc(extUrl(app, m3u))}">Open channels in ${EXT_NAME[app]}</a>` : ""}<button class="btn small" data-act="liveretry">Try again</button></div></div></div>`;
+        <div class="rowf" style="margin-top:10px">${vlc ? `<a class="btn small primary" href="${esc(extUrl(app, m3u))}">Open channels in ${EXT_NAME[app]}</a><button class="btn small" data-act="copym3u">Copy playlist link</button>` : ""}<button class="btn small" data-act="liveretry">Try again</button></div>
+        ${vlc && isMac ? `<p class="muted" style="margin-top:10px">If IINA asks for a login, your provider doesn't accept IINA. Click Cancel, then try VLC for Mac (free at <a href="https://www.videolan.org" target="_blank" rel="noopener">videolan.org</a>): click Copy playlist link, then in VLC choose File &gt; Open Network, paste the link and click Open.</p>` : ""}</div></div>`;
       return;
     }
     const c = counts();
@@ -3118,6 +3119,12 @@ document.addEventListener("click", async (e) => {
     case "reload": route(); break;
     case "paste": doPaste(); break;
     case "unpair": if (confirm("Unlink this browser from your TV?")) { unpair(); toast("Unlinked"); location.hash = "#/pair"; } break;
+    case "copym3u": {
+      const m3u = String((S.init && S.init.m3u_url) || "").trim();
+      if (!m3u) break;
+      try { await navigator.clipboard.writeText(m3u); toast("Playlist link copied", "ok"); } catch { prompt("Copy your playlist link:", m3u); }
+      break;
+    }
     case "copysetup": {
       const url = setupLink();
       try { await navigator.clipboard.writeText(url); toast("Setup copied. Open the Jarvis app, Settings, paste under Your TV, tap Link.", "ok"); }
@@ -3185,7 +3192,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-09.5";
+const BUILD = "2026-10-09.6";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
