@@ -26,6 +26,7 @@ export default async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: h })
   if (req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: h })
 
+  const wantWindow = new URL(req.url).searchParams.get("window") === "1"
   let target: URL
   try {
     target = new URL(new URL(req.url).searchParams.get("u") || "")
@@ -51,6 +52,24 @@ export default async (req: Request) => {
       continue
     }
     if (!r.ok) { lastStatus = r.status; continue }
+    // "&window=1" on a guide request: send only what's on from now to six hours ahead. A provider's full
+    // guide for one channel is about 150 KB; the web app needs a few shows of it.
+    if (wantWindow && target.searchParams.get("action") === "get_simple_data_table") {
+      try {
+        const j = (await r.json()) as { epg_listings?: Array<Record<string, unknown>> }
+        const now = Date.now() / 1000
+        const list = (j.epg_listings || [])
+          .filter((e) => Number(e.stop_timestamp) > now && Number(e.start_timestamp) < now + 6 * 3600)
+          .map((e) => ({ title: e.title, start_timestamp: e.start_timestamp, stop_timestamp: e.stop_timestamp }))
+        return new Response(JSON.stringify({ epg_listings: list }), {
+          status: 200,
+          headers: { ...h, "Content-Type": "application/json", "Cache-Control": "no-store", "X-Jarvis-UA": ua },
+        })
+      } catch {
+        lastStatus = 502
+        continue
+      }
+    }
     return new Response(r.body, {
       status: 200,
       headers: { ...h, "Content-Type": r.headers.get("content-type") || "application/json", "Cache-Control": "no-store", "X-Jarvis-UA": ua },
