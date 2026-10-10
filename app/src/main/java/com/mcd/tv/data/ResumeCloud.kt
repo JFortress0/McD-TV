@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -128,6 +129,58 @@ object ResumeCloud {
         }
     }
 
+    // ---------------------------------------------------------------- Live TV favorites
+
+    private val LIVE_NUM = Regex("""/(\d+)(?:\.[A-Za-z0-9]+)?(?:\?.*)?$""")
+    private val favJobs = HashMap<String, Job>()
+
+    /**
+     * [profile]'s Live TV favorites changed (here, from a phone, or from another TV): a few seconds later they go
+     * to the relay as stream numbers, so the phones have them even when every TV is off. Profile tag
+     * "livefav|pN", key "list", value {ids, at}; the web app reads it (docs/app/index.html, RC.favGet).
+     */
+    fun onLiveFavorites(profile: String) {
+        if (Prefs.qaMode) return
+        synchronized(lock) {
+            favJobs.remove(profile)?.cancel()
+            favJobs[profile] = scope.launch {
+                delay(5_000)
+                synchronized(lock) { favJobs.remove(profile) }
+                runCatching { pushLiveFavs(profile) }
+            }
+        }
+    }
+
+    private fun liveFavIds(profile: String): List<String> = runCatching {
+        val a = JSONArray(Prefs.json("live_favorites@$profile").ifBlank { "[]" })
+        List(a.length()) { a.optString(it) }.mapNotNull { LIVE_NUM.find(it)?.groupValues?.get(1) }.distinct().take(300)
+    }.getOrDefault(emptyList())
+
+    private fun pushLiveFavs(profile: String) {
+        val key = houseKey() ?: return
+        val ids = liveFavIds(profile)
+        val sig = "v1:" + ids.joinToString(",")
+        if (Prefs.json("livefav_sent@$profile") == sig) return // already there
+        val now = System.currentTimeMillis()
+        val payload = JSONObject()
+            .put("k", tag(key, "list"))
+            .put("t", now)
+            .put("v", seal(key, JSONObject().put("ids", JSONArray(ids)).put("at", now).toString()))
+            .toString()
+        val c = URL("$ENDPOINT?h=${enc(tag(key, "house"))}&p=${enc(tag(key, "livefav|$profile"))}").openConnection() as HttpURLConnection
+        try {
+            c.requestMethod = "POST"
+            c.connectTimeout = 15_000
+            c.readTimeout = 20_000
+            c.doOutput = true
+            c.setRequestProperty("Content-Type", "application/json")
+            c.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+            if (c.responseCode == 200) Prefs.putJson("livefav_sent@$profile", sig)
+        } finally {
+            c.disconnect()
+        }
+    }
+
     // ---------------------------------------------------------------- reading
 
     /** One position from the cloud, decrypted. [at] = when it was saved (or reported by a player app). */
@@ -179,6 +232,8 @@ object ResumeCloud {
             if (!force && now - (lastPull[profile] ?: 0L) < PULL_EVERY_MS) return
             lastPull[profile] = now
         }
+        // Favorites that changed while the app was closed, or arrived from another TV: send them (only when they differ).
+        for (p in Prefs.PROFILE_IDS) onLiveFavorites(p)
         val remote = withContext(Dispatchers.IO) { runCatching { fetch(profile) }.getOrDefault(emptyList()) }
         if (remote.isEmpty()) return
         val local = Library.history(profile).associateBy { it.meta.historyKey }

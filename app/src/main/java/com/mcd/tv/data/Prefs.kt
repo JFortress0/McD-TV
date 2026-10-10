@@ -168,6 +168,7 @@ object Prefs {
         val nowFav = url !in cur
         putStrList(k, if (nowFav) cur + url else cur - url)
         ProfileSync.onLiveFavorite(profile, url, nowFav)
+        ResumeCloud.onLiveFavorites(profile)
         nowFav
     }
 
@@ -179,6 +180,7 @@ object Prefs {
         if ((url in cur) == on) return@synchronized
         putStrList(k, if (on) cur + url else cur - url)
         ProfileSync.onLiveFavorite(profile, url, on)
+        ResumeCloud.onLiveFavorites(profile)
     }
 
     /** For ProfileSync: runs [block] under the lock of the JSON list settings (Live TV favorites). */
