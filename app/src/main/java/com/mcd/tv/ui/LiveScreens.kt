@@ -195,7 +195,8 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
         forYouResult = runCatching { com.mcd.tv.data.LiveForYou.build(index, Prefs.liveFavorites.toHashSet(), guideNow) }.getOrNull()
     }
     val forYouCount = forYou?.count ?: 0
-    val entries = remember(index, favItems.size, recentItems.size, leagues, leagueCounts, forYouCount) {
+    val forYouReady = forYou != null
+    val entries = remember(index, favItems.size, recentItems.size, leagues, leagueCounts, forYouCount, forYouReady) {
         buildList {
             if (leagues.isNotEmpty()) {
                 add(RailEntry(HDR + "games", "GAMES", null))
@@ -204,7 +205,8 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
             }
             add(RailEntry(KEY_SEARCH, "⌕  Search", null))
             add(RailEntry(KEY_FAV, "★  Favorites", favItems.size))
-            if (forYouCount > 0) add(RailEntry(KEY_FORYOU, "✦  My Guide", forYouCount))
+            // Always listed (count appears once the picks are ready), so it's there from the first moment.
+            add(RailEntry(KEY_FORYOU, "✦  My Guide", if (forYou != null) forYouCount else null))
             if (recentItems.isNotEmpty()) add(RailEntry(KEY_RECENT, "Recent", recentItems.size))
             index.sections.forEach { add(RailEntry(SEC + it.name, it.name, it.count)) }
             add(RailEntry(KEY_ALL, "All channels", index.size))
@@ -300,6 +302,8 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
                     val league = League.entries.firstOrNull { GAME + it.name == sel } ?: League.NFL
                     // Keyed by league: each one starts at its own top (and focus target).
                     androidx.compose.runtime.key(sel) { GamesPane(league, index, guide, gamesUi, play, restoreFocus) }
+                } else if (sel == KEY_FORYOU && forYou == null) {
+                    StatusText("Building your guide… picking channels for ${Prefs.activeProfileName}.")
                 } else if (sel == KEY_FORYOU && guide.isNotEmpty() && forYou != null) {
                     // Old-school TV guide of this profile's channels, its kind of shows lit up.
                     MyGuidePane(
