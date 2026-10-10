@@ -2747,11 +2747,11 @@ const LV = (() => {
   // The Jarvis relay (rd-proxy/netlify/functions/iptv.mts) fetches that channel list; videos still go straight
   // from the provider to the player app.
   const IPTV_RELAY = "https://jarvis-rd.netlify.app/iptv";
-  async function getViaRelay(url, ms) {
+  async function getViaRelay(url, ms, extra) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), ms || 60000);
     try {
-      const r = await fetch(IPTV_RELAY + "?u=" + encodeURIComponent(url), { signal: ac.signal });
+      const r = await fetch(IPTV_RELAY + "?u=" + encodeURIComponent(url) + (extra || ""), { signal: ac.signal });
       if (!r.ok) throw new Error(LIVE_NO);
       const ua = r.headers.get("X-Jarvis-UA"); if (ua) st.ua = ua;
       return await r.text();
@@ -2776,7 +2776,8 @@ const LV = (() => {
       if (!o || o.stream_id == null || o.stream_id === "") continue;
       const id = String(o.stream_id);
       const icon = typeof o.stream_icon === "string" && /^https?:/i.test(o.stream_icon) ? o.stream_icon : "";
-      out.push({ sid: id, name: String(o.name || "").trim() || "Channel " + id, logo: icon, group: cats[String(o.category_id)] || "Other",
+      // Only channels the provider has a guide for get a guide id (often a small share of a big list).
+      out.push({ sid: o.epg_channel_id ? id : "", name: String(o.name || "").trim() || "Channel " + id, logo: icon, group: cats[String(o.category_id)] || "Other",
         url: `${x.base}/live/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.m3u8` });
       if (out.length >= 25000) break;
     }
@@ -2861,12 +2862,16 @@ const LV = (() => {
   function b64(s) { try { return new TextDecoder().decode(Uint8Array.from(atob(String(s || "")), (c) => c.charCodeAt(0))); } catch { return String(s || ""); } }
   async function fetchEpg(sid) {
     const x = st.xt; if (!x) return;
-    const api = `${x.base}/player_api.php?username=${encodeURIComponent(x.user)}&password=${encodeURIComponent(x.pass)}&action=get_short_epg&stream_id=${encodeURIComponent(sid)}&limit=4`;
+    // The full guide table (the short guide on many providers skips the show on now). Through the relay it is
+    // trimmed to the next six hours; read directly, it is trimmed here.
+    const api = `${x.base}/player_api.php?username=${encodeURIComponent(x.user)}&password=${encodeURIComponent(x.pass)}&action=get_simple_data_table&stream_id=${encodeURIComponent(sid)}`;
+    const get = st.epgGet === getViaRelay ? (u, ms) => getViaRelay(u, ms, "&window=1") : (st.epgGet || getText);
     let list = [];
     try {
-      const j = JSON.parse(await (st.epgGet || getText)(api, 20000));
+      const j = JSON.parse(await get(api, 25000));
+      const now = Date.now();
       list = ((j && j.epg_listings) || []).map((e) => ({ title: b64(e.title).trim(), start: (+e.start_timestamp || 0) * 1000, end: (+e.stop_timestamp || 0) * 1000 }))
-        .filter((p) => p.title && p.start && p.end > p.start).sort((a, b) => a.start - b.start);
+        .filter((p) => p.title && p.start && p.end > p.start && p.end > now && p.start < now + 6 * 3600000).sort((a, b) => a.start - b.start);
     } catch {}
     EPG.set(sid, { at: Date.now(), list });
   }
@@ -2884,7 +2889,7 @@ const LV = (() => {
     pending.add(sid); queue.push(sid); pump();
   }
   function guideHtml(ch) {
-    if (!ch.sid || !st.xt) return [`<small>No guide info for this channel</small>`, ""];
+    if (!ch.sid || !st.xt) return [`<small>No guide for this channel</small>`, ""];
     const c = EPG.get(ch.sid);
     if (!c) return [`<small>Loading guide&#8230;</small>`, ""];
     const now = Date.now();
@@ -2892,7 +2897,7 @@ const LV = (() => {
     const pct = cur ? Math.max(0, Math.min(100, ((now - cur.start) / (cur.end - cur.start)) * 100)) : 0;
     return [
       cur ? `<span class="t"><span class="lv-tag">NOW</span>${esc(cur.title)}</span><small>${clock(cur.start)} to ${clock(cur.end)}</small><div class="lv-bar"><i style="width:${pct.toFixed(0)}%"></i></div>`
-        : `<small>No guide info right now</small>`,
+        : `<small>${c.list.length ? "Nothing listed right now" : "No guide for this channel"}</small>`,
       nxt ? `<small><span class="lv-tag" style="color:var(--muted)">NEXT</span>${clock(nxt.start)}</small><span class="t">${esc(nxt.title)}</span>` : "",
     ];
   }
@@ -3389,7 +3394,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.1";
+const BUILD = "2026-10-10.2";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
