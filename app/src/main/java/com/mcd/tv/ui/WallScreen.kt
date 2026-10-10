@@ -57,6 +57,8 @@ import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.mcd.tv.Nav
+import com.mcd.tv.data.BabyCountdown
+import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Wall
 import com.mcd.tv.data.Wall.Day
 import kotlinx.coroutines.delay
@@ -261,6 +263,7 @@ private fun ColumnScope.AgendaPanel(feed: Wall.Feed?, now: Long, error: String?)
             }
         }
     }
+    BabyCard(feed, now)
     Spacer(Modifier.height(12.dp))
 
     if (feed == null) {
@@ -308,6 +311,34 @@ private fun ColumnScope.AgendaPanel(feed: Wall.Feed?, now: Long, error: String?)
     }
 
     Legend(feed, error)
+}
+
+// ---------------- Baby countdown ----------------
+
+private val BabyPink = Color(0xFFFF7AB6)
+
+/**
+ * Countdown to the baby's due date: the date set on the Control page, else an all-day calendar event called
+ * "Due date" or "Baby due". Hidden when there is neither, or 3 weeks after the date.
+ */
+@Composable
+private fun BabyCard(feed: Wall.Feed?, now: Long) {
+    val today = Day.ofMillis(now)
+    val due = BabyCountdown.parse(Prefs.wallDue)
+        ?: feed?.events?.firstOrNull { it.allDay && BabyCountdown.isDueEvent(it.title) }?.day
+        ?: return
+    val s = remember(today, due) { BabyCountdown.state(today, due) } ?: return
+    Column(
+        Modifier.fillMaxWidth().padding(top = 10.dp).border(1.dp, BabyPink.copy(alpha = 0.6f), HudShapeSmall)
+            .background(BabyPink.copy(alpha = 0.08f), HudShapeSmall).padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text("BABY", style = hudLabelStyle(10.sp, BabyPink))
+        Text(s.headline, style = hudDisplayStyle(22.sp, McdColors.White, 0.5.sp), maxLines = 1)
+        Text(s.detail, color = McdColors.Muted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).background(McdColors.Line.copy(alpha = 0.5f))) {
+            Box(Modifier.fillMaxWidth(s.progress).height(4.dp).background(BabyPink))
+        }
+    }
 }
 
 private sealed interface AgendaRow {
