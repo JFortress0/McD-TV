@@ -507,6 +507,25 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
 .lv-star{flex:0 0 auto;font-size:20px;line-height:1;padding:6px 8px;margin:-6px 0;color:var(--muted);cursor:pointer}
 .lv-star.on{color:var(--warn)}
 .lv-sports{margin-top:2px}
+.lv-hd{flex:0 0 auto;align-self:center;font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);padding:0 4px}
+@media (min-width:900px){.lv-hd{padding:8px 4px 2px}}
+.gm-h{font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent);margin:16px 0 8px}
+.gm-week{margin:4px 0 0}
+.gm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.gm-card{border:1px solid var(--line);background:var(--card);clip-path:var(--cut)}
+.gm-card.live{border-color:var(--accent)}
+.gm-card.open{grid-column:1/-1}
+.gm-main{display:flex;gap:12px;align-items:center;justify-content:space-between;width:100%;padding:10px 12px;background:none;border:0;color:var(--white);font:inherit;text-align:left;cursor:pointer}
+.gm-teams{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
+.gm-team{display:flex;align-items:center;gap:8px;min-width:0}
+.gm-team img{width:24px;height:24px;object-fit:contain;flex:0 0 auto}
+.gm-team span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.gm-team small{color:var(--muted);font-size:11px}
+.gm-team b{font-variant-numeric:tabular-nums}
+.gm-when{flex:0 0 auto;text-align:right;font-size:13px;max-width:45%}
+.gm-when small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.gm-live{color:var(--accent);font-weight:700;font-size:11px;letter-spacing:1px}
+.gm-chans{padding:0 10px 10px}
 .lv-now,.lv-next{min-width:0}
 .lv-now .t,.lv-next .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lv-now .t{font-weight:600;font-size:14px}
@@ -3421,8 +3440,133 @@ const LV = (() => {
     if (!st.xt) return;
     $$(".lv-row[data-sid]", g).filter((r) => r.dataset.sid).slice(0, 16).forEach((r) => want(r.dataset.sid));
   }
+
+  // ---------- Games: this week's games by league, with the channels showing each (like the TV's Games block) ----------
+  // Same leagues and schedule source as the TV (data/Games.kt): ESPN's public scoreboard. Channels are matched by
+  // team names in the channel name, then by the networks carrying the game (your favorites first, so local
+  // affiliates you starred win), then the league's own channels (RedZone, NFL Network...).
+  const LEAGUES = [
+    { id: "NFL", label: "NFL Games", emoji: "\u{1F3C8}", path: "football/nfl", weekly: true, extra: "", months: [9, 10, 11, 12, 1, 2], sport: "football", league: ["nfl redzone", "redzone", "red zone", "nfl network", "sunday ticket", "nfl game pass"] },
+    { id: "NCAAF", label: "College Football", emoji: "\u{1F3C8}", path: "football/college-football", weekly: true, extra: "&groups=80", months: [8, 9, 10, 11, 12, 1], sport: "football", league: ["sec network", "acc network", "big ten network", "btn", "espnu", "cbs sports network", "longhorn network"] },
+    { id: "NBA", label: "NBA", emoji: "\u{1F3C0}", path: "basketball/nba", months: [10, 11, 12, 1, 2, 3, 4, 5, 6], sport: "basketball", league: ["nba tv", "nba league pass", "league pass"] },
+    { id: "MLB", label: "MLB", emoji: "⚾", path: "baseball/mlb", months: [3, 4, 5, 6, 7, 8, 9, 10], sport: "baseball", league: ["mlb network", "mlb tv", "big inning", "extra innings"] },
+    { id: "NHL", label: "NHL", emoji: "\u{1F3D2}", path: "hockey/nhl", months: [10, 11, 12, 1, 2, 3, 4, 5, 6], sport: "hockey", league: ["nhl network", "center ice"] },
+    { id: "WNBA", label: "WNBA", emoji: "\u{1F3C0}", path: "basketball/wnba", months: [5, 6, 7, 8, 9, 10], sport: "basketball", league: ["wnba"] },
+    { id: "MLS", label: "MLS", emoji: "⚽", path: "soccer/usa.1", months: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], sport: "soccer", league: ["mls season pass"] },
+    { id: "EPL", label: "Premier League", emoji: "⚽", path: "soccer/eng.1", months: [8, 9, 10, 11, 12, 1, 2, 3, 4, 5], sport: "soccer", league: ["premier league", "epl"] },
+  ];
+  const ESPN = "https://site.api.espn.com/apis/site/v2/sports/";
+  const SCHED = {}; // league id -> { at, games: [...], week }
+  const inSeason = (L) => L.months.includes(new Date().getMonth() + 1);
+  const ymd = (d) => d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+  function parseGames(j, L) {
+    const out = [];
+    for (const e of j.events || []) {
+      const c = (e.competitions || [])[0]; if (!c) continue;
+      const side = (ha) => { const t = (c.competitors || []).find((x) => x.homeAway === ha); if (!t || !t.team) return null;
+        const tm = t.team; return { name: tm.displayName || "", short: tm.shortDisplayName || tm.name || "", nick: tm.name || tm.shortDisplayName || "", loc: tm.location || "", abbr: tm.abbreviation || "", logo: tm.logo || "", score: t.score && typeof t.score === "object" ? t.score.displayValue : t.score || "", rank: (t.curatedRank && t.curatedRank.current <= 25) ? t.curatedRank.current : 0 }; };
+      const home = side("home"), away = side("away"); if (!home || !away) continue;
+      const st2 = ((e.status || c.status || {}).type) || {};
+      const casts = [...new Set([...(c.broadcasts || []).flatMap((b) => b.names || []), ...(c.geoBroadcasts || []).map((b) => b.media && b.media.shortName).filter(Boolean)])];
+      out.push({ id: L.id + ":" + e.id, L, state: st2.state || "pre", detail: st2.shortDetail || "", start: Date.parse(e.date || c.date || "") || 0, home, away, casts });
+    }
+    return { games: out, week: j.week && j.week.number };
+  }
+  async function loadLeague(L) {
+    const c = SCHED[L.id];
+    const busy = c && c.games.some((g) => g.state === "in");
+    if (c && Date.now() - c.at < (busy ? 60000 : 600000)) return c;
+    const urls = [];
+    if (L.weekly) urls.push(`${ESPN}${L.path}/scoreboard?limit=300${L.extra}`);
+    for (let k = L.weekly ? 0 : -1; k <= (L.weekly ? 1 : 3); k++) { const d = new Date(); d.setDate(d.getDate() + k); urls.push(`${ESPN}${L.path}/scoreboard?limit=300&dates=${ymd(d)}${L.extra || ""}`); }
+    const res = await Promise.all(urls.map((u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
+    const byId = new Map(); let week = null;
+    for (const j of res) { if (!j) continue; const p = parseGames(j, L); week = week || p.week; for (const g of p.games) byId.set(g.id, g); }
+    const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+    const games = [...byId.values()].filter((g) => !(g.state === "post" && g.start < today0.getTime() - (L.weekly ? 4 * 864e5 : 0))).sort((a, b) => a.start - b.start);
+    return (SCHED[L.id] = { at: Date.now(), games, week, ok: res.some(Boolean) });
+  }
+  const words = (t) => String(t || "").toLowerCase().replace(/&/g, " and ").split(/[^a-z0-9+]+/).filter(Boolean);
+  function hasPhrase(w, p) { const q = words(p); if (!q.length) return false; for (let i = 0; i + q.length <= w.length; i++) { let ok = true; for (let k = 0; k < q.length; k++) if (w[i + k] !== q[k]) { ok = false; break; } if (ok) return true; } return false; }
+  const OTHER_SPORT = { football: /\b(nba|mlb|nhl|wnba|baseball|basketball|hockey|soccer|mls|premier)\b/, basketball: /\b(nfl|ncaaf|mlb|nhl|football|baseball|hockey|soccer|redzone)\b/, baseball: /\b(nfl|ncaaf|nba|nhl|football|basketball|hockey|soccer|redzone)\b/, hockey: /\b(nfl|ncaaf|nba|mlb|football|basketball|baseball|soccer|redzone)\b/, soccer: /\b(nfl|ncaaf|nba|mlb|nhl|basketball|baseball|hockey|redzone)\b/ };
+  // ESPN network name -> channel-name phrases.
+  const NETS = { CBS: ["cbs"], FOX: ["fox"], NBC: ["nbc"], ABC: ["abc"], ESPN: ["espn"], ESPN2: ["espn2", "espn 2"], ESPNU: ["espnu"], ESPNEWS: ["espnews"], "ESPN+": ["espn plus", "espn+"],
+    FS1: ["fs1", "fox sports 1"], FS2: ["fs2", "fox sports 2"], "NFL Net": ["nfl network"], "NFL Network": ["nfl network"], NFLN: ["nfl network"], TNT: ["tnt"], TBS: ["tbs"], truTV: ["trutv", "tru tv"],
+    "NBA TV": ["nba tv"], "MLB Network": ["mlb network"], MLBN: ["mlb network"], "NHL Network": ["nhl network"], "SEC Network": ["sec network"], SECN: ["sec network"], "ACC Network": ["acc network"], ACCN: ["acc network"],
+    BTN: ["big ten network", "btn"], "Big Ten Network": ["big ten network", "btn"], CBSSN: ["cbs sports network"], "CBS Sports Network": ["cbs sports network"], USA: ["usa network"], Peacock: ["peacock"], "Prime Video": ["prime video", "amazon prime"], Netflix: ["netflix"], "Apple TV": ["apple tv", "mls season pass"] };
+  function channelsFor(g) {
+    const list = st.list || [], fav = favs(), out = new Map();
+    const sportsy = (ch) => ch.sec === "Sports" || ch.sec === "Events & PPV";
+    const other = OTHER_SPORT[g.L.sport];
+    const team = (t) => [g.L.sport === "soccer" ? t.short : t.nick, g.L.id === "NCAAF" ? t.loc : ""].filter((x) => x && x.length > 2);
+    const A = team(g.away), H = team(g.home);
+    const offer = (i, score, why) => { const ch = list[i]; const s = score + (fav.has(favKey(ch.url)) ? 25 : 0) + (/\b(hd|fhd)\b/i.test(ch.raw) ? 1 : 0); const o = out.get(i); if (!o || o.score < s) out.set(i, { i, score: s, why }); };
+    list.forEach((ch, i) => {
+      const t = (ch.group + " " + ch.raw).toLowerCase(); if (other.test(t)) return;
+      const w = words(ch.raw);
+      const a = A.some((p) => hasPhrase(w, p)), h = H.some((p) => hasPhrase(w, p));
+      if (a && h) offer(i, 100, "This game");
+      else if ((a || h) && sportsy(ch) && /\b(vs|v|at|x)\b|@/.test(ch.raw.toLowerCase())) offer(i, 80, "This game");
+    });
+    g.casts.forEach((b, order) => {
+      const phrases = NETS[b] || [b.toLowerCase()];
+      const found = [];
+      list.forEach((ch, i) => { const w = words(ch.raw); if (!phrases.some((p) => hasPhrase(w, p))) return; if (other.test((ch.group + " " + ch.raw).toLowerCase())) return; if (ch.sec === "International") return; found.push(i); });
+      found.slice(0, 40).forEach((i) => offer(i, 60 - order * 5 + (list[i].sid ? 3 : 0), b));
+    });
+    const seen = new Set();
+    return [...out.values()].sort((x, y) => y.score - x.score || x.i - y.i).filter((x) => { const k = list[x.i].name.toLowerCase().replace(/\b(hd|fhd|sd|4k|uhd)\b/g, "").replace(/\W+/g, ""); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
+  }
+  function leagueChannels(L) {
+    const list = st.list || [], fav = favs(), hits = [];
+    list.forEach((ch, i) => { const w = words(ch.raw); const k = L.league.findIndex((p) => hasPhrase(w, p)); if (k >= 0 && (ch.sec === "Sports" || ch.sec === "Events & PPV")) hits.push({ i, s: 100 - k + (fav.has(favKey(ch.url)) ? 50 : 0) }); });
+    const seen = new Set();
+    return hits.sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.i).filter((i) => { const k = list[i].name.toLowerCase().replace(/\W+/g, ""); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
+  }
+  const dayName = (ms) => { const d = new Date(ms), t = new Date(); t.setHours(0, 0, 0, 0); const diff = Math.round((new Date(d).setHours(0, 0, 0, 0) - t) / 864e5); return diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff === -1 ? "Yesterday" : d.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }); };
+  function gameCard(g) {
+    const live = g.state === "in", post = g.state === "post";
+    const side = (t) => `<div class="gm-team">${t.logo ? `<img src="${esc(t.logo)}" alt="" loading="lazy">` : ""}<span>${t.rank ? `<small>${t.rank}</small> ` : ""}${esc(t.short || t.name)}</span>${live || post ? `<b>${esc(t.score)}</b>` : ""}</div>`;
+    const when = live ? `<span class="gm-live">LIVE</span> ${esc(g.detail)}` : post ? esc(g.detail || "Final") : esc(clock(g.start));
+    const open = view.game === g.id;
+    const chans = open ? channelsFor(g) : null;
+    return `<div class="gm-card${live ? " live" : ""}${open ? " open" : ""}"><button class="gm-main" type="button" data-act="livegame" data-id="${esc(g.id)}">
+        <div class="gm-teams">${side(g.away)}${side(g.home)}</div>
+        <div class="gm-when">${when}<small>${esc(g.casts.join(" · "))}</small></div></button>
+      ${open ? `<div class="gm-chans">${chans.length ? `<div class="lv-list">${chans.map((x) => row(x.i, favs())).join("")}</div>` : `<p class="muted">No channel in your playlist names this game. Try ${esc(g.casts[0] || "the league channels")} or search.</p>`}</div>` : ""}</div>`;
+  }
+  async function drawGames(L) {
+    const g = $("#lvGrid"), more = $("#lvMore"); if (!g) return;
+    more.classList.add("hidden");
+    const sb = $("#lvSports"); if (sb) sb.innerHTML = "";
+    if (!SCHED[L.id]) g.innerHTML = `<div class="notice"><div class="spinner"></div><p class="muted">Loading ${esc(L.label)}&#8230;</p></div>`;
+    const sc = await loadLeague(L).catch(() => null);
+    if (view.sec !== "game:" + L.id || !$("#lvGrid")) return;
+    if (!sc || !sc.ok) { g.innerHTML = `<p class="muted">Couldn't load the ${esc(L.label)} schedule. Check your internet and try again.</p>`; return; }
+    const lc = leagueChannels(L);
+    const byDay = new Map();
+    const order = [...sc.games].sort((a, b) => (a.state === "in" ? 0 : a.state === "pre" ? 1 : 2) - (b.state === "in" ? 0 : b.state === "pre" ? 1 : 2) || a.start - b.start);
+    for (const x of order) { const k = x.state === "in" ? "Live now" : dayName(x.start); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(x); }
+    const y = window.scrollY;
+    g.innerHTML = `${sc.week && L.weekly ? `<p class="muted gm-week">Week ${sc.week}</p>` : ""}
+      ${lc.length ? `<div class="gm-h">League channels</div><div class="lv-list">${lc.map((i) => row(i, favs())).join("")}</div>` : ""}
+      ${[...byDay.entries()].map(([d, gs]) => `<div class="gm-h">${esc(d)}</div><div class="gm-grid">${gs.map(gameCard).join("")}</div>`).join("") || `<p class="muted">No ${esc(L.label)} games this week.</p>`}`;
+    window.scrollTo(0, y);
+    watchRows(g); wantFirst(g);
+    $$("#lvChips .chip").forEach((b) => b.classList.toggle("on", b.dataset.sec === view.sec));
+  }
+  async function loadGameCounts() {
+    for (const L of LEAGUES.filter(inSeason)) {
+      loadLeague(L).then((sc) => {
+        const b = $(`#lvChips .chip[data-sec="game:${L.id}"] span+span`);
+        if (b) b.textContent = sc.ok ? String(sc.games.filter((x) => x.state !== "post").length) : "";
+        const chip = b && b.closest(".chip"); if (chip && sc.ok && !sc.games.length) chip.remove();
+      }).catch(() => {});
+    }
+  }
   function drawGrid(keepScroll) {
     const g = $("#lvGrid"), more = $("#lvMore"); if (!g) return;
+    if (!view.q && String(view.sec).startsWith("game:")) { const L = LEAGUES.find((x) => "game:" + x.id === view.sec); if (L) { drawGames(L); return; } }
     const idx = filtered(), f = favs();
     const end = Math.min(idx.length, view.shown || PAGE);
     view.shown = end;
@@ -3459,17 +3603,18 @@ const LV = (() => {
       return;
     }
     const c = counts();
-    if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec))) { view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All"; view.auto = true; }
+    if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec) && !String(view.sec).startsWith("game:"))) { view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All"; view.auto = true; }
     const stale = !RC.ready() && S.link && S.status === "offline";
     v.innerHTML = `<div class="page"><h1>Live TV</h1>
       ${stale ? `<div class="panel" id="lvStale" style="margin-bottom:12px"><h2>Connect this phone to your house</h2><p class="muted">So favorites and lists come from every TV, not just one: on any TV go to Settings &gt; Profiles &gt; Connect a phone, then type its code in this app's Settings &gt; Connect with a code.</p></div>` : ""}
       <div class="lv-wrap">
-      <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => ["All", "Favorites", "Recent"].includes(s) || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
+      <div class="chips" id="lvChips">${(() => { const ls = LEAGUES.filter(inSeason); return ls.length ? `<span class="lv-hd">Games</span>${ls.map((L) => `<button class="chip lv-game" type="button" data-act="livesec" data-sec="game:${L.id}"><span>${L.emoji} ${esc(L.label)}</span><span>${SCHED[L.id] ? SCHED[L.id].games.filter((x) => x.state !== "post").length : ""}</span></button>`).join("")}<span class="lv-hd">Channels</span>` : ""; })()}${LIVE_SECTIONS.filter((s) => ["All", "Favorites", "Recent"].includes(s) || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
       <div><div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
       <div id="lvSports"></div><div id="lvGrid"></div><div class="more"><button class="btn hidden" id="lvMore" data-act="livemore">Show more</button></div></div></div></div>`;
     let t = 0;
     $("#lvQ", v).addEventListener("input", (e) => { clearTimeout(t); t = setTimeout(() => { view.q = e.target.value; view.shown = 0; drawGrid(); }, 200); });
     drawGrid();
+    loadGameCounts();
   }
   async function show(v, tok) {
     pullFavs().catch(() => {});
@@ -3571,6 +3716,7 @@ const LV = (() => {
     section(sec) { view.auto = false; view.sec = sec; view.sub = ""; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
     sport(sub) { view.auto = false; view.sec = "Sports"; view.sub = sub; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
     fav: toggleFav,
+    game(id) { view.game = view.game === id ? "" : id; drawGrid(true); },
     more() { view.shown += PAGE; drawGrid(); },
   };
 })();
@@ -3958,6 +4104,7 @@ document.addEventListener("click", async (e) => {
     case "livesec": LV.section(d.sec); break;
     case "livesport": LV.sport(d.sub || ""); break;
     case "livefav": LV.fav(+d.idx); break;
+    case "livegame": LV.game(d.id); break;
     case "livemore": LV.more(); break;
     case "liveretry": LV.reset(); route(); break;
     case "dismisshint": { const h = $("#iosHint"); if (h) h.remove(); break; }
@@ -3975,7 +4122,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.17";
+const BUILD = "2026-10-10.18";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
