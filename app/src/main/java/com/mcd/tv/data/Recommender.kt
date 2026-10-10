@@ -304,7 +304,8 @@ object Recommender {
             }
         }
         // Brand-new profile with no choices: start from what's popular and well made.
-        val fallback = if (seeds.isEmpty() && genres.isEmpty()) async { runCatching { Tmdb.trending("all") }.getOrDefault(emptyList()) } else null
+        val fallback: kotlinx.coroutines.Deferred<List<Title>>? =
+            if (seeds.isEmpty() && genres.isEmpty()) async { runCatching { Tmdb.trending("all") }.getOrDefault(emptyList<Title>()) } else null
         val pool = LinkedHashMap<String, Title>()
         val cands = ArrayList<Taste.Candidate>()
         (fromSeeds.awaitAll().flatten() + fromGenres.awaitAll().flatten() + (fallback?.await() ?: emptyList())).forEach { t ->
