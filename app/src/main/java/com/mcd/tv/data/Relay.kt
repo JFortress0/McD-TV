@@ -606,6 +606,10 @@ object Relay {
         if (d.has("wall_url")) Prefs.wallUrl = d.optString("wall_url")
         d.optString("wall_key").takeIf { it.isNotBlank() }?.let { Prefs.wallKey = it }
         if (d.has("wall_start")) Prefs.wallStart = d.optBoolean("wall_start")
+        // Baby due date for the Wall countdown: a real "yyyy-mm-dd", or "" to turn it off.
+        if (d.has("wall_due")) d.optString("wall_due").trim().let { v ->
+            if (v.isEmpty() || BabyCountdown.parse(v) != null) Prefs.wallDue = v
+        }
     }
 
     /** Sends the TV's current setup to the Control page (encrypted). */
@@ -631,6 +635,7 @@ object Relay {
             .put("wall_url", Prefs.wallUrl)
             .put("wall_key_set", Prefs.wallKey.isNotBlank())
             .put("wall_start", Prefs.wallStart)
+            .put("wall_due", Prefs.wallDue)
             .put("rd_connected", RealDebrid.connected)
             .put("version", com.mcd.tv.BuildConfig.VERSION_NAME)
             .put("device_name", HouseSync.deviceName())

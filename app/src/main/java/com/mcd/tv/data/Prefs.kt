@@ -149,6 +149,11 @@ object Prefs {
         get() = str("wall_key")
         set(v) = put("wall_key", v)
 
+    /** Baby due date as "yyyy-mm-dd" ("" = none): the Wall shows a countdown. Shared with linked TVs. */
+    var wallDue: String
+        get() = str("wall_due")
+        set(v) = put("wall_due", v)
+
     /** This TV opens straight into the Wall (no intro, no profile picker). This TV only, never synced. */
     var wallStart: Boolean
         get() = sp.getBoolean("wall_start", false)
