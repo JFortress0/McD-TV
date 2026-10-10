@@ -19,7 +19,7 @@ The app was called "McD TV" and is now "Jarvis". Only the visible name changed. 
 - **Install / update:** Downloader app, address `jfortress0.github.io/McD-TV/get`. It redirects to `releases/latest/download/Jarvis.apk`. Guide for every device: `docs/install.html`.
 - **TMDB:** built into each APK from the GitHub secret `TMDB_API_KEY`. A key saved on the Control page wins.
 - **MDBList (IMDb and Rotten Tomatoes scores):** secret `MDBLIST_API_KEY` or the Control page.
-- **Ask Jarvis:** needs a Jarvis key on the Control page. The key is stored on the TV and shared only with linked TVs (HouseSync, encrypted). It never goes to the account server. The UI never names the model provider.
+- **Ask Jarvis:** needs a Jarvis key on the Control page. The key is stored on the TV and shared only with linked TVs (HouseSync, encrypted). The UI never names the model provider.
 - **Local copy:** `~/Desktop/McD TV` on J's MacBook Air is a git repo. J pushes with GitHub Desktop.
 - **Secrets:** the signing key is in `keystore/` (git-ignored) and in the GitHub secret `KEYSTORE_BASE64`. Never commit `keystore/`.
 
@@ -46,14 +46,13 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 | `Relay.kt` | Encrypted link between the TV and the Control page / web app. |
 | `HouseSync.kt` | Shared settings between linked TVs. |
 | `PhoneSetup.kt` | Home Wi-Fi fallback page on port 8642. Runs only while Phone & Computer Setup is open, or in a QA launch. |
-| `Account.kt` | Optional account server client. See "Open items". |
 
 ### ui/ and player/
 
 - `HomeScreen.kt`, `BrowseScreens.kt` (Jarvis search, Library, Services, Noise, Genres), `CatalogScreens.kt` (Browse menu and grids), `DetailScreen.kt`, `SourcesScreen.kt`, `PersonScreen.kt`.
 - Live TV: `LiveScreens.kt` (channel list and Games block), `GamesScreen.kt`, `LivePlayer.kt` (channel up / down), `MultiviewScreen.kt` (one ExoPlayer per tile, released on exit).
 - `AskJarvisScreen.kt` is the stand-alone Ask Jarvis page (QA screen `ask`). The search box uses the same `Jarvis.ask`.
-- `ProfilesScreen.kt`, `SettingsScreen.kt` (also Phone & Computer Setup and Real-Debrid sign-in), `AccountScreen.kt`, `RdCloudScreen.kt`, `WebScreen.kt` (browser with a D-pad pointer; route `Screen.Sports` in `SportsScreens.kt`).
+- `ProfilesScreen.kt`, `SettingsScreen.kt` (also Phone & Computer Setup and Real-Debrid sign-in), `RdCloudScreen.kt`, `WebScreen.kt` (browser with a D-pad pointer; route `Screen.Sports` in `SportsScreens.kt`).
 - Look: `Theme.kt`, `Hud.kt`, `Common.kt`, `Components.kt`.
 - `player/PlayerScreen.kt`: Media3 ExoPlayer. Saves progress every 15 s and on exit, pauses when the app leaves the screen, retries network errors, jumps back to the live edge. `TvPlayerView.kt` handles LEFT / RIGHT seek and BACK. `ui/UpNext.kt` shows the 10 s Up Next card between episodes.
 
@@ -90,9 +89,9 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 
 - Push to `main`, or "Run workflow" in the Actions tab. `build.yml` runs unit tests, builds a signed release APK and publishes a Release (about 2 minutes). Version is `0.2.<run number>`; the version code is the run number.
 - `qa.yml` runs the APK in an Android TV emulator (`.github/qa/run-qa.sh`): screens open and show the right text, setup page, relay end to end, a sample M3U, remote navigation, crash and freeze checks. Results are in the run summary and the `qa-results` artifact.
-- Pushes that only touch `docs/`, Markdown or `server/` skip build and QA. A newer push cancels a run in progress.
+- Pushes that only touch `docs/`, Markdown, `rd-proxy/`, `tools/webtest/` or `.claude/` skip the APK build and emulator QA. Changes to `docs/` run Web QA instead (`.github/workflows/web-qa.yml`). A newer push cancels a run in progress.
 - Cloud sessions cannot reach Google Maven, so they cannot build. CI is the build. Before pushing, syntax-check Kotlin with `tree-sitter-kotlin` (pip) and web scripts with `node --check`.
-- Server tests: `cd server && node test.js`.
+- Web app tests: `python3 tools/webtest/srv.py &` then `node tools/webtest/qa.mjs`.
 
 ## House rules
 
@@ -102,6 +101,6 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 
 ## Open items
 
-1. **Account server:** `server/` works and has tests, but nothing in the app or the Control page sets the server address (`server_url`), so the Account page cannot be used. Either add a field for it or remove the feature. HouseSync covers most of what it was for.
-2. **Next features:** full EPG grid, mini-guide overlay in the live player, profile PINs, Trakt sync, subtitle styling, FFmpeg audio (DTS / TrueHD), in-app update check, Android TV Watch Next row.
+1. **Netlify budget:** relay deploys cost 15 credits each (300 a month on the free plan). See CLAUDE.md. The old account server (`server/`) was removed in October 2026; HouseSync, ProfileSync and the house store replace it.
+2. **Next features:** see BACKLOG.md (ranked upgrades from the October 2026 review, by area).
 3. **Housekeeping:** update GitHub Actions versions (Node 20 deprecation warnings).
