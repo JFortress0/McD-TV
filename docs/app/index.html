@@ -2776,8 +2776,8 @@ const LV = (() => {
       if (!o || o.stream_id == null || o.stream_id === "") continue;
       const id = String(o.stream_id);
       const icon = typeof o.stream_icon === "string" && /^https?:/i.test(o.stream_icon) ? o.stream_icon : "";
-      // Only channels the provider has a guide for get a guide id (often a small share of a big list).
-      out.push({ sid: o.epg_channel_id ? id : "", name: String(o.name || "").trim() || "Channel " + id, logo: icon, group: cats[String(o.category_id)] || "Other",
+      // epg: the provider has a guide for this copy (often a small share of a big list; see guideIds below).
+      out.push({ sid: id, epg: !!o.epg_channel_id, name: String(o.name || "").trim() || "Channel " + id, logo: icon, group: cats[String(o.category_id)] || "Other",
         url: `${x.base}/live/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.m3u8` });
       if (out.length >= 25000) break;
     }
@@ -2818,12 +2818,17 @@ const LV = (() => {
         if (mixedBlocked(url)) throw new Error(LIVE_NO); // an http link can't be read from this https page
         raw = parseM3u(await getText(url, 90000));
       }
+      // Guide: a copy without its own guide borrows the guide of a copy of the same network that has one
+      // ("ESPN FHD" uses "ESPN"'s guide), the way the TV matches its guide by channel name.
+      const gkey = (n) => LO.cleanName(n).toLowerCase().replace(/\b(hd|fhd|uhd|sd|4k|east|west|feed|backup|hevc|raw|1080p|720p|us|usa)\b/g, " ").replace(/[^a-z0-9&+!]+/g, " ").trim();
+      const guideIds = new Map();
+      for (const ch of raw) if (ch.epg && ch.sid) { const k = gkey(ch.name); if (k && !guideIds.has(k)) guideIds.set(k, ch.sid); }
       // Organize: drop separators and repeated URLs, clean the names, pick a section.
       const seen = new Set(), list = [];
       for (const ch of raw) {
         if (LO.isSeparator(ch.name) || seen.has(ch.url)) continue;
         seen.add(ch.url);
-        list.push({ sid: ch.sid || "", name: LO.cleanName(ch.name), raw: ch.name, logo: ch.logo, group: ch.group, url: ch.url, sec: LO.section(ch.group, ch.name) });
+        list.push({ sid: ch.epg ? ch.sid : guideIds.get(gkey(ch.name)) || "", name: LO.cleanName(ch.name), raw: ch.name, logo: ch.logo, group: ch.group, url: ch.url, sec: LO.section(ch.group, ch.name) });
       }
       if (!list.length) throw new Error("The playlist loaded but had no live channels in it.");
       if (!viaRelay && list.every((c) => mixedBlocked(c.url))) throw new Error(LIVE_NO);
@@ -3394,7 +3399,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.2";
+const BUILD = "2026-10-10.3";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
