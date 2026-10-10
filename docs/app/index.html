@@ -1326,7 +1326,10 @@ function renderHome(v, tok) {
     .catch((e) => { const h = $("#hero"); if (h && tok === routeTok) h.innerHTML = `<div class="notice" style="padding-top:120px"><h2>Couldn't load</h2><p class="muted">${esc(e.message)}</p><button class="btn" data-act="reload">Try again</button></div>`; });
   fillRow("picked", picks, posterCard, tok);
   const bw = becauseWatched(L);
-  if (bw) { const h2 = $("#row-because h2"); if (h2) h2.textContent = "Because You Watched " + bw.name; fillRow("because", bw.items, posterCard, tok); }
+  if (bw) {
+    bw.name.then((n) => { if (tok !== routeTok) return; const h2 = $("#row-because h2"); if (n && h2) h2.textContent = "Because You Watched " + n; else { const r = $("#row-because"); if (r) r.classList.add("hidden"); } });
+    fillRow("because", bw.items, posterCard, tok);
+  }
   else { const r = $("#row-because"); if (r) r.classList.add("hidden"); }
   fillRow("trending", trending, posterCard, tok);
   fillRow("pm", api.popular("movie"), posterCard, tok);
@@ -1424,11 +1427,13 @@ async function pickedFor(pid, L) {
   scored.sort((a, b) => b.s - a.s);
   return scored.slice(0, 24).map((x) => x.t);
 }
-/** "Because You Watched <the last thing this profile watched>", or null when it hasn't watched anything yet. */
+/** "Because You Watched <the last thing this profile watched>": {name (promise), items}, or null when it hasn't watched anything yet. */
 function becauseWatched(L) {
-  const r = L.cont.find((x) => x && x.name) || L.favorites.find((x) => x && x.name);
+  const r = L.cont[0] || L.favorites[0];
   if (!r || !r.type || !r.id) return null;
-  return { name: r.name, items: recs({ type: r.type, id: +r.id }).then((l) => l.filter((t) => kidsOk(t) && t.poster).slice(0, 20)) };
+  // Lists from the TV carry only ids: look the name up.
+  const name = r.name ? Promise.resolve(r.name) : api.lite(r.type, r.id).then((d) => d.title || d.name || "").catch(() => "");
+  return { name, items: recs({ type: r.type, id: +r.id }).then((l) => l.filter((t) => kidsOk(t) && t.poster).slice(0, 20)) };
 }
 /** Kids profile Home: family and animation rows, like the TV (US rated G or PG movies, TMDB's Kids genre for shows). */
 function renderKidsHome(v, tok, L) {
@@ -3787,7 +3792,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.12";
+const BUILD = "2026-10-10.13";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
