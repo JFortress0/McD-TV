@@ -3456,6 +3456,7 @@ const LV = (() => {
     { id: "EPL", label: "Premier League", emoji: "⚽", path: "soccer/eng.1", months: [8, 9, 10, 11, 12, 1, 2, 3, 4, 5], sport: "soccer", league: ["premier league", "epl"] },
   ];
   const ESPN = "https://site.api.espn.com/apis/site/v2/sports/";
+  const LEAGUE_WORD = { NFL: /\bnfl\b/, NCAAF: /\b(ncaaf|ncaa|cfb|college football)\b/, NBA: /\bnba\b/, MLB: /\bmlb\b/, NHL: /\bnhl\b/, WNBA: /\bwnba\b/, MLS: /\bmls\b/, EPL: /\b(epl|premier league)\b/ };
   const SCHED = {}; // league id -> { at, games: [...], week }
   const inSeason = (L) => L.months.includes(new Date().getMonth() + 1);
   const ymd = (d) => d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
@@ -3506,7 +3507,8 @@ const LV = (() => {
       const w = words(ch.raw);
       const a = A.some((p) => hasPhrase(w, p)), h = H.some((p) => hasPhrase(w, p));
       if (a && h) offer(i, 100, "This game");
-      else if ((a || h) && sportsy(ch) && /\b(vs|v|at|x)\b|@/.test(ch.raw.toLowerCase())) offer(i, 80, "This game");
+      // One team only: the channel must also name the league ("NFL 02: Eagles at ..."), so other sports' Eagles stay out.
+      else if ((a || h) && sportsy(ch) && LEAGUE_WORD[g.L.id].test(t) && /\b(vs|v|at|x)\b|@/.test(ch.raw.toLowerCase())) offer(i, 80, "This game");
     });
     g.casts.forEach((b, order) => {
       const phrases = NETS[b] || [b.toLowerCase()];
@@ -4122,7 +4124,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.18";
+const BUILD = "2026-10-10.19";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
