@@ -2935,6 +2935,11 @@ const LV = (() => {
     }, { rootMargin: "300px 0px" });
     $$(".lv-row[data-sid]", g).forEach((r) => { if (r.dataset.sid) io.observe(r); });
   }
+  /** The first rows load their guide right away (no wait for the scroll watcher, which pauses in background tabs). */
+  function wantFirst(g) {
+    if (!st.xt) return;
+    $$(".lv-row[data-sid]", g).filter((r) => r.dataset.sid).slice(0, 16).forEach((r) => want(r.dataset.sid));
+  }
   function drawGrid() {
     const g = $("#lvGrid"), more = $("#lvMore"); if (!g) return;
     const idx = filtered(), f = favs();
@@ -2944,6 +2949,7 @@ const LV = (() => {
       : `<p class="muted">${view.q ? "No channels match." : view.sec === "Favorites" ? "No favorite channels yet. Mark favorites in Live TV on the TV." : "No channels here."}</p>`;
     more.classList.toggle("hidden", end >= idx.length);
     watchRows(g);
+    wantFirst(g);
     $$("#lvChips .chip").forEach((b) => b.classList.toggle("on", !view.q && b.dataset.sec === view.sec));
   }
   function render(v) {
@@ -3399,7 +3405,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.3";
+const BUILD = "2026-10-10.4";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
