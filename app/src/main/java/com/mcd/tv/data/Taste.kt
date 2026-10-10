@@ -55,17 +55,18 @@ class TasteProfile(
 ) {
     /** How well [f] fits this profile, about -1..1 (choices dominate: an avoided genre is a hard no). */
     fun score(f: Features): Double {
-        if (f.genres.any { it in choices.avoidGenres } || f.keywords.any { it in choices.avoidKeywords }) return -1.0
+        if (f.genres.any { Taste.genreIn(it, choices.avoidGenres) } || f.keywords.any { it in choices.avoidKeywords }) return -1.0
         var s = 0.0
         if (f.genres.isNotEmpty()) {
-            val g = f.genres.sumOf { genres[it] ?: 0.0 } / f.genres.size
+            // TV genre ids ("War & Politics") are learned under their movie ids ("War"), so look them up that way.
+            val g = f.genres.sumOf { genres[Taste.canonicalGenre(it)] ?: 0.0 } / f.genres.size
             s += 0.45 * g
         }
         if (f.keywords.isNotEmpty()) s += 0.30 * clamp(f.keywords.sumOf { keywords[it] ?: 0.0 })
         if (f.people.isNotEmpty()) s += 0.15 * clamp(f.people.sumOf { people[it] ?: 0.0 })
         if (f.year > 0) s += 0.10 * (decades[f.year / 10 * 10] ?: 0.0)
         // Explicit likes: a boost on top of what was learned.
-        val likedG = f.genres.count { it in choices.likeGenres }
+        val likedG = f.genres.count { Taste.genreIn(it, choices.likeGenres) }
         if (likedG > 0) s += 0.25 + 0.10 * (likedG - 1)
         if (f.keywords.any { it in choices.likeKeywords }) s += 0.30
         return clamp(s)
@@ -114,6 +115,20 @@ object Taste {
         WAR_POLITICS -> WAR
         10765 -> 878 // Sci-Fi & Fantasy -> Science Fiction
         else -> id
+    }
+
+    /**
+     * True when genre [id] (movie or TV id) is one of [set] (chosen as movie ids). TV's combined
+     * "Sci-Fi & Fantasy" counts for Fantasy and for Sci-Fi; "Action & Adventure" for Action and Adventure.
+     */
+    fun genreIn(id: Int, set: Set<Int>): Boolean {
+        if (set.isEmpty()) return false
+        if (id in set || canonicalGenre(id) in set) return true
+        return when (id) {
+            10765 -> 14 in set || 878 in set
+            ACTION_ADVENTURE -> 12 in set
+            else -> false
+        }
     }
 
     fun decay(at: Long, now: Long): Double {

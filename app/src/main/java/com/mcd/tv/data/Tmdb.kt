@@ -332,6 +332,24 @@ object Tmdb {
         )
     }
 
+    /**
+     * One title by name (and first year), from any country. For a profile's starter favorites
+     * (Settings > Taste). Prefers an exact name match (case and punctuation ignored), else TMDB's best
+     * match; [exact] = exact matches only.
+     */
+    suspend fun findTitle(type: String, name: String, year: Int? = null, exact: Boolean = false): Title? {
+        val params = buildMap {
+            put("query", name)
+            put("include_adult", "false")
+            if (year != null) put(if (type == "movie") "year" else "first_air_date_year", year.toString())
+        }
+        val arr = get("/search/$type", params).optJSONArray("results") ?: return null
+        val all = (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let { o -> parse(o, type) } }
+        fun norm(x: String) = x.lowercase().filter { it.isLetterOrDigit() }
+        val want = norm(name)
+        return all.firstOrNull { norm(it.name) == want } ?: if (exact) null else all.firstOrNull()
+    }
+
     /** The TMDB id of a plot keyword ("stand-up comedy"), or null. Used for Settings > Taste topics. */
     suspend fun keywordId(name: String): Int? {
         val q = name.trim()

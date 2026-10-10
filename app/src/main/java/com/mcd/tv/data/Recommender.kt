@@ -95,7 +95,7 @@ object Recommender {
 
     // ---------------------------------------------------------------- taste per profile
 
-    private class CachedTaste(val taste: TasteProfile, val at: Long, val signals: List<Signal>)
+    private class CachedTaste(val taste: TasteProfile, val at: Long, val signals: List<Signal>, val starters: Set<String> = emptySet())
     private val tastes = HashMap<String, CachedTaste>()
     private val tasteLock = Mutex()
 
@@ -107,12 +107,74 @@ object Recommender {
         runCatching { JSONObject(Prefs.tasteJson(profile).ifBlank { DEFAULTS[profile] ?: "{}" }) }.getOrDefault(JSONObject())
 
     /**
-     * Starting point for a profile that never opened Settings > Taste. Dad starts on war, crime, comedy,
-     * history, stand-up and poker; the others start blank and learn from watching. Saving the Taste screen replaces it.
+     * Starting point for a profile that never opened Settings > Taste. Each profile has its own: Dad starts on war, crime,
+     * comedy, history, stand-up and poker; Mom on her own list; Kids on cartoons and family films. Saving the Taste screen replaces it.
      */
     private val DEFAULTS = mapOf(
         "p1" to """{"likeGenres":[10752,80,35,36],"avoidGenres":[],"likeWords":["stand-up comedy","poker"],"avoidWords":[]}""",
+        // Mom: rom-coms, fantasy, murder documentaries, reality competitions (from her own list).
+        "p2" to """{"likeGenres":[10749,35,14,80,10764,99],"avoidGenres":[],"likeWords":["true crime","murder","serial killer","romantic comedy","vampire","fashion"],"avoidWords":[]}""",
+        // Kids: cartoons and family films (the kids profile only ever gets family and animation anyway).
+        "p3" to """{"likeGenres":[16,10751],"avoidGenres":[],"likeWords":[],"avoidWords":[]}""",
     )
+
+    // ---------------------------------------------------------------- starter favorites
+
+    /** A title someone named as a favorite, found on TMDB by its exact name (and first year). */
+    private class Starter(val type: String, val name: String, val year: Int? = null)
+
+    /**
+     * Favorites a person listed, counted as strong likes from day one, next to what the profile watches.
+     * They seed Picked for You a few at a time (a different few each day) and are never suggested back.
+     */
+    private val STARTERS: Map<String, List<Starter>> = mapOf(
+        "p2" to listOf(
+            Starter("tv", "Project Runway", 2004),
+            Starter("tv", "Taskmaster", 2015),
+            Starter("tv", "Survivor", 2000),
+            Starter("tv", "Criminal Minds", 2005),
+            Starter("movie", "Accepted", 2006),
+            Starter("movie", "He's Just Not That Into You", 2009),
+            Starter("movie", "The Love Hypothesis"),
+            Starter("movie", "The Lord of the Rings: The Fellowship of the Ring", 2001),
+            Starter("movie", "The Lord of the Rings: The Return of the King", 2003),
+            Starter("movie", "The Hobbit: An Unexpected Journey", 2012),
+            Starter("movie", "Harry Potter and the Philosopher's Stone", 2001),
+            Starter("movie", "Harry Potter and the Deathly Hallows: Part 2", 2011),
+            Starter("tv", "Merlin", 2008),
+            Starter("tv", "Desperate Housewives", 2004),
+            Starter("tv", "Game of Thrones", 2011),
+            Starter("tv", "A Knight of the Seven Kingdoms", 2026),
+            Starter("movie", "Saving Private Ryan", 1998),
+            Starter("tv", "Girls", 2012),
+            Starter("tv", "The Sex Lives of College Girls", 2021),
+            Starter("tv", "My Mad Fat Diary", 2013),
+            Starter("tv", "The Vampire Diaries", 2009),
+            Starter("tv", "True Blood", 2008),
+        ),
+    )
+
+    /** TMDB (type, id) of the profile's starter favorites. Found once, then cached on the TV. */
+    private suspend fun starterKeys(profile: String): List<Pair<String, Int>> {
+        val list = STARTERS[profile] ?: return emptyList()
+        val cache = runCatching { JSONObject(Prefs.json("taste_starters").ifBlank { "{}" }) }.getOrDefault(JSONObject())
+        var changed = false
+        val out = ArrayList<Pair<String, Int>>()
+        for (s in list) {
+            val k = "${s.type}|${s.name}|${s.year ?: ""}"
+            val id = if (cache.has(k)) cache.optInt(k) else {
+                val res = runCatching {
+                    net.withPermit { Tmdb.findTitle(s.type, s.name, s.year, exact = true) ?: s.year?.let { Tmdb.findTitle(s.type, s.name, null, exact = true) } }
+                }
+                if (res.isFailure) continue // offline: try again next time
+                (res.getOrNull()?.id ?: 0).also { cache.put(k, it); changed = true }
+            }
+            if (id > 0) out.add(s.type to id)
+        }
+        if (changed) Prefs.putJson("taste_starters", cache.toString())
+        return out
+    }
+
 
     fun saveChoices(profile: String, likeGenres: Set<Int>, avoidGenres: Set<Int>, likeWords: List<String>, avoidWords: List<String>) {
         val o = JSONObject()
@@ -187,11 +249,14 @@ object Recommender {
         Library.likes(profile).forEach { add(it.type, it.id, 1.5, now) }
         Library.watchlist(profile).take(30).forEach { add(it.type, it.id, 0.35, now) }
         Library.hidden(profile).take(60).forEach { add(it.type, it.id, -1.3, now) }
+        // Favorites the person listed (strong likes that never fade; "Not for me" still wins).
+        val starters = starterKeys(profile)
+        starters.forEach { (t, id) -> add(t, id, 1.0, now) }
         // Strongest first; features for at most 60 titles.
         val top = raw.entries.sortedByDescending { kotlin.math.abs(it.value.first) }.take(60)
         val feats = featuresAll(top.map { it.key })
         val signals = top.mapNotNull { (k, v) -> feats["${k.first}:${k.second}"]?.let { Signal(it, v.first, v.second) } }
-        val built = CachedTaste(Taste.build(signals, choices(profile), now), now, signals)
+        val built = CachedTaste(Taste.build(signals, choices(profile), now), now, signals, starters.map { "${it.first}:${it.second}" }.toSet())
         synchronized(tastes) { tastes[profile] = built }
         built
     }
@@ -282,10 +347,15 @@ object Recommender {
         val taste = ct.taste
         val now = System.currentTimeMillis()
         val kids = profile == Prefs.KIDS_PROFILE
-        // Seeds: the 6 strongest recent likes.
-        val seeds = ct.signals.filter { it.weight > 0.5 }
-            .sortedByDescending { it.weight * Taste.decay(it.at, now) }
-            .take(6)
+        // Seeds: up to 4 of the strongest recent likes from watching, the rest from the starter favorites
+        // (a different handful each day, so the row changes).
+        val liked = ct.signals.filter { it.weight > 0.5 }.sortedByDescending { it.weight * Taste.decay(it.at, now) }
+        val own = liked.filter { it.f.key !in ct.starters }.take(4)
+        val day = now / 86_400_000L
+        val fromStarters = liked.filter { it.f.key in ct.starters }
+            .shuffled(kotlin.random.Random(day * 31 + profile.hashCode()))
+            .take(6 - own.size)
+        val seeds = (own + fromStarters)
             .map { it.f.key.substringBefore(':') to it.f.key.substringAfter(':').toInt() }
         // Genres to explore: chosen likes first, then the top learned ones.
         val learned = taste.genres.entries.filter { it.value > 0.15 }.sortedByDescending { it.value }.map { it.key }
@@ -314,7 +384,7 @@ object Recommender {
             cands.add(Taste.Candidate(t.basicFeatures()))
         }
         val seen = Library.history(profile).filter { it.progress >= 0.15 }.map { "${it.meta.type}:${it.meta.tmdbId}" }.toSet()
-        val ex = excluded(profile) + seen + seeds.map { "${it.first}:${it.second}" }
+        val ex = excluded(profile) + seen + ct.starters + seeds.map { "${it.first}:${it.second}" }
         // Full features (avoided topics, liked people) for the best 40 on a first pass.
         val prelim = Taste.rankForYou(cands, taste, ex, 40)
         val full = featuresAll(prelim.map { k -> k.substringBefore(':') to k.substringAfter(':').toInt() })
