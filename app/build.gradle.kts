@@ -40,7 +40,11 @@ android {
     buildTypes {
         release {
             // Release builds run much smoother than debug builds on a Fire Stick.
-            isMinifyEnabled = false
+            // R8 shrinks and optimizes the code (smaller dex, less RAM, faster start on 1 GB sticks).
+            // Keep rules: app/proguard-rules.pro. Names are not obfuscated, so stack traces stay readable.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (keystoreFile.exists()) {
                 signingConfigs.getByName("mcd")
             } else {
@@ -86,6 +90,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)
+    // Installs the baseline profile (src/main/baseline-prof.txt) on sideloaded installs, where no app store does it.
+    implementation(libs.androidx.profileinstaller)
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
