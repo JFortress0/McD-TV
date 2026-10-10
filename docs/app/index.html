@@ -2718,19 +2718,33 @@ const LV = (() => {
       throw new Error(LIVE_NO); // CORS, blocked or unreachable: the browser can't read this provider
     } finally { clearTimeout(t); }
   }
-  async function loadXtream(x) {
+  // Many providers switch off the playlist download and block browsers, but keep the app API IPTV apps use.
+  // The Jarvis relay (rd-proxy/netlify/functions/iptv.mts) fetches that channel list; videos still go straight
+  // from the provider to the player app.
+  const IPTV_RELAY = "https://jarvis-rd.netlify.app/iptv";
+  async function getViaRelay(url, ms) {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), ms || 60000);
+    try {
+      const r = await fetch(IPTV_RELAY + "?u=" + encodeURIComponent(url), { signal: ac.signal });
+      if (!r.ok) throw new Error(LIVE_NO);
+      const ua = r.headers.get("X-Jarvis-UA"); if (ua) st.ua = ua;
+      return await r.text();
+    } catch { throw new Error(LIVE_NO); } finally { clearTimeout(t); }
+  }
+  async function loadXtream(x, get = getText) {
     const api = `${x.base}/player_api.php?username=${encodeURIComponent(x.user)}&password=${encodeURIComponent(x.pass)}`;
     let info;
-    try { info = JSON.parse(await getText(api)).user_info; } catch (e) { return null; } // not an app API: try the M3U download
+    try { info = JSON.parse(await get(api)).user_info; } catch (e) { return null; } // not an app API: try the M3U download
     if (!info) return null;
     if (+info.auth === 0) throw new Error("The provider rejected the username or password in your playlist link.");
     if (info.status && String(info.status).toLowerCase() !== "active") throw new Error("Your IPTV account is not active. Check with your provider.");
     const formats = Array.isArray(info.allowed_output_formats) ? info.allowed_output_formats.map(String) : [];
-    if (formats.length && !formats.includes("m3u8")) throw new Error(LIVE_NO); // .ts only: browsers can't play it
+    if (formats.length && !formats.includes("m3u8") && get === getText) throw new Error(LIVE_NO); // .ts only: browsers can't play it
     const cats = {};
-    try { (JSON.parse(await getText(`${api}&action=get_live_categories`)) || []).forEach((c) => { if (c) cats[String(c.category_id)] = String(c.category_name || ""); }); } catch {}
+    try { (JSON.parse(await get(`${api}&action=get_live_categories`)) || []).forEach((c) => { if (c) cats[String(c.category_id)] = String(c.category_name || ""); }); } catch {}
     let streams;
-    try { streams = JSON.parse(await getText(`${api}&action=get_live_streams`, 90000)); } catch { return null; }
+    try { streams = JSON.parse(await get(`${api}&action=get_live_streams`, 90000)); } catch { return null; }
     if (!Array.isArray(streams)) return null;
     const out = [];
     for (const o of streams) {
@@ -2770,10 +2784,14 @@ const LV = (() => {
     if (st.key === url && (st.status === "ok" || st.status === "error")) return;
     st = { status: "loading", list: null, msg: "", key: url };
     try {
-      if (mixedBlocked(url)) throw new Error(LIVE_NO); // an http link can't be read from this https page
       const x = xtreamOf(url);
-      let raw = x ? await loadXtream(x) : null;
-      if (!raw) raw = parseM3u(await getText(url, 90000));
+      let raw = null, viaRelay = false;
+      if (x && !mixedBlocked(url)) { try { raw = await loadXtream(x); } catch {} }
+      if (!raw && x) { raw = await loadXtream(x, getViaRelay); viaRelay = !!raw; } // channels open in a player app
+      if (!raw) {
+        if (mixedBlocked(url)) throw new Error(LIVE_NO); // an http link can't be read from this https page
+        raw = parseM3u(await getText(url, 90000));
+      }
       // Organize: drop separators and repeated URLs, clean the names, pick a section.
       const seen = new Set(), list = [];
       for (const ch of raw) {
@@ -2782,8 +2800,8 @@ const LV = (() => {
         list.push({ name: LO.cleanName(ch.name), raw: ch.name, logo: ch.logo, group: ch.group, url: ch.url, sec: LO.section(ch.group, ch.name) });
       }
       if (!list.length) throw new Error("The playlist loaded but had no live channels in it.");
-      if (list.every((c) => mixedBlocked(c.url))) throw new Error(LIVE_NO);
-      if (st.key === url) st = { status: "ok", list, msg: "", key: url };
+      if (!viaRelay && list.every((c) => mixedBlocked(c.url))) throw new Error(LIVE_NO);
+      if (st.key === url) st = { status: "ok", list, msg: "", key: url, ext: viaRelay, ua: st.ua || "" };
     } catch (e) {
       if (st.key === url) st = { status: "error", list: null, msg: (e && e.message) || LIVE_NO, key: url };
     }
@@ -2881,6 +2899,15 @@ const LV = (() => {
   const nativeHls = () => { try { return !!document.createElement("video").canPlayType("application/vnd.apple.mpegurl"); } catch { return false; } };
   async function play(i) {
     const ch = st.list && st.list[i]; if (!ch) return;
+    // The browser can't play this channel (provider blocks browsers, or an http stream on this https page):
+    // hand it to the player app, named the way the provider accepted for the channel list.
+    if (st.ext || mixedBlocked(ch.url)) {
+      const app = isMac ? "iina" : extPref() === "infuse" ? "infuse" : "vlc";
+      const link = extUrl(app, ch.url) + (app === "iina" ? "&mpv_user-agent=" + encodeURIComponent(st.ua || LIVE_UA) : "");
+      toast("Opening " + ch.name + " in " + EXT_NAME[app] + "…", "ok");
+      location.href = link;
+      return;
+    }
     closePlayer();
     const box = document.createElement("div");
     box.className = "lv-player"; box.id = "lvPlayer";
@@ -3195,7 +3222,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-09.7";
+const BUILD = "2026-10-09.8";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
