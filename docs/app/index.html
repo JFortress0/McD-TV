@@ -291,6 +291,12 @@ body.playmode header.top,body.playmode nav.tabbar{display:none}
 @media (orientation:landscape) and (max-height:540px){body.playmode .pl-top,body.playmode .pl-bar{display:none}body.playmode .player{padding:0}body.playmode .pl-stage video{max-height:100dvh;height:100dvh;aspect-ratio:auto}}
 .pl-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(90%,460px);text-align:center;background:rgba(17,24,39,.94);border:1px solid var(--line);border-radius:12px;padding:18px}
 .pl-msg p{margin:0 0 12px}
+/* iPhone blocks autoplay: one big button starts the video (the tap counts as permission). */
+.pl-tap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px;background:none;border:0;color:#fff;font:inherit;font-weight:700;font-size:16px;cursor:pointer;z-index:2}
+.pl-tap i{display:flex;align-items:center;justify-content:center;width:96px;height:96px;border-radius:50%;background:rgba(17,24,39,.85);box-shadow:0 0 0 3px var(--bright),0 8px 30px rgba(0,0,0,.6);font-style:normal;font-size:40px;padding-left:6px}
+/* Settings > Check network */
+.netlist{list-style:none;margin:10px 0 0;padding:0}.netlist li{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid rgba(255,255,255,.06)}
+.netlist li:first-child{border-top:0}.netlist .pill{flex:0 0 auto;min-width:44px;text-align:center}.netlist b{display:block}.netlist span.muted{font-size:13px}
 .pl-bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:12px 16px 18px}
 .btn.big{font-size:17px;padding:14px 26px;min-height:52px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -923,12 +929,19 @@ function askHandoff() {
   document.body.appendChild(box);
 }
 let hiddenAt = 0;
+// Leaving the app (Home, app switcher, lock): save the play position now. iOS often skips pagehide and may
+// freeze the page without warning, so hidden, pagehide and freeze all call this. The player sets S.bgSave.
+function onBackground() { if (S.bgSave) { try { S.bgSave(); } catch {} } }
+window.addEventListener("pagehide", onBackground);
+document.addEventListener("freeze", onBackground);
+// The one visibilitychange listener.
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+  if (document.visibilityState === "hidden") { hiddenAt = Date.now(); onBackground(); return; }
   setTimeout(askHandoff, 600); RC.refresh(); syncHouse();
   // iOS freezes a Home Screen app in the background and its live connection to the relay dies quietly:
   // reconnect after 30 s away (or a closed stream), else just ask the TV again.
   if (S.link) { if (!S.es || S.es.readyState === 2 || Date.now() - hiddenAt > 30000) connect(); else askInit(); }
+  checkForUpdate();
 });
 window.addEventListener("pageshow", () => setTimeout(askHandoff, 800));
 
@@ -944,10 +957,31 @@ function setStatus(s) {
   if (s === "offline" && !keys().tmdb && $("#view .spinner")) route();
 }
 async function relaySend(cmd) {
-  const r = await fetch(RELAY + "mcdtv-" + S.link.id + "-in", { method: "POST", body: await encrypt(cmd, S.key) });
+  // keepalive: a progress save sent as the app goes to the background still gets out.
+  const r = await fetch(RELAY + "mcdtv-" + S.link.id + "-in", { method: "POST", body: await encrypt(cmd, S.key), keepalive: true });
   if (!r.ok) throw new Error("Relay error " + r.status);
 }
 const newReq = () => Math.random().toString(36).slice(2, 10);
+/**
+ * Is the TV there right now? Anything heard live from it in the last 20 s counts. Else one "hello" (the TV
+ * answers with its state) and up to [ms] for any reply. Callers fail fast on false instead of waiting 45 s.
+ */
+let aliveCheck = null;
+function tvAlive(ms) {
+  if (!S.link || !S.key) return Promise.resolve(false);
+  if (S.status === "online" && Date.now() - (S.lastLive || 0) < 20000) return Promise.resolve(true);
+  if (aliveCheck) return aliveCheck;
+  aliveCheck = (async () => {
+    const asked = Date.now();
+    if (!S.es || S.es.readyState === 2) connect(); // the live stream died (iOS background): its reply must get through
+    try { await relaySend({ cmd: "hello", ts: asked }); } catch { setStatus("offline"); return false; }
+    for (const end = asked + (ms || 6000); Date.now() < end;) { if (S.lastLive >= asked) return true; await sleep(250); }
+    if (S.lastLive >= asked) return true;
+    setStatus("offline");
+    return false;
+  })().finally(() => { aliveCheck = null; });
+  return aliveCheck;
+}
 
 async function onRelay(raw, live) {
   const m = await decrypt(raw, S.key);
@@ -1124,7 +1158,9 @@ async function remote(cmd, sending) {
   if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return false; }
   const req = newReq();
   cmd.req = req; cmd.ts = Date.now();
-  pending.set(req, setTimeout(() => { pending.delete(req); toast("TV didn't answer (is Jarvis open?)", "warn"); }, 8000));
+  // Known to be off: say so sooner. The command still goes out in case the TV just came back.
+  const wait = S.status === "offline" ? 5000 : 8000;
+  pending.set(req, setTimeout(() => { pending.delete(req); toast("Your TV is not answering. Turn it on and open Jarvis.", "warn"); }, wait));
   if (sending) toast(sending);
   try { await relaySend(cmd); return true; }
   catch (e) { clearTimeout(pending.get(req)); pending.delete(req); toast("Couldn't reach the relay. Check your internet.", "warn"); return false; }
@@ -1776,12 +1812,13 @@ const ASK_EXAMPLES = [
   "Show about a chemistry teacher who starts making drugs",
 ];
 const ASK_RING = `<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-opacity=".25" stroke-width="4"/><circle cx="16" cy="16" r="11.5" fill="none" stroke="#00E5FF" stroke-width="1.4"/><circle cx="16" cy="16" r="4" fill="#00E5FF" fill-opacity=".25"/><circle cx="16" cy="16" r="2" fill="#7DF9FF"/></svg>`;
-const ASK_OFF = "Your TV needs to be on for Ask Jarvis, or turn on \"Use Jarvis on this device\" in Settings.";
+const ASK_OFF = "Your TV is off or not answering. Ask Jarvis needs it on, or turn on \"Use Jarvis on this device\" in Settings.";
 let askTok = 0;
-/** Sends {cmd:"ask"} to the TV and waits up to 20 s for its {type:"ask"} reply. */
-function askTv(q) {
+/** Sends {cmd:"ask"} to the TV (after a quick check that it is on) and waits up to 40 s for its {type:"ask"} reply. */
+async function askTv(q) {
+  if (!S.link) throw new Error("Link your TV first: open Settings in this app.");
+  if (!(await tvAlive())) throw new Error(ASK_OFF);
   return new Promise((resolve, reject) => {
-    if (!S.link) { reject(new Error("Link your TV first: open Settings in this app.")); return; }
     const req = newReq();
     const t = setTimeout(() => { askWait.delete(req); reject(new Error(ASK_OFF)); }, 40000);
     askWait.set(req, (m) => { clearTimeout(t); askWait.delete(req); resolve(m); });
@@ -2391,7 +2428,10 @@ const RD_CLIENT = "X245A4XAIBGVM"; // Real-Debrid's published client id for open
 const RD_GRANT = "http://oauth.net/grant_type/device/1.0";
 const RDC_KEY = "mcdtv_web_rdc"; // {id, secret, t, r, exp}: this device's own RD sign-in (this browser only)
 const NO_RD = "Connect Real-Debrid first: Settings > Real-Debrid on this device.";
-const TV_OFF = "Your TV didn't answer. Sign in to Real-Debrid on this device (Settings) to play without the TV, or use Play on TV.";
+const TV_OFF = "Your TV is off or not answering. To play without the TV, add Real-Debrid on this device: Settings > Real-Debrid on this device.";
+const TV_SLOW = "Your TV took too long to get this stream. Try again, or add Real-Debrid on this device (Settings > Real-Debrid on this device) to play without the TV.";
+/** A fatal error that offers the Real-Debrid on this device path (the Sources page adds a Settings button). */
+function tvOff(msg) { const e = fatal(msg); e.tvOff = true; return e; }
 const RECONNECT = "Real-Debrid signed this device out. Connect it again in Settings.";
 function fatal(msg) { const e = new Error(msg); e.fatal = true; return e; }
 let rdc = readJSON(RDC_KEY);
@@ -2509,12 +2549,15 @@ function rdSignInHTML() {
 }
 function rdLoginUi() { const p = $("#rdPanel"); if (p) p.innerHTML = rdPanelHTML(); }
 
-/** The TV resolves source [s] for this page: {direct, rdId, mime, filename, tc}. 45 s, then TV_OFF. */
-function tvResolve(s, season, episode) {
-  if (!S.link || !S.key) return Promise.reject(fatal(TV_OFF));
+/**
+ * The TV resolves source [s] for this page: {direct, rdId, mime, filename, tc}. A TV that is off fails in a few
+ * seconds (tvAlive). A TV that is on gets 45 s, since adding a torrent to Real-Debrid can take a while.
+ */
+async function tvResolve(s, season, episode) {
+  if (!S.link || !S.key || !(await tvAlive())) throw tvOff(TV_OFF);
   const req = newReq();
   return new Promise((resolve, reject) => {
-    const t = setTimeout(() => { resWait.delete(req); reject(fatal(TV_OFF)); }, 45000);
+    const t = setTimeout(() => { resWait.delete(req); reject(tvOff(TV_SLOW)); }, 45000);
     resWait.set(req, (m) => {
       clearTimeout(t); resWait.delete(req);
       if (m.error || !m.direct) { reject(new Error(m.error || "The TV could not get this stream.")); return; }
@@ -2721,6 +2764,11 @@ async function renderSources(v, tok, type, id, q) {
     <div class="srcs" id="srcList">${Array.from({ length: 6 }, () => `<div class="sk" style="height:46px"></div>`).join("")}</div></div>`;
   const status = $("#srcStatus", v), listEl = $("#srcList", v), bestBtn = $("#bestBtn", v);
   const say = (msg, bad) => { status.textContent = msg; status.classList.toggle("bad", !!bad); };
+  // A failure that Real-Debrid on this device would fix (TV off): add a button to that setting.
+  const sayErr = (err, tail) => {
+    say(((err && err.message) || "Could not open this source") + (tail || ""), true);
+    if (err && (err.tvOff || err.message === NO_RD)) status.insertAdjacentHTML("beforeend", ` <a class="btn small" href="#/settings" style="margin-left:6px">Open Settings</a>`);
+  };
   let list;
   try { list = await fetchStreams(type, imdb, season, episode); } catch (e) { list = []; }
   if (tok !== routeTok) return;
@@ -2818,7 +2866,7 @@ async function renderSources(v, tok, type, id, q) {
     const b = e.target.closest("[data-src]"); if (!b || busy) return;
     const s = rows[+b.dataset.src].source;
     lock(true); say(`Getting stream from ${s.addon}…`);
-    try { await go(s); } catch (err) { if (tok === routeTok) { say(err.message || "Could not open this source", true); lock(false); } }
+    try { await go(s); } catch (err) { if (tok === routeTok) { sayErr(err); lock(false); } }
   });
   bestBtn.addEventListener("click", async () => {
     if (busy) return;
@@ -2831,7 +2879,7 @@ async function renderSources(v, tok, type, id, q) {
       say(`Finding the best source (${i + 1} of ${order.length})…`);
       try { await go(order[i]); return; } catch (err) { last = err; if (err.fatal) break; }
     }
-    if (tok === routeTok) { say(((last && last.message) || "No sources found.") + (last && last.blocked ? "" : " Pick one below."), true); lock(false); }
+    if (tok === routeTok) { sayErr(last || new Error("No sources found."), last && (last.blocked || last.fatal) ? "" : " Pick one below."); lock(false); }
   });
 }
 
@@ -2856,6 +2904,7 @@ function renderPlayer(v, tok, type, id, q) {
     <div class="pl-top"><a class="pl-back" href="${esc(P.back)}" aria-label="Back to sources">&#8249; Back</a>
       <div class="pl-title"><b>${esc(m.label)}</b><span class="muted" id="plLine">${esc(P.line)}</span></div></div>
     <div class="pl-stage"><video id="vid" controls playsinline webkit-playsinline preload="auto"${bd}></video>
+      <button class="pl-tap hidden" id="plTap" type="button" aria-label="Play"><i aria-hidden="true">&#9654;</i>Tap to play</button>
       <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><div class="rowf" style="justify-content:center;gap:8px;flex-wrap:wrap">${vlcBtn}<a class="btn small${vlcBtn ? "" : " primary"}" href="${esc(P.back)}">Pick another source</a></div></div></div>
     <div class="pl-bar"><button class="btn primary big" id="fsBtn">&#9974; Full screen</button>
       <a class="btn" href="${esc(P.back)}">Other sources</a>${vlcBtn.replace("btn small primary", "btn")}
@@ -2865,22 +2914,45 @@ function renderPlayer(v, tok, type, id, q) {
   const BAD_FORMAT = "This file's format can't play in a browser. Try another source.";
   const showMsg = (text) => { $("#plMsgText", v).textContent = text; msg.classList.remove("hidden"); };
   const kindLabel = { hls: "Real-Debrid stream", mp4: "Real-Debrid stream (MP4)", webm: "Real-Debrid stream (WebM)", direct: "Original file" };
+  const tapBtn = $("#plTap", v);
   let watchdog = 0;
   let stallT = 0, started = false;
-  vid.addEventListener("playing", () => { started = true; clearTimeout(stallT); if (!msg.classList.contains("hidden") && msg.dataset.stall) msg.classList.add("hidden"); });
-  function load() {
-    const c = P.cands[i];
-    clearTimeout(stallT);
+  vid.addEventListener("playing", () => { started = true; tapBtn.classList.add("hidden"); clearTimeout(stallT); if (!msg.classList.contains("hidden") && msg.dataset.stall) msg.classList.add("hidden"); });
+  /** The timers run only while the video is really trying to play (not while it waits for a tap). */
+  function arm() {
+    clearTimeout(stallT); clearTimeout(watchdog);
     // Still spinning after 20 s (Real-Debrid is still making a phone version of a big file): offer the player app.
     stallT = setTimeout(() => { if (!gone && !started && P.direct) { showMsg("This is taking a while. Real-Debrid is still preparing a phone version of this file. Open it in " + (isMac ? "IINA" : "VLC") + " instead, or pick another source."); msg.dataset.stall = "1"; } }, 20000);
     // Nothing loads within 25 s (the format can't play here, or the server never answers): try the next way.
-    clearTimeout(watchdog);
     watchdog = setTimeout(() => { if (!gone && vid.readyState < 1) next(); }, 25000);
+  }
+  /** iPhone blocks autoplay until a tap: show the big Play button and hold the timers until it is tapped. */
+  function needTap() {
+    if (gone || started) return;
+    clearTimeout(stallT); clearTimeout(watchdog);
+    tapBtn.classList.remove("hidden");
+  }
+  function tryPlay() {
+    let p;
+    try { p = vid.play(); } catch (e) { p = Promise.reject(e); }
+    if (p && p.then) {
+      p.then(() => tapBtn.classList.add("hidden"), (e) => { if (e && e.name === "NotAllowedError") needTap(); });
+    } else {
+      // Older browsers return nothing: if it is still paused a moment later, ask for a tap.
+      setTimeout(() => { if (vid.paused && !started && !vid.error) needTap(); }, 1500);
+    }
+  }
+  tapBtn.addEventListener("click", () => { tapBtn.classList.add("hidden"); arm(); tryPlay(); });
+  // Started another way (the video's own controls, Full screen): the timers start now too.
+  vid.addEventListener("play", () => { if (!tapBtn.classList.contains("hidden")) { tapBtn.classList.add("hidden"); arm(); } });
+  function load() {
+    const c = P.cands[i];
+    arm();
     msg.classList.add("hidden");
     $("#plLine", v).textContent = [P.line, kindLabel[c.kind]].filter(Boolean).join(" · ");
     vid.src = c.url;
     vid.load();
-    const p = vid.play(); if (p && p.catch) p.catch(() => {}); // blocked autoplay: the controls are there
+    tryPlay();
   }
   function next() {
     if (gone) return;
@@ -2893,9 +2965,8 @@ function renderPlayer(v, tok, type, id, q) {
     if (!(pos > 5000) || !(dur > 0)) return;
     setPos(m, pos, dur);
     lastSave = Date.now();
-    if (sendTv) RC.push(m, Math.min(pos, dur), dur); // the house's other devices (every 2 minutes, and on pause / leave)
+    if (sendTv) { lastRelay = Date.now(); RC.push(m, Math.min(pos, dur), dur); } // the house's other devices (every 2 minutes, and on pause / leave)
     if (sendTv && S.link && S.key) {
-      lastRelay = Date.now();
       relaySend({ cmd: "progress", type: m.type, id: m.id, season: m.season, episode: m.episode,
         position_ms: Math.round(Math.min(pos, dur)), duration_ms: Math.round(dur), name: m.name,
         poster: m.poster || "", backdrop: m.backdrop || "", ts: Date.now(), ...(S.profile ? { profile: S.profile } : {}) }).catch(() => {});
@@ -2919,10 +2990,11 @@ function renderPlayer(v, tok, type, id, q) {
     // Every 10 s here; the TV gets one every 2 minutes (the relay has a daily message limit).
     if (now - lastSave >= 10000) save(now - lastRelay >= 120000);
   });
-  vid.addEventListener("pause", () => { if (!gone && !vid.ended) save(true); });
+  vid.addEventListener("pause", () => { if (!gone && !vid.ended) save(Date.now() - lastRelay > 5000); });
   vid.addEventListener("ended", () => save(true));
-  const onHide = () => save(true);
-  window.addEventListener("pagehide", onHide);
+  // Going to the background (see onBackground): save here and tell the house. Hidden, pagehide, freeze and the
+  // pause iOS adds can all fire together, so the house and the TV get it once.
+  S.bgSave = () => { if (!gone) save(Date.now() - lastRelay > 5000); };
   $("#fsBtn", v).addEventListener("click", async () => {
     // iPhone: only the video's own full screen works, and only once the video has loaded.
     if (vid.webkitEnterFullscreen && !document.fullscreenEnabled) {
@@ -2943,7 +3015,7 @@ function renderPlayer(v, tok, type, id, q) {
   S.cleanup = () => {
     gone = true;
     save(true);
-    window.removeEventListener("pagehide", onHide);
+    S.bgSave = null;
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
     vid.pause(); vid.removeAttribute("src"); vid.load();
   };
@@ -3174,6 +3246,124 @@ const LV = (() => {
   let loading = null;
   const PAGE = 120;
 
+  // ---- pure: guide keys, event titles, networks (no DOM; tools test these; mirrors data/Epg.kt LiveFill) ----
+  /** Key a channel borrows a guide by: "US| ESPN 2 FHD" and "ESPN2 (backup)" -> "espn2"; East and plain share, West stays apart. */
+  function gkey(n) {
+    let t = LO.cleanName(String(n || "").replace(/[([]\s*(?:backup|bk|alt|alternate)\b[^)\]]*[)\]]/gi, " ")).toLowerCase();
+    t = t.replace(/&/g, " and ")
+      .replace(/[([]\s*w\s*[)\]]/g, " west ").replace(/[([]\s*e\s*[)\]]/g, " ").replace(/\bpacific\b/g, "west");
+    t = t.replace(/\b(?:hd|fhd|uhd|sd|4k|east|eastern|feed|backup|hevc|raw|1080p|720p)\b/g, " ");
+    t = t.replace(/[^a-z0-9+!]+/g, " ").trim().replace(/ (?:us|usa)$/, "").replace(/\b([a-z]+) (\d{1,2})\b/g, "$1$2");
+    return t;
+  }
+  // Huntsville stations first in Local and in Games (call sign -> network).
+  const HOME_LOCALS = [["whnt", "CBS"], ["waay", "ABC"], ["waff", "NBC"], ["wzdx", "FOX"], ["whdf", "CW"]];
+  const HOME_RE = /(?:^|[^a-z0-9])(whnt|waay|waff|wzdx|whdf)(?:-?(?:tv|dt|cd|ld)?\d{0,2})?(?![a-z0-9])/;
+  /** Position of a Huntsville station in HOME_LOCALS, or -1. */
+  function homeRank(name) { const m = HOME_RE.exec(String(name || "").toLowerCase()); return m ? HOME_LOCALS.findIndex(([c]) => c === m[1]) : -1; }
+  const NET_EXCL = /\b(?:news|sports?|business|deportes|weather|kids|family|life|soul|movies|classic|plus|now|live|reality|drama|mystery|comedy|soccer|nation|extra|college|latino|ocho|espanol)\b/;
+  /** Network of a plain network or affiliate channel ("ESPN", "FOX 54 Huntsville", "SEC Network"), or "". */
+  function netOf(name) {
+    const h = homeRank(name); if (h >= 0) return HOME_LOCALS[h][1];
+    const k = gkey(name);
+    if (/^(?:sec network|secn|sec)$/.test(k)) return "SECN";
+    if (/^(?:acc network|accn|acc)$/.test(k)) return "ACCN";
+    if (/^(?:big ten network|big ten|big10 network|big10|btn)$/.test(k)) return "BTN";
+    if (/^(?:espn|espn2|espnu)$/.test(k)) return k.toUpperCase();
+    if (NET_EXCL.test(k) || k.includes("+")) return "";
+    const m = /(?:^| )(cbs|fox|abc|nbc|cw)\d{0,2}(?= |$)/.exec(k);
+    return m ? m[1].toUpperCase() : "";
+  }
+  /** ESPN broadcast name -> the same codes ("SEC Network" -> "SECN", "The CW" -> "CW"). */
+  function castNet(b) {
+    const u = String(b || "").toUpperCase().replace(/[^A-Z0-9]+/g, "");
+    return { SECNETWORK: "SECN", ACCNETWORK: "ACCN", BIGTENNETWORK: "BTN", BIGTEN: "BTN", THECW: "CW" }[u] || u;
+  }
+  const sportMin = (t) => /\b(?:nfl|ncaaf|cfb|football|redzone|xfl|ufl|cfl)\b/.test(t) ? 210 : /\b(?:ufc|boxing|ppv|mma|pfl|wwe|aew|bellator|golf|pga)\b/.test(t) ? 240
+    : /\b(?:mlb|baseball|milb)\b/.test(t) ? 180 : /\b(?:nba|wnba|ncaab|ncaam|basketball|nhl|hockey|ahl)\b/.test(t) ? 150
+    : /\b(?:mls|epl|soccer|premier league|la ?liga|serie a|bundesliga|uefa|champions league|futbol|liga mx)\b/.test(t) ? 120 : 180;
+  const TZ = { et: "America/New_York", est: "America/New_York", edt: "America/New_York", ct: "America/Chicago", cst: "America/Chicago", cdt: "America/Chicago",
+    mt: "America/Denver", mst: "America/Denver", mdt: "America/Denver", pt: "America/Los_Angeles", pst: "America/Los_Angeles", pdt: "America/Los_Angeles",
+    uk: "Europe/London", bst: "Europe/London", gmt: "UTC", utc: "UTC" };
+  /** Minutes the zone is ahead of UTC at [ms] (device zone when tz is ""). */
+  function zoneOff(tz, ms) {
+    if (!tz) return -new Date(ms).getTimezoneOffset();
+    try {
+      const p = {};
+      new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" })
+        .formatToParts(new Date(ms)).forEach((x) => { p[x.type] = x.value; });
+      return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute) - Math.floor(ms / 60000) * 60000) / 60000);
+    } catch { return -new Date(ms).getTimezoneOffset(); }
+  }
+  const AMPM = /(?:^|[^\d:])(\d{1,2})(?::([0-5]\d))?\s*([ap])\.?\s*m\b\.?\s*(et|est|edt|ct|cst|cdt|mt|mst|mdt|pt|pst|pdt|uk|gmt|bst|utc)?\b/gi;
+  const CLK24 = /(?:^|[^\d:])([01]?\d|2[0-3]):([0-5]\d)\s*(et|est|edt|ct|cst|cdt|mt|mst|mdt|pt|pst|pdt|uk|gmt|bst|utc)?\b/gi;
+  const DATES = /\b(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b\.?,?|\b\d{1,2}[/.]\d{1,2}(?:[/.]\d{2,4})?\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?\b/gi;
+  const JUNK = /^[\s|:;,.\-–()[\]@]+|[\s|:;,.\-–()[\]@]+$/g;
+  const NO_EVENT = /\b(?:no (?:event|game|stream)s?|off ?air|offline|tba|tbd|coming soon|not started|starts soon)\b/i;
+  /**
+   * An event channel's own listing: "NCAAF 05: Alabama vs Tennessee 3:30PM ET" -> { title: "Alabama vs Tennessee", start, end }.
+   * The start is the nearest day with that time in that zone; finished events give null. No time: untimed (on now).
+   */
+  function eventProg(name, group, now) {
+    let s = LO.cleanName(name).replace(/\s+/g, " ");
+    let hh = -1, mm = 0, tz = "", m, last = null;
+    AMPM.lastIndex = 0; while ((m = AMPM.exec(s))) last = m;
+    if (last) { hh = (+last[1] % 12) + (last[3].toLowerCase() === "p" ? 12 : 0); mm = +(last[2] || 0); tz = TZ[(last[4] || "").toLowerCase()] || ""; }
+    else { CLK24.lastIndex = 0; while ((m = CLK24.exec(s))) last = m; if (last) { hh = +last[1]; mm = +last[2]; tz = TZ[(last[3] || "").toLowerCase()] || ""; } }
+    if (last) { const lead = /^\d/.test(last[0]) ? 0 : 1; s = s.slice(0, last.index + lead) + " " + s.slice(last.index + last[0].length); }
+    // A date in the name ("10/11", "Oct 11") picks the day; otherwise the nearest day with that time.
+    let md = null;
+    const dm = /\b(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?\b/.exec(s), dn = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i.exec(s);
+    if (dm && +dm[1] >= 1 && +dm[1] <= 12 && +dm[2] >= 1 && +dm[2] <= 31) md = [+dm[1], +dm[2]];
+    else if (dn && +dn[2] >= 1 && +dn[2] <= 31) md = ["janfebmaraprmayjunjulaugsepoctnovdec".indexOf(dn[1].toLowerCase()) / 3 + 1, +dn[2]];
+    s = s.replace(DATES, " ").replace(/[([]\s*[)\]]/g, " ").replace(/\s+/g, " ").replace(JUNK, "");
+    const SEP = /\s(?:vs\.?|v\.?|versus|at)\s|\s?@\s?/i;
+    let prefix = "";
+    const p = /^([^:|]{1,30}?)\s*(?:[:|]|\s[-–]\s)\s*(?=\S)/.exec(s);
+    if (p && !SEP.test(" " + p[1] + " ")) { prefix = p[1].trim(); s = s.slice(p[0].length); }
+    else { const q = /^([A-Za-z+]+(?: [A-Za-z+]+){0,2} ?\d{1,3})\s+(?=\S.*(?:\s(?:vs\.?|v\.?|versus|at)\s|@))/i.exec(s); if (q) { prefix = q[1]; s = s.slice(q[0].length); } }
+    s = s.replace(JUNK, "");
+    if (!s || NO_EVENT.test(s) || !(prefix || last)) return null;
+    let title = "";
+    const v = /^(.+?)(?:\s(vs\.?|v\.?|versus|at)\s|\s?(@)\s?)(.+)$/i.exec(s);
+    if (v) {
+      const a = v[1].replace(JUNK, ""), b = v[4].replace(JUNK, "");
+      if (!/[a-z]/i.test(a) || !/[a-z]/i.test(b)) return null;
+      title = a + (v[3] || /^at$/i.test(v[2]) ? " at " : " vs ") + b;
+    } else {
+      if (!prefix || !last || !/[a-z]{2}/i.test(s)) return null;
+      title = /^[A-Za-z+ ]+ ?\d{1,2}$/.test(prefix) ? s : prefix + ": " + s;
+    }
+    const dur = sportMin((name + " " + (group || "")).toLowerCase()) * 60000;
+    if (hh < 0) { const st0 = Math.floor(now / 3600000) * 3600000; return { title, start: st0, end: st0 + dur, untimed: true, src: "event" }; }
+    let best = null;
+    const off = zoneOff(tz, now), wall = new Date(now + off * 60000);
+    const days = md ? [-1, 0, 1].map((y) => [wall.getUTCFullYear() + y, md[0] - 1, md[1]]) : [-1, 0, 1].map((d) => [wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() + d]);
+    for (const [y, mo, d] of days) {
+      const guess = Date.UTC(y, mo, d, hh, mm);
+      const start = guess - zoneOff(tz, guess - off * 60000) * 60000, end = start + dur;
+      const gap = now < start ? start - now : now >= end ? now - end + 1 : 0;
+      if (!best || gap < best.gap) best = { start, end, gap };
+    }
+    if (now >= best.end || best.start - now > 18 * 3600000) return null;
+    return { title, start: best.start, end: best.end, src: "event" };
+  }
+  /** The live or next game on a network from schedules already loaded: { title, start, end, live, detail }. */
+  function gameProg(net, games, now) {
+    if (!net) return null;
+    let live = null, next = null;
+    for (const g of games) {
+      if (g.state === "post" || !g.casts.some((b) => castNet(b) === net)) continue;
+      if (g.state === "in") { if (!live || g.start > live.start) live = g; }
+      else if (g.start > now - 30 * 60000 && g.start - now < 12 * 3600000 && (!next || g.start < next.start)) next = g;
+    }
+    const g = live || next; if (!g) return null;
+    const dur = ({ football: 210, baseball: 180, basketball: 150, hockey: 150, soccer: 120 }[g.L && g.L.sport] || 180) * 60000;
+    const sep = g.L && g.L.sport === "soccer" ? " vs " : " at ";
+    return { title: (g.away.short || g.away.name) + sep + (g.home.short || g.home.name), start: g.start, end: Math.max(g.start + dur, live ? now + 30 * 60000 : 0), live: !!live, detail: g.detail || "", src: "game" };
+  }
+  // ---- end pure ----
+
   function xtreamOf(url) {
     try {
       const u = new URL(url.trim());
@@ -3271,8 +3461,7 @@ const LV = (() => {
         raw = parseM3u(await getText(url, 90000));
       }
       // Guide: a copy without its own guide borrows the guide of a copy of the same network that has one
-      // ("ESPN FHD" uses "ESPN"'s guide), the way the TV matches its guide by channel name.
-      const gkey = (n) => LO.cleanName(n).toLowerCase().replace(/\b(hd|fhd|uhd|sd|4k|east|west|feed|backup|hevc|raw|1080p|720p|us|usa)\b/g, " ").replace(/[^a-z0-9&+!]+/g, " ").trim();
+      // ("ESPN FHD" uses "ESPN"'s guide), the way the TV matches its guide by channel name (see gkey: West feeds keep their own).
       const guideIds = new Map();
       // Also by the guide id itself, squashed ("AWealthofEntertainment.us" -> "awealthofentertainment").
       const squash = (n) => n.replace(/[^a-z0-9]+/g, "");
@@ -3329,7 +3518,12 @@ const LV = (() => {
     const guideFirst = (ix) => ix.filter((i) => list[i].sid).concat(ix.filter((i) => !list[i].sid));
     if (view.sec === "All") return guideFirst(list.map((c, i) => i));
     if (view.sec === "Sports" && view.sub) return guideFirst(list.map((c, i) => i).filter((i) => list[i].tags.includes(view.sub)));
-    return guideFirst(list.map((c, i) => i).filter((i) => list[i].sec === view.sec));
+    const ix = guideFirst(list.map((c, i) => i).filter((i) => list[i].sec === view.sec));
+    if (view.sec !== "Local") return ix;
+    // Huntsville stations first (WHNT, WAAY, WAFF, WZDX, WHDF), then the rest as before.
+    const hr = (i) => { const c = list[i]; return c.home == null ? (c.home = homeRank(c.raw)) : c.home; };
+    const home = ix.filter((i) => hr(i) >= 0).sort((a, b) => hr(a) - hr(b) || 0);
+    return home.concat(ix.filter((i) => hr(i) < 0));
   }
   function counts() {
     const c = { Favorites: filteredCount("Favorites"), Recent: filteredCount("Recent"), All: (st.list || []).length };
@@ -3421,30 +3615,41 @@ const LV = (() => {
     if (c && Date.now() - c.at < 15 * 60000) return;
     pending.add(sid); queue.push(sid); pump();
   }
+  /** All games in the schedules already loaded (no new requests). */
+  const allGames = () => Object.values(SCHED).flatMap((x) => x.games || []);
+  /** No real guide: the event channel's own title, else the live or next game on its network. */
+  function fallback(ch, now) {
+    return eventProg(ch.raw, ch.group, now) || gameProg(ch.net == null ? (ch.net = netOf(ch.raw)) : ch.net, allGames(), now);
+  }
   function guideHtml(ch) {
-    if (!ch.sid || !st.xt) return [`<small>No guide for this channel</small>`, ""];
-    const c = EPG.get(ch.sid);
-    if (!c) return [`<small>Loading guide&#8230;</small>`, ""];
     const now = Date.now();
-    const cur = c.list.find((p) => p.start <= now && p.end > now), nxt = c.list.find((p) => p.start > now);
-    const pct = cur ? Math.max(0, Math.min(100, ((now - cur.start) / (cur.end - cur.start)) * 100)) : 0;
+    const real = !!(ch.sid && st.xt);
+    const c = real ? EPG.get(ch.sid) : null;
+    let cur = c ? c.list.find((p) => p.start <= now && p.end > now) : null, nxt = c ? c.list.find((p) => p.start > now) : null;
+    if (!cur && !nxt) { const fb = fallback(ch, now); if (fb) { if (fb.untimed || fb.start <= now) cur = fb; else nxt = fb; } }
+    if (!cur && !nxt) return [`<small>${real && !c ? "Loading guide&#8230;" : c && c.list.length ? "Nothing listed right now" : "No guide for this channel"}</small>`, ""];
+    const pct = cur && !cur.untimed ? Math.max(0, Math.min(100, ((now - cur.start) / (cur.end - cur.start)) * 100)) : 0;
     // Wrapping up (last 30 minutes): what starts next, right under it (phones hide the NEXT column).
     const left = cur ? Math.round((cur.end - now) / 60000) : 0;
     const upNext = cur && nxt && left <= 30 ? `<small class="lv-up"><span class="lv-tag">UP NEXT</span>${clock(nxt.start)} ${esc(nxt.title)}${left > 0 ? ` <span class="muted">(in ${left} min)</span>` : ""}</small>` : "";
+    const when = (p) => p.untimed ? "Live event" : `${clock(p.start)} to ${clock(p.end)}`;
     return [
-      cur ? `<span class="t"><span class="lv-tag">NOW</span>${esc(cur.title)}</span><small>${clock(cur.start)} to ${clock(cur.end)}</small><div class="lv-bar"><i style="width:${pct.toFixed(0)}%"></i></div>${upNext}`
-        : `<small>${c.list.length ? "Nothing listed right now" : "No guide for this channel"}</small>`,
+      cur ? `<span class="t"><span class="lv-tag">NOW</span>${esc(cur.title)}</span><small>${when(cur)}</small>${cur.untimed ? "" : `<div class="lv-bar"><i style="width:${pct.toFixed(0)}%"></i></div>`}${upNext}`
+        : `<small>Starts ${clock(nxt.start)}</small>`,
       nxt ? `<small><span class="lv-tag" style="color:var(--muted)">NEXT</span>${clock(nxt.start)}</small><span class="t">${esc(nxt.title)}</span>` : "",
     ];
   }
-  function paint(sid) {
-    $$(`.lv-row[data-sid="${CSS.escape(String(sid))}"]`).forEach((row) => {
-      const ch = st.list && st.list[+row.dataset.idx]; if (!ch) return;
-      const [now, next] = guideHtml(ch);
-      const a = $(".lv-now", row), b = $(".lv-next", row);
-      if (a) a.innerHTML = now;
-      if (b) b.innerHTML = next;
-    });
+  function paintRow(row) {
+    const ch = st.list && st.list[+row.dataset.idx]; if (!ch) return;
+    const [now, next] = guideHtml(ch);
+    const a = $(".lv-now", row), b = $(".lv-next", row);
+    if (a) a.innerHTML = now;
+    if (b) b.innerHTML = next;
+  }
+  function paint(sid) { $$(`.lv-row[data-sid="${CSS.escape(String(sid))}"]`).forEach(paintRow); }
+  /** Rows with no guide of their own, after a schedule arrives (the network's game can fill them now). */
+  function paintNoGuide() {
+    $$(".lv-row").forEach((row) => { const ch = st.list && st.list[+row.dataset.idx]; const c = ch && ch.sid && EPG.get(ch.sid); if (ch && (!ch.sid || !st.xt || (c && !c.list.length))) paintRow(row); });
   }
   function row(i, f) {
     const ch = st.list[i];
@@ -3552,9 +3757,15 @@ const LV = (() => {
     });
     g.casts.forEach((b, order) => {
       const phrases = NETS[b] || [b.toLowerCase()];
+      const cn = castNet(b);
       const found = [];
-      list.forEach((ch, i) => { const w = chW(i); if (!phrases.some((p) => hasPhrase(w, p))) return; if (other.test(chT(i))) return; if (!NET_SECS.has(ch.sec) || /\b(news|business|deportes|kids|weather)\b/.test(chT(i))) return; if (foreign(ch.raw)) return; found.push(i); });
-      found.forEach((i) => offer(i, 60 - order * 5 + (list[i].sid ? 3 : 0) + (list[i].sec === "Local" ? 4 : 0), b));
+      list.forEach((ch, i) => {
+        // Huntsville stations carry their network's games even when the name is only the call sign ("WHNT News 19").
+        const hr = ch.home == null ? (ch.home = homeRank(ch.raw)) : ch.home;
+        if (hr >= 0 && HOME_LOCALS[hr][1] === cn) { found.push(i); return; }
+        const w = chW(i); if (!phrases.some((p) => hasPhrase(w, p))) return; if (other.test(chT(i))) return; if (!NET_SECS.has(ch.sec) || /\b(news|business|deportes|kids|weather)\b/.test(chT(i))) return; if (foreign(ch.raw)) return; found.push(i);
+      });
+      found.forEach((i) => offer(i, 60 - order * 5 + (list[i].sid ? 3 : 0) + (list[i].sec === "Local" ? 4 : 0) + (list[i].home >= 0 ? 15 : 0), b));
     });
     const seen = new Set();
     return [...out.values()].sort((x, y) => y.score - x.score || x.i - y.i).filter((x) => { const k = list[x.i].name.toLowerCase().replace(/\b(hd|fhd|sd|4k|uhd)\b/g, "").replace(/\W+/g, ""); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
@@ -3604,6 +3815,7 @@ const LV = (() => {
         const b = $(`#lvChips .chip[data-sec="game:${L.id}"] span+span`);
         if (b) b.textContent = sc.ok ? String(sc.games.filter((x) => x.state !== "post").length) : "";
         const chip = b && b.closest(".chip"); if (chip && sc.ok && !sc.games.length) chip.remove();
+        if (sc.ok) paintNoGuide();
       }).catch(() => {});
     }
   }
@@ -3818,6 +4030,10 @@ function renderSettings(v) {
     <div class="panel"><h2>Player app</h2><p class="muted">Browsers can't play MKV files or DTS and Dolby sound. Jarvis hands those to this app. ${isMac ? `On a Mac: IINA, free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : "VLC is free on the App Store. Infuse also works for movies and shows (it starts where you left off), but most files need Infuse Pro. Live TV channels always open in VLC. Tip: with your Real-Debrid API token saved below, most movies and shows play right here instead, and pick up where you left off on any TV."}</p>
       <div class="rowf" style="margin-top:10px">${extPrefSelect("extPrefSet")}</div></div>
     <div class="panel"><h2>Addons on this device</h2>${addonPanelHTML()}</div>
+    <div class="panel"><h2>Check network</h2>
+      <p class="muted">Tests what Jarvis needs from this phone: TMDB, your addons, the Jarvis relay, the TV link and your TV. Use it when sources or posters don't load.</p>
+      <div class="rowf" style="margin-top:10px"><button class="btn small primary" data-act="netcheck" id="netBtn">Check network</button></div>
+      <ul class="netlist" id="netList" aria-live="polite"></ul></div>
     <div class="panel"><h2>Ask Jarvis</h2>
       <label class="switch"><input type="checkbox" id="jvLocal" ${jarvisLocalOn() ? "checked" : ""}> Use Jarvis on this device without the TV</label>
       <p>${jarvisKey() ? `<span class="pill ok">Key saved on this device</span>` : `<span class="pill no">No key on this device</span>`}</p>
@@ -3871,6 +4087,77 @@ function renderSettings(v) {
   $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
   $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
 }
+// ---------- Settings > Check network ----------
+// One request per service, each with a short time limit, all at once. Results name hosts only: addon links and
+// keys are never shown. No polling: a second tap while it runs does nothing.
+const NET_BLOCKED = "Blocked or not answering. A VPN or iCloud Private Relay may be blocking this. Turn them off for Wi-Fi and try again.";
+let netRunning = false;
+async function netProbe(url, ms, opts) {
+  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms || 6000);
+  const t0 = Date.now();
+  try { const r = await fetch(url, { cache: "no-store", ...(opts || {}), signal: ac.signal }); return { r, ms: Date.now() - t0 }; }
+  catch (e) { return { err: ac.signal.aborted ? "timeout" : "network", ms: Date.now() - t0 }; }
+  finally { clearTimeout(t); }
+}
+async function netCheck() {
+  const ul = $("#netList"), btn = $("#netBtn");
+  if (!ul || netRunning) return;
+  netRunning = true; if (btn) btn.disabled = true;
+  const host = (u) => { try { return new URL(u).host; } catch { return "addon"; } };
+  const rows = [];
+  const draw = () => { if (ul.isConnected) ul.innerHTML = rows.map((x) => `<li><span class="pill ${x.ok === true ? "ok" : x.ok === false ? "no" : ""}">${x.ok === true ? "OK" : x.ok === false ? "Fail" : "…"}</span>
+    <div><b>${esc(x.name)}</b><span class="muted">${esc(x.note || "Checking…")}</span></div></li>`).join(""); };
+  const job = (name, fn) => {
+    const x = { name, ok: null, note: "" }; rows.push(x);
+    return (async () => { try { Object.assign(x, await fn()); } catch { Object.assign(x, { ok: false, note: NET_BLOCKED }); } draw(); })();
+  };
+  const fail = (res, what) => res.err === "timeout" ? { ok: false, note: "No answer in time. " + NET_BLOCKED } : { ok: false, note: what || NET_BLOCKED };
+  const jobs = [];
+  jobs.push(job("TMDB (posters and info)", async () => {
+    const k = keys().tmdb;
+    if (!k) { const res = await netProbe(TMDB + "/configuration", 6000, { mode: "no-cors" }); return res.r ? { ok: true, note: "Reachable. No TMDB key on this device yet." } : fail(res); }
+    const p = new URLSearchParams(); const headers = {};
+    if (k.length > 40) headers.Authorization = "Bearer " + k; else p.set("api_key", k);
+    const res = await netProbe(TMDB + "/configuration?" + p, 6000, { headers });
+    if (!res.r) return fail(res);
+    if (res.r.status === 401) return { ok: false, note: "Reachable, but the TMDB key was rejected. Check it below." };
+    return res.r.ok ? { ok: true, note: "Working (" + res.ms + " ms)." } : { ok: false, note: "TMDB answered with error " + res.r.status + ". Try again later." };
+  }));
+  const addons = addonUrls();
+  if (!addons.length) rows.push({ name: "Addons", ok: false, note: "No addons on this device yet. Open Jarvis with a TV on, or add one above." });
+  addons.forEach((u) => jobs.push(job("Addon: " + host(u), async () => {
+    const res = await netProbe(u, 8000);
+    if (!res.r) return fail(res);
+    if (res.r.status === 403 || res.r.status === 429) return { ok: false, note: "Refused (" + res.r.status + "). " + NET_BLOCKED };
+    if (!res.r.ok) return { ok: false, note: "The addon answered with error " + res.r.status + ". It may be down. Try again later." };
+    let name = ""; try { name = String((await res.r.json()).name || "").trim(); } catch { return { ok: false, note: "The addon answered, but not with a manifest. Check its link." }; }
+    return { ok: true, note: (name ? name + ": " : "") + "working (" + res.ms + " ms)." };
+  })));
+  // The relay's home page: a plain static file, no function call. no-cors: only "can this phone reach it" matters.
+  jobs.push(job("Jarvis relay (Real-Debrid, house sync)", async () => {
+    const res = await netProbe("https://jarvis-rd.netlify.app/", 6000, { mode: "no-cors" });
+    return res.r ? { ok: true, note: "Reachable (" + res.ms + " ms)." } : fail(res);
+  }));
+  if (rdHere()) jobs.push(job("Real-Debrid on this device", async () => {
+    try { await rdCall("GET", "/user"); return { ok: true, note: "Signed in and working." }; }
+    catch (e) { return { ok: false, note: e.message || NET_BLOCKED }; }
+  }));
+  jobs.push(job("TV link (ntfy.sh)", async () => {
+    const res = await netProbe(RELAY + "v1/health", 6000);
+    if (!res.r) return fail(res);
+    return res.r.ok ? { ok: true, note: "Reachable (" + res.ms + " ms)." } : { ok: false, note: "The TV link answered with error " + res.r.status + ". It may be busy. Try again in a minute." };
+  }));
+  if (S.link && S.key) jobs.push(job("Your TV", async () => (await tvAlive(6000))
+    ? { ok: true, note: "Answering." }
+    : { ok: false, note: "Not answering. Turn the TV on and open Jarvis. Real-Debrid on this device plays without the TV." }));
+  draw();
+  try { await Promise.all(jobs); } finally {
+    netRunning = false; if (btn && btn.isConnected) btn.disabled = false;
+    const bad = rows.filter((x) => x.ok === false).length;
+    toast(bad ? bad + (bad === 1 ? " check failed" : " checks failed") : "Network looks good", bad ? "warn" : "ok");
+  }
+}
+
 // ---------- moving setup between Safari and the Home Screen app ----------
 // iPhone gives a Home Screen app its own storage, separate from Safari's. "Copy setup" packs this device's Jarvis
 // settings into one link; pasting it in the other one restores them (TV link, Real-Debrid, addons, profile, keys).
@@ -4138,6 +4425,7 @@ document.addEventListener("click", async (e) => {
       LS.set(RDT_KEY, t); rdLoginUi(); toast("API token saved on this device", "ok");
       break;
     }
+    case "netcheck": netCheck(); break;
     case "rdtclear": LS.del(RDT_KEY); rdLoginUi(); toast("API token removed from this device", "ok"); break;
     case "rdlogin": rdLoginStart().catch((err) => toast(err.message || "Real-Debrid didn't answer", "warn")); break;
     case "rdcancel": RDL.code = null; clearTimeout(RDL.timer); rdLoginUi(); break;
@@ -4158,14 +4446,10 @@ document.addEventListener("click", async (e) => {
     }
   }
 });
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && S.link && Date.now() - S.lastInitAsk > 60000) askInit();
-  if (document.visibilityState === "visible") checkForUpdate();
-});
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-11.1";
+const BUILD = "2026-10-11.2";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
