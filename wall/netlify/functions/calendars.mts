@@ -25,7 +25,7 @@ export default async (req: Request) => {
   const code = process.env.UPLOAD_CODE || ""
   const got = req.headers.get("x-wall-key") || ""
   if (code.length < 8 || !timingSafe(code, got)) return json({ error: "bad_key" }, 401)
-  const store = getStore("wall-config")
+  const store = getStore({ name: "wall-config", consistency: "strong" })
   const saved = ((await store.get("calendars", { type: "json" })) as Cal[] | null) || []
 
   if (req.method === "GET") {

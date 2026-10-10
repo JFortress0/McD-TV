@@ -15,7 +15,7 @@ let cache: { at: number; body: string } | null = null
 /** Calendars saved from the phone page (Netlify Blobs), else the WALL_CALENDARS env var. */
 async function sources(): Promise<Source[]> {
   let saved: unknown = null
-  try { saved = await getStore("wall-config").get("calendars", { type: "json" }) } catch { /* no store yet */ }
+  try { saved = await getStore({ name: "wall-config", consistency: "strong" }).get("calendars", { type: "json" }) } catch { /* no store yet */ }
   return clean(Array.isArray(saved) && saved.length ? saved : envList())
 }
 

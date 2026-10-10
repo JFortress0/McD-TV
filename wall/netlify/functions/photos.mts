@@ -32,7 +32,7 @@ const json = (body: unknown, status = 200) =>
 export default async (req: Request) => {
   const r = role(req)
   if (r === "none") return json({ error: "bad_key" }, 401)
-  const store = getStore("wall-photos")
+  const store = getStore({ name: "wall-photos", consistency: "strong" })
   const id = new URL(req.url).pathname.replace(/^\/api\/photos\/?/, "")
 
   if (req.method === "GET" && !id) {
