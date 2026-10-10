@@ -104,9 +104,9 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
     val firstFocus = remember { FocusRequester() }
     val favorites = remember { Library.favorites() }
     // Picked for <name>: learned from this profile's history, favorites, likes, "Not for me" and Settings > Taste.
-    val suggestions by rememberLoad { com.mcd.tv.data.Recommender.forYou() }
+    val suggestions by rememberLoad(Prefs.activeProfile) { com.mcd.tv.data.Recommender.forYou() }
     // Because You Watched: More Like This for the latest title this profile finished.
-    val because by rememberLoad { com.mcd.tv.data.Recommender.becauseYouWatched() }
+    val because by rememberLoad(Prefs.activeProfile) { com.mcd.tv.data.Recommender.becauseYouWatched() }
     LaunchedEffect(Unit) {
         if (continueWatching.isNotEmpty()) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
     }

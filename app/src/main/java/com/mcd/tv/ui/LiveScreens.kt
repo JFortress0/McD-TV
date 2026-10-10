@@ -188,10 +188,10 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
     val leagues = GameBoard.visibleLeagues()
     val leagueCounts = leagues.map { GameBoard.gameCount(it) }
     // My Guide: channels picked for this profile (habits, taste, what's on now). Rebuilt when the guide arrives.
-    var forYouResult by remember(index) { mutableStateOf<com.mcd.tv.data.LiveForYou.Result?>(null) }
+    var forYouResult by remember(index, Prefs.activeProfile) { mutableStateOf<com.mcd.tv.data.LiveForYou.Result?>(null) }
     val forYou = forYouResult?.section
     val guideNow = LiveSession.guide
-    LaunchedEffect(index, guideNow) {
+    LaunchedEffect(index, guideNow, Prefs.activeProfile) {
         forYouResult = runCatching { com.mcd.tv.data.LiveForYou.build(index, Prefs.liveFavorites.toHashSet(), guideNow) }.getOrNull()
     }
     val forYouCount = forYou?.count ?: 0
