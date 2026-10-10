@@ -67,7 +67,11 @@ fun SettingsScreen(nav: Nav) {
                         "Settings, keys, addons and the playlist are shared by the whole TV.",
                     color = McdColors.White, fontSize = 16.sp,
                 )
-                ActionButton("Switch profile", { nav.push(Screen.Profiles) }, primary = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionButton("Switch profile", { nav.push(Screen.Profiles) }, primary = true)
+                    // Another TV in the house: same profiles, settings and Real-Debrid (code typed on the phone).
+                    ActionButton("Join my other TVs", { nav.push(Screen.JoinHouse) })
+                }
                 Text("Rename: select a name, press OK to type, then Save.", color = McdColors.Muted, fontSize = 13.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Prefs.PROFILE_IDS.forEach { id ->
