@@ -485,6 +485,33 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
 .lv-logo .ini{font-family:var(--disp);font-size:18px;color:var(--accent)}
 .lv-ch b{font-size:13px;font-weight:700;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 .lv-ch .fav{position:absolute;right:7px;top:5px;color:var(--warn);font-size:12px}
+/* Live TV like the TV app: sections in a rail on the left (chips on phones), channels as guide rows. */
+@media (min-width:900px){
+  .lv-wrap{display:grid;grid-template-columns:210px minmax(0,1fr);gap:20px;align-items:start}
+  .lv-wrap #lvChips{flex-direction:column;overflow:visible;margin:0;padding:0;position:sticky;top:76px;gap:4px}
+  .lv-wrap #lvChips .chip{text-align:left;display:flex;justify-content:space-between;gap:8px}
+}
+#lvChips .chip span+span{margin-left:8px;opacity:.75}
+.lv-list{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.lv-row{display:grid;grid-template-columns:88px minmax(0,170px) minmax(0,1fr) minmax(0,200px);gap:14px;align-items:center;width:100%;min-height:72px;padding:8px 12px;border:1px solid var(--line);background:var(--card);clip-path:var(--cut);cursor:pointer;color:var(--white);text-align:left;font:inherit;transition:border-color .15s,filter .15s}
+.lv-row:hover,.lv-row:focus-visible{border-color:var(--accent);filter:drop-shadow(0 0 8px rgba(0,229,255,.45));outline:none}
+.lv-row .lv-logo{height:52px;background:rgba(2,6,10,.55)}
+.lv-row .lv-logo img{max-height:46px;max-width:84%}
+.lv-nm b{display:block;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv-nm .fav{color:var(--warn);font-size:12px;margin-left:4px}
+.lv-now,.lv-next{min-width:0}
+.lv-now .t,.lv-next .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv-now .t{font-weight:600;font-size:14px}
+.lv-now small,.lv-next small{display:block;color:var(--muted);font-size:12px}
+.lv-next .t{color:var(--muted);font-size:13px}
+.lv-tag{font-size:10px;font-weight:700;letter-spacing:.8px;color:var(--accent);margin-right:6px}
+.lv-bar{height:3px;background:rgba(14,106,122,.5);margin-top:5px;max-width:92%}
+.lv-bar i{display:block;height:3px;background:var(--accent)}
+@media (max-width:700px){
+  .lv-row{grid-template-columns:64px minmax(0,1fr);gap:4px 12px;padding:8px 10px}
+  .lv-row .lv-logo{grid-row:span 2;height:46px}
+  .lv-next{display:none}
+}
 .lv-player{position:fixed;inset:0;z-index:100;background:#000;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .lv-player .pl-stage video{max-height:calc(100dvh - 90px)}
 
@@ -503,7 +530,6 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
     <a href="#/browse" data-nav="browse">Browse</a>
     <a href="#/search" data-nav="search">Jarvis</a>
     <a href="#/live" data-nav="live">Live TV</a>
-    <a href="#/websites" data-nav="websites">Websites</a>
     <a href="#/list" data-nav="list">My List</a>
   </nav>
   <div class="hdr-right">
@@ -1078,7 +1104,6 @@ async function route() {
     case "list": renderList(v, tok, q.get("tab") || "watchlist"); break;
     case "settings": renderSettings(v); break;
     case "live": renderLive(v, tok, q); break;
-    case "websites": renderWebsites(v); break;
     case "pair": renderPair(v); break;
     default: renderHome(v, tok);
   }
@@ -1201,7 +1226,6 @@ function renderBrowse(v) {
       ${tile("#/browse/genre?type=movie&v=28", "Genres", "Action, Comedy, Drama and more")}
       ${tile("#/browse/service?type=movie&v=8", "Streaming Services", "What's on each service")}
       ${tile("#/live", "Live TV", "Channels from your playlist")}
-      ${tile("#/websites", "Websites", "Your saved sites")}
     </div>
     <div class="section-h"><h2>Streaming services</h2></div>
     <div class="tiles">${SERVICES.map(([id, n, c]) => `<a class="tile svc" href="#/browse/service?type=movie&v=${id}" style="background:linear-gradient(140deg,${c},#0b1220)">${esc(n)}<small style="color:#dfe6f3">Movies and shows</small></a>`).join("")}</div>
@@ -2696,7 +2720,7 @@ const LV = (() => {
   let st = { status: "idle", list: null, msg: "", key: "" };
   let view = { sec: "", q: "", shown: 0 };
   let loading = null;
-  const PAGE = 240;
+  const PAGE = 120;
 
   function xtreamOf(url) {
     try {
@@ -2752,7 +2776,7 @@ const LV = (() => {
       if (!o || o.stream_id == null || o.stream_id === "") continue;
       const id = String(o.stream_id);
       const icon = typeof o.stream_icon === "string" && /^https?:/i.test(o.stream_icon) ? o.stream_icon : "";
-      out.push({ name: String(o.name || "").trim() || "Channel " + id, logo: icon, group: cats[String(o.category_id)] || "Other",
+      out.push({ sid: id, name: String(o.name || "").trim() || "Channel " + id, logo: icon, group: cats[String(o.category_id)] || "Other",
         url: `${x.base}/live/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.m3u8` });
       if (out.length >= 25000) break;
     }
@@ -2786,9 +2810,9 @@ const LV = (() => {
     st = { status: "loading", list: null, msg: "", key: url };
     try {
       const x = xtreamOf(url);
-      let raw = null, viaRelay = false;
-      if (x && !mixedBlocked(url)) { try { raw = await loadXtream(x); } catch {} }
-      if (!raw && x) { raw = await loadXtream(x, getViaRelay); viaRelay = !!raw; } // channels open in a player app
+      let raw = null, viaRelay = false, xt = null;
+      if (x && !mixedBlocked(url)) { try { raw = await loadXtream(x); } catch {} if (raw) xt = x; }
+      if (!raw && x) { raw = await loadXtream(x, getViaRelay); viaRelay = !!raw; if (raw) xt = x; } // channels open in a player app
       if (!raw) {
         if (mixedBlocked(url)) throw new Error(LIVE_NO); // an http link can't be read from this https page
         raw = parseM3u(await getText(url, 90000));
@@ -2798,11 +2822,11 @@ const LV = (() => {
       for (const ch of raw) {
         if (LO.isSeparator(ch.name) || seen.has(ch.url)) continue;
         seen.add(ch.url);
-        list.push({ name: LO.cleanName(ch.name), raw: ch.name, logo: ch.logo, group: ch.group, url: ch.url, sec: LO.section(ch.group, ch.name) });
+        list.push({ sid: ch.sid || "", name: LO.cleanName(ch.name), raw: ch.name, logo: ch.logo, group: ch.group, url: ch.url, sec: LO.section(ch.group, ch.name) });
       }
       if (!list.length) throw new Error("The playlist loaded but had no live channels in it.");
       if (!viaRelay && list.every((c) => mixedBlocked(c.url))) throw new Error(LIVE_NO);
-      if (st.key === url) st = { status: "ok", list, msg: "", key: url, ext: viaRelay, ua: st.ua || "" };
+      if (st.key === url) st = { status: "ok", list, msg: "", key: url, ext: viaRelay, ua: st.ua || "", xt, epgGet: viaRelay ? getViaRelay : getText };
     } catch (e) {
       if (st.key === url) st = { status: "error", list: null, msg: (e && e.message) || LIVE_NO, key: url };
     }
@@ -2829,14 +2853,87 @@ const LV = (() => {
       : `<span class="ini">${ini}</span>`;
     return `<button class="lv-ch" type="button" data-act="live" data-idx="${i}" title="${esc(ch.name)}">${f.has(ch.url) ? `<span class="fav" aria-label="Favorite">&#9733;</span>` : ""}<span class="lv-logo">${logo}</span><b>${esc(ch.name)}</b></button>`;
   }
+  // ---------- program guide: what's on now and next, per channel (the provider's app API, a few at a time) ----------
+  const EPG = new Map(); // stream id -> { at, list: [{ title, start, end }] }
+  const pending = new Set(), queue = [];
+  let busy = 0, io = null;
+  const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  function b64(s) { try { return new TextDecoder().decode(Uint8Array.from(atob(String(s || "")), (c) => c.charCodeAt(0))); } catch { return String(s || ""); } }
+  async function fetchEpg(sid) {
+    const x = st.xt; if (!x) return;
+    const api = `${x.base}/player_api.php?username=${encodeURIComponent(x.user)}&password=${encodeURIComponent(x.pass)}&action=get_short_epg&stream_id=${encodeURIComponent(sid)}&limit=4`;
+    let list = [];
+    try {
+      const j = JSON.parse(await (st.epgGet || getText)(api, 20000));
+      list = ((j && j.epg_listings) || []).map((e) => ({ title: b64(e.title).trim(), start: (+e.start_timestamp || 0) * 1000, end: (+e.stop_timestamp || 0) * 1000 }))
+        .filter((p) => p.title && p.start && p.end > p.start).sort((a, b) => a.start - b.start);
+    } catch {}
+    EPG.set(sid, { at: Date.now(), list });
+  }
+  function pump() {
+    while (busy < 4 && queue.length) {
+      const sid = queue.shift();
+      busy++;
+      fetchEpg(sid).finally(() => { busy--; pending.delete(sid); paint(sid); pump(); });
+    }
+  }
+  function want(sid) {
+    if (!sid || !st.xt || pending.has(sid)) return;
+    const c = EPG.get(sid);
+    if (c && Date.now() - c.at < 15 * 60000) return;
+    pending.add(sid); queue.push(sid); pump();
+  }
+  function guideHtml(ch) {
+    if (!ch.sid || !st.xt) return [`<small>No guide info for this channel</small>`, ""];
+    const c = EPG.get(ch.sid);
+    if (!c) return [`<small>Loading guide&#8230;</small>`, ""];
+    const now = Date.now();
+    const cur = c.list.find((p) => p.start <= now && p.end > now), nxt = c.list.find((p) => p.start > now);
+    const pct = cur ? Math.max(0, Math.min(100, ((now - cur.start) / (cur.end - cur.start)) * 100)) : 0;
+    return [
+      cur ? `<span class="t"><span class="lv-tag">NOW</span>${esc(cur.title)}</span><small>${clock(cur.start)} to ${clock(cur.end)}</small><div class="lv-bar"><i style="width:${pct.toFixed(0)}%"></i></div>`
+        : `<small>No guide info right now</small>`,
+      nxt ? `<small><span class="lv-tag" style="color:var(--muted)">NEXT</span>${clock(nxt.start)}</small><span class="t">${esc(nxt.title)}</span>` : "",
+    ];
+  }
+  function paint(sid) {
+    $$(`.lv-row[data-sid="${CSS.escape(String(sid))}"]`).forEach((row) => {
+      const ch = st.list && st.list[+row.dataset.idx]; if (!ch) return;
+      const [now, next] = guideHtml(ch);
+      const a = $(".lv-now", row), b = $(".lv-next", row);
+      if (a) a.innerHTML = now;
+      if (b) b.innerHTML = next;
+    });
+  }
+  function row(i, f) {
+    const ch = st.list[i];
+    const ini = esc(initial(ch.name));
+    const logo = ch.logo && !mixedBlocked(ch.logo)
+      ? `<img loading="lazy" decoding="async" src="${esc(ch.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.nextElementSibling.hidden=false;this.remove()"><span class="ini" hidden>${ini}</span>`
+      : `<span class="ini">${ini}</span>`;
+    const [now, next] = guideHtml(ch);
+    return `<button class="lv-row" type="button" data-act="live" data-idx="${i}" data-sid="${esc(ch.sid || "")}" title="${esc(ch.name)}">
+      <span class="lv-logo">${logo}</span>
+      <span class="lv-nm"><b>${esc(ch.name)}${f.has(ch.url) ? `<span class="fav" aria-label="Favorite">&#9733;</span>` : ""}</b></span>
+      <span class="lv-now">${now}</span><span class="lv-next">${next}</span></button>`;
+  }
+  function watchRows(g) {
+    if (io) io.disconnect();
+    if (!st.xt || !("IntersectionObserver" in window)) return;
+    io = new IntersectionObserver((ents) => {
+      for (const e of ents) if (e.isIntersecting) { io.unobserve(e.target); want(e.target.dataset.sid); }
+    }, { rootMargin: "300px 0px" });
+    $$(".lv-row[data-sid]", g).forEach((r) => { if (r.dataset.sid) io.observe(r); });
+  }
   function drawGrid() {
     const g = $("#lvGrid"), more = $("#lvMore"); if (!g) return;
     const idx = filtered(), f = favs();
     const end = Math.min(idx.length, view.shown || PAGE);
     view.shown = end;
-    g.innerHTML = idx.length ? `<div class="lv-grid">${idx.slice(0, end).map((i) => tile(i, f)).join("")}</div>`
+    g.innerHTML = idx.length ? `<div class="lv-list">${idx.slice(0, end).map((i) => row(i, f)).join("")}</div>`
       : `<p class="muted">${view.q ? "No channels match." : view.sec === "Favorites" ? "No favorite channels yet. Mark favorites in Live TV on the TV." : "No channels here."}</p>`;
     more.classList.toggle("hidden", end >= idx.length);
+    watchRows(g);
     $$("#lvChips .chip").forEach((b) => b.classList.toggle("on", !view.q && b.dataset.sec === view.sec));
   }
   function render(v) {
@@ -2862,9 +2959,10 @@ const LV = (() => {
     const c = counts();
     if (!view.sec || (!c[view.sec] && view.sec !== "All")) view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : "All";
     v.innerHTML = `<div class="page"><h1>Live TV</h1>
-      <div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
-      <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => s === "All" || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}">${esc(s)} (${c[s] || 0})</button>`).join("")}</div>
-      <div id="lvGrid"></div><div class="more"><button class="btn hidden" id="lvMore" data-act="livemore">Show more</button></div></div>`;
+      <div class="lv-wrap">
+      <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => s === "All" || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
+      <div><div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
+      <div id="lvGrid"></div><div class="more"><button class="btn hidden" id="lvMore" data-act="livemore">Show more</button></div></div></div></div>`;
     let t = 0;
     $("#lvQ", v).addEventListener("input", (e) => { clearTimeout(t); t = setTimeout(() => { view.q = e.target.value; view.shown = 0; drawGrid(); }, 200); });
     drawGrid();
@@ -3291,7 +3389,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-09.9";
+const BUILD = "2026-10-10.1";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
