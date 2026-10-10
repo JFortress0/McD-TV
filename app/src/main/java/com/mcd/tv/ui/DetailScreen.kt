@@ -80,7 +80,12 @@ private fun DetailBody(nav: Nav, d: Details) {
     var fav by remember { mutableStateOf(Library.isFavorite(t)) }
     var listed by remember { mutableStateOf(Library.inWatchlist(t)) }
     var noise by remember { mutableStateOf(Library.inNoise(t)) }
+    var liked by remember { mutableStateOf(Library.isLiked(t)) }
     var note by remember { mutableStateOf("") }
+    // More Like This: ranked for this profile (story, genres, people, quality, taste). TMDB's list until ready.
+    val similarLoad by rememberLoad(t.type, t.id, com.mcd.tv.data.Prefs.activeProfile) {
+        com.mcd.tv.data.Recommender.moreLikeThis(t.type, t.id, d.similar)
+    }
     val playFocus = remember { FocusRequester() }
     val context = LocalContext.current
 
@@ -184,15 +189,22 @@ private fun DetailBody(nav: Nav, d: Details) {
                                 if (t.type == "movie") item { ActionButton("Choose Source", { play(0, 0, false) }, Modifier.focusRequester(moreFocus)) }
                                 item {
                                     ActionButton(
-                                        if (fav) "♥ Favorite" else "♡ Favorite", { fav = Library.toggleFavorite(t) },
+                                        if (fav) "♥ Favorite" else "♡ Favorite", { fav = Library.toggleFavorite(t); com.mcd.tv.data.Recommender.invalidate() },
                                         if (t.type == "movie") Modifier else Modifier.focusRequester(moreFocus),
                                     )
+                                }
+                                item {
+                                    ActionButton(if (liked) "✓ I like this" else "👍 I like this", {
+                                        liked = Library.toggleLike(t)
+                                        com.mcd.tv.data.Recommender.invalidate()
+                                        note = if (liked) "Got it. You'll see more like this." else ""
+                                    })
                                 }
                                 if (t.type == "movie") item { ActionButton("Mark as Watched", { Library.markWatched(meta()); note = "Marked as watched" }) }
                                 if (t.type == "tv") item {
                                     ActionButton(if (noise) "✓ In Background Noise" else "+ Background Noise", { noise = Library.toggleNoise(t) })
                                 }
-                                item { ActionButton("Not for me", { Library.hide(t); note = "Hidden from home rows"; nav.back() }) }
+                                item { ActionButton("Not for me", { Library.hide(t); com.mcd.tv.data.Recommender.invalidate(); note = "Hidden from home rows"; nav.back() }) }
                             }
                         }
                         if (note.isNotBlank()) Text(note, color = McdColors.Amber, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
@@ -221,7 +233,10 @@ private fun DetailBody(nav: Nav, d: Details) {
                 }
             }
         }
-        item { TitleRow(if (t.type == "tv") "Similar Shows" else "Similar Movies", d.similar) { s -> nav.push(Screen.Detail(s.type, s.id)) } }
+        item {
+            val list = (similarLoad as? Load.Ok)?.value ?: d.similar
+            TitleRow(if (t.type == "tv") "More Shows Like This" else "More Like This", list) { s -> nav.push(Screen.Detail(s.type, s.id)) }
+        }
         val collectionId = d.collectionId
         if (t.type == "movie" && collectionId != null) item { CollectionRow(nav, collectionId, d.collectionName) }
     }

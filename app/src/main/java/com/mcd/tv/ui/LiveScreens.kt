@@ -135,6 +135,7 @@ fun LiveTvScreen(nav: Nav) {
 private const val KEY_SEARCH = "search"
 private const val KEY_FAV = "fav"
 private const val KEY_RECENT = "recent"
+private const val KEY_FORYOU = "foryou"
 private const val KEY_ALL = "all"
 private const val SEC = "sec:"
 /** League games pane: "game:NFL". */
@@ -186,7 +187,14 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
     val gamesUi = rememberGamesUi()
     val leagues = GameBoard.visibleLeagues()
     val leagueCounts = leagues.map { GameBoard.gameCount(it) }
-    val entries = remember(index, favItems.size, recentItems.size, leagues, leagueCounts) {
+    // For You: channels picked for this profile (habits, taste, what's on now). Rebuilt when the guide arrives.
+    var forYou by remember(index) { mutableStateOf<com.mcd.tv.data.LiveSection?>(null) }
+    val guideNow = LiveSession.guide
+    LaunchedEffect(index, guideNow) {
+        forYou = runCatching { com.mcd.tv.data.LiveForYou.build(index, Prefs.liveFavorites.toHashSet(), guideNow) }.getOrNull()
+    }
+    val forYouCount = forYou?.count ?: 0
+    val entries = remember(index, favItems.size, recentItems.size, leagues, leagueCounts, forYouCount) {
         buildList {
             if (leagues.isNotEmpty()) {
                 add(RailEntry(HDR + "games", "GAMES", null))
@@ -195,6 +203,7 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
             }
             add(RailEntry(KEY_SEARCH, "⌕  Search", null))
             add(RailEntry(KEY_FAV, "★  Favorites", favItems.size))
+            if (forYouCount > 0) add(RailEntry(KEY_FORYOU, "✦  For You", forYouCount))
             if (recentItems.isNotEmpty()) add(RailEntry(KEY_RECENT, "Recent", recentItems.size))
             index.sections.forEach { add(RailEntry(SEC + it.name, it.name, it.count)) }
             add(RailEntry(KEY_ALL, "All channels", index.size))
@@ -303,6 +312,7 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
                     val (title, base) = when (sel) {
                         KEY_FAV -> "Favorites" to favView
                         KEY_RECENT -> "Recent" to recentItems
+                        KEY_FORYOU -> "For You" to (forYou?.items ?: IntArray(0))
                         KEY_ALL -> "All channels" to index.all
                         else -> (section?.name ?: "Channels") to (section?.items ?: IntArray(0))
                     }
@@ -310,7 +320,7 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
                         paneKey = sel,
                         title = title,
                         base = base,
-                        subgroups = section?.subgroups ?: emptyList(),
+                        subgroups = if (sel == KEY_FORYOU) forYou?.subgroups.orEmpty() else section?.subgroups ?: emptyList(),
                         emptyText = if (sel == KEY_FAV) "No favorites yet. Focus a channel and press ☰ (Menu) to add it." else "No channels here.",
                         index = index,
                         favSet = favSet,

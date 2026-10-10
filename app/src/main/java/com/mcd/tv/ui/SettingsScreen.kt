@@ -74,6 +74,15 @@ fun SettingsScreen(nav: Nav) {
                         ProfileNameEditor(id) { watching = Prefs.activeProfileName }
                     }
                 }
+                Text(
+                    "Taste: pick the genres and topics each person likes or wants to skip. Jarvis also learns from what they watch.",
+                    color = McdColors.Muted, fontSize = 13.sp,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Prefs.PROFILE_IDS.forEach { id ->
+                        ActionButton("${Prefs.profileName(id)}'s taste", { nav.push(Screen.Taste(id)) })
+                    }
+                }
             }
 
             HudPanel(Modifier.fillMaxWidth()) {

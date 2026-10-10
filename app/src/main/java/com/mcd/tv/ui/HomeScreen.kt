@@ -103,13 +103,10 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
     val continueWatching = remember { Library.continueWatching().sortedByDescending { it.updatedAt } }
     val firstFocus = remember { FocusRequester() }
     val favorites = remember { Library.favorites() }
-    // Suggestions: titles like the last few things you watched or favorited.
-    val suggestions by rememberLoad {
-        val seeds = (history.map { it.meta.type to it.meta.tmdbId } + favorites.map { it.type to it.id }).distinct().take(4)
-        val seen = history.map { "${it.meta.type}-${it.meta.tmdbId}" }.toSet()
-        coroutineScope { seeds.map { (t, id) -> async { runCatching { Tmdb.recommendations(t, id) }.getOrDefault(emptyList()) } }.map { it.await() } }
-            .flatMap { it.take(8) }.distinctBy { "${it.type}-${it.id}" }.filterNot { "${it.type}-${it.id}" in seen }.take(24)
-    }
+    // Picked for <name>: learned from this profile's history, favorites, likes, "Not for me" and Settings > Taste.
+    val suggestions by rememberLoad { com.mcd.tv.data.Recommender.forYou() }
+    // Because You Watched: More Like This for the latest title this profile finished.
+    val because by rememberLoad { com.mcd.tv.data.Recommender.becauseYouWatched() }
     LaunchedEffect(Unit) {
         if (continueWatching.isNotEmpty()) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
     }
@@ -137,7 +134,7 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
         }
     }
     // Home stays at 8 rows or fewer: with Continue Watching and the hero both showing, the live row takes Top Rated's place.
-    val dropTopRated = liveRow != null && continueWatching.isNotEmpty()
+    val dropTopRated = (liveRow != null && continueWatching.isNotEmpty()) || (because as? Load.Ok)?.value != null
     val openTitle: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
     val heroes = (data as? Load.Ok<HomeData>)?.value?.trending?.visible()?.filter { it.backdrop != null }?.take(6) ?: emptyList()
     // Nothing to resume: the hero goes full-bleed at the very top of the page, behind the transparent
@@ -175,7 +172,11 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
         if (!heroOnTop && heroes.isNotEmpty()) item(key = "hero") { Hero(heroes, nav, takeFocus = false) }
         item(key = "suggested") {
             val sg = suggestions
-            if (sg is Load.Ok && sg.value.isNotEmpty()) TitleRow("Suggested for You", sg.value.visible(), openTitle)
+            if (sg is Load.Ok && sg.value.isNotEmpty()) TitleRow("Picked for ${Prefs.activeProfileName}", sg.value.visible(), openTitle)
+        }
+        item(key = "because") {
+            val b = (because as? Load.Ok)?.value
+            if (b != null) TitleRow("Because You Watched ${b.first}", b.second.visible(), openTitle)
         }
 
         when (val d = data) {

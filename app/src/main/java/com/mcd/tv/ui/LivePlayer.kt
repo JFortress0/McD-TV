@@ -114,6 +114,14 @@ fun LivePlayerScreen(nav: Nav, index: Int) {
 
     val playingChannel = channels[playing.coerceIn(0, count - 1)]
     LaunchedEffect(playingChannel.url) { Prefs.addLiveRecent(playingChannel.url) }
+    // Minutes watched per channel feed Live TV > For You (counted while this screen is open).
+    LaunchedEffect(playingChannel.url) {
+        val url = playingChannel.url
+        while (true) {
+            delay(60_000)
+            Prefs.addLiveMinutes(url, 1.0)
+        }
+    }
 
     val onKey: (KeyEvent, Boolean) -> Boolean = remember(count) {
         { e: KeyEvent, controlsShowing: Boolean ->
