@@ -187,4 +187,23 @@ class TasteTest {
         assertEquals(-1.0, m.score("Extreme Home Makeover"), 1e-9)
         assertEquals(0.0, m.score("Cooking with Ana"), 1e-9)
     }
+
+    @Test fun tvGenresCountForTheMovieGenresYouLike() {
+        // TV uses combined genres: "War & Politics" (10768), "Sci-Fi & Fantasy" (10765).
+        val dad = Taste.build(emptyList(), TasteChoices(likeGenres = setOf(Taste.WAR)), now)
+        val band = f("tv:4613", setOf(Taste.WAR_POLITICS, Taste.DRAMA))
+        val plain = f("tv:1", setOf(Taste.DRAMA))
+        assertTrue(dad.score(band) > dad.score(plain))
+        val mom = Taste.build(emptyList(), TasteChoices(likeGenres = setOf(14)), now)
+        val thrones = f("tv:1399", setOf(10765, Taste.DRAMA))
+        assertTrue(mom.score(thrones) > mom.score(plain))
+        assertTrue(Taste.genreIn(10765, setOf(14)))
+        assertFalse(Taste.genreIn(Taste.DRAMA, setOf(14)))
+    }
+
+    @Test fun learnedTvTasteCarriesOverToTvShows() {
+        val watched = f("tv:2", setOf(Taste.WAR_POLITICS), setOf(NAZI))
+        val taste = Taste.build(listOf(Signal(watched, 1.0, now)), TasteChoices(), now)
+        assertTrue(taste.score(f("tv:3", setOf(Taste.WAR_POLITICS))) > 0.0)
+    }
 }
