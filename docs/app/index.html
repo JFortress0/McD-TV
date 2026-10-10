@@ -2357,8 +2357,10 @@ async function fetchStreams(type, imdb, season, episode) {
   const ck = stremioType + "/" + id + "|" + addonUrls().join("|");
   const c = S.streamCache.get(ck);
   if (c && Date.now() - c.at < 5 * 60000) return c.list;
+  S.addonReport = {};
   const per = await Promise.all(addonUrls().map(async (m) => {
-    const [name, data] = await Promise.all([addonName(m), fetchJSON(`${addonBase(m)}/stream/${stremioType}/${id}.json`, 10000).catch(() => null)]);
+    const [name, data] = await Promise.all([addonName(m), fetchJSON(`${addonBase(m)}/stream/${stremioType}/${id}.json`, 10000).catch((e) => ({ failed: e && e.status ? "HTTP " + e.status : "no answer" }))]);
+    S.addonReport = S.addonReport || {}; S.addonReport[name] = data && data.failed ? data.failed : "ok";
     const arr = data && Array.isArray(data.streams) ? data.streams : [];
     return arr.filter((o) => o && typeof o === "object")
       .map((o) => SI.parseStream(name, o, type === "tv" ? season : null, type === "tv" ? episode : null));
@@ -2716,7 +2718,14 @@ async function renderSources(v, tok, type, id, q) {
   const opts = siOpts();
   const a = SI.arrange(list, type === "tv", opts);
   let rows = a.visible, showHidden = false;
-  if (!list.length) { say("Your addons found no sources for this title.", true); listEl.innerHTML = ""; return; }
+  if (!list.length) {
+    // Say why: no addons on this device, addons that didn't answer (blocked network), or really nothing found.
+    const rep = Object.entries(S.addonReport || {}), bad = rep.filter(([, r]) => r !== "ok");
+    const msg = !addonUrls().length ? "No addons on this device yet. Open Jarvis once with a TV on, or connect with a code (Settings), so it gets your addons."
+      : bad.length ? `${bad.length === rep.length ? "Your addons" : "Some addons"} didn't answer (${bad.map(([n, r]) => n + ": " + r).join(", ")}). Something on this network is blocking them: a VPN, iCloud Private Relay, or Limit IP Address Tracking. Turn those off for Wi-Fi and try again.`
+      : "Your addons found no sources for this title.";
+    say(msg, true); listEl.innerHTML = ""; S.streamCache.clear(); return;
+  }
   say(`${a.visible.length + a.hidden.length} sources. Tap one, or let Best source pick.`);
   bestBtn.disabled = false;
   const draw = () => {
@@ -4134,7 +4143,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.24";
+const BUILD = "2026-10-10.25";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
