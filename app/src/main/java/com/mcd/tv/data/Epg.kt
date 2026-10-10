@@ -12,13 +12,19 @@ import java.io.BufferedInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Calendar
+import java.util.Locale
+import java.util.TimeZone
 import java.util.zip.GZIPInputStream
 import kotlin.coroutines.coroutineContext
 
 // ======================= Live TV: XMLTV program guide =======================
 
-/** One programme. [start] / [end] are epoch milliseconds. */
-data class Programme(val title: String, val start: Long, val end: Long, val desc: String)
+/**
+ * One programme. [start] / [end] are epoch milliseconds. [untimed]: an event channel that names its game but no
+ * start time (shown as "Live event"; [start] is the top of the hour).
+ */
+data class Programme(val title: String, val start: Long, val end: Long, val desc: String, val untimed: Boolean = false)
 
 /**
  * Reads the playlist's XMLTV guide (plain or .gz), keeping only what Live TV shows:
@@ -104,6 +110,25 @@ object Epg {
             ch.tvgName?.lowercase()?.let { byName.getOrPut(it) { ArrayList(1) }.add(k) }
             byName.getOrPut(ch.name.lowercase()) { ArrayList(1) }.let { if (k !in it) it.add(k) }
         }
+        // Normalized names ([LiveFill.guideKey]): a copy without a guide id borrows the id of a copy of the same
+        // network that has one ("ESPN 2 FHD" uses "ESPN2"'s guide; West feeds keep their own).
+        val byKey = HashMap<String, MutableList<String>>()
+        val donor = HashMap<String, String>()
+        val keyOfCh = arrayOfNulls<String>(channels.size)
+        for ((n, ch) in channels.withIndex()) {
+            val gk = LiveFill.guideKey(ch.name)
+            if (gk.isEmpty()) continue
+            keyOfCh[n] = gk
+            byKey.getOrPut(gk) { ArrayList(1) }.add(keyOf(ch))
+            val id = ch.tvgId?.takeIf { it.isNotBlank() }?.lowercase()
+            if (id != null && gk !in donor) donor[gk] = id
+        }
+        for ((n, ch) in channels.withIndex()) {
+            if (!ch.tvgId.isNullOrBlank()) continue
+            val id = donor[keyOfCh[n] ?: continue] ?: continue
+            val k = keyOf(ch)
+            byTvgId.getOrPut(id) { ArrayList(1) }.let { if (k !in it) it.add(k) }
+        }
         // XMLTV channel id -> channel keys (filled from <channel> elements).
         val idMap = HashMap<String, List<String>>()
         fun keysFor(xmlId: String): List<String>? = idMap[xmlId] ?: byTvgId[xmlId.lowercase()]
@@ -124,7 +149,7 @@ object Epg {
                 if (event == XmlPullParser.START_TAG) {
                     if (++counter % 2000 == 0) ctx.ensureActive()
                     when (p.name) {
-                        "channel" -> readChannel(p, byTvgId, byName)?.let { (id, keys) -> idMap[id] = keys }
+                        "channel" -> readChannel(p, byTvgId, byName, byKey)?.let { (id, keys) -> idMap[id] = keys }
                         "programme" -> {
                             val keys = keysFor(p.getAttributeValue(null, "channel") ?: "")
                             val start = parseTime(p.getAttributeValue(null, "start"))
@@ -164,6 +189,7 @@ object Epg {
         p: XmlPullParser,
         byTvgId: Map<String, List<String>>,
         byName: Map<String, List<String>>,
+        byKey: Map<String, List<String>>,
     ): Pair<String, List<String>>? {
         val id = p.getAttributeValue(null, "id") ?: run { skip(p); return null }
         var keys: List<String>? = byTvgId[id.lowercase()]
@@ -172,7 +198,7 @@ object Epg {
         while (!(event == XmlPullParser.END_TAG && p.depth == depth) && event != XmlPullParser.END_DOCUMENT) {
             if (event == XmlPullParser.START_TAG && p.name == "display-name") {
                 val name = readText(p).trim().lowercase()
-                if (keys == null && name.isNotEmpty()) keys = byName[name]
+                if (keys == null && name.isNotEmpty()) keys = byName[name] ?: byKey[LiveFill.guideKey(name)]
             }
             event = p.next()
         }
@@ -261,5 +287,273 @@ object Epg {
         val doy = (153 * mp + 2) / 5 + d - 1
         val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
         return era * 146_097L + doe - 719_468L
+    }
+}
+
+// ======================= Filling the guide where the playlist has none =======================
+//
+// Mirrors the web app's LV helpers (docs/app/index.html: gkey, homeRank, netOf, eventProg, gameProg), so the TV
+// and the web app show the same rows. Pure functions; unit tests in LiveFillTest.
+
+object LiveFill {
+    // ---------------------------------------------------------------- guide keys
+
+    private val BACKUP_TAG = Regex("[(\\[]\\s*(?:backup|bk|alt|alternate)\\b[^)\\]]*[)\\]]", RegexOption.IGNORE_CASE)
+    private val WEST_TAG = Regex("[(\\[]\\s*w\\s*[)\\]]")
+    private val EAST_TAG = Regex("[(\\[]\\s*e\\s*[)\\]]")
+    private val PACIFIC = Regex("\\bpacific\\b")
+    private val DROP = Regex("\\b(?:hd|fhd|uhd|sd|4k|east|eastern|feed|backup|hevc|raw|1080p|720p)\\b")
+    private val NON_KEY = Regex("[^a-z0-9+!]+")
+    private val TRAIL_US = Regex(" (?:us|usa)$")
+    private val NUM_JOIN = Regex("\\b([a-z]+) (\\d{1,2})\\b")
+
+    /**
+     * Key a channel borrows a guide by: "US| ESPN 2 FHD" and "ESPN2 (backup)" -> "espn2", "A&E" -> "a and e".
+     * East and plain feeds share a key; West ("HBO West", "HBO (Pacific)", "HBO (W)") stays apart, 3 hours off.
+     */
+    fun guideKey(name: String): String {
+        var t = LiveOrganizer.cleanName(BACKUP_TAG.replace(name, " ")).lowercase(Locale.ROOT)
+        t = t.replace("&", " and ")
+        t = WEST_TAG.replace(t, " west ")
+        t = EAST_TAG.replace(t, " ")
+        t = PACIFIC.replace(t, "west")
+        t = DROP.replace(t, " ")
+        t = NON_KEY.replace(t, " ").trim()
+        t = TRAIL_US.replace(t, "")
+        return NUM_JOIN.replace(t, "$1$2")
+    }
+
+    // ---------------------------------------------------------------- Huntsville and networks
+
+    /** Huntsville stations, in the order Local and Games list them: call sign to network. */
+    val HOME_LOCALS: List<Pair<String, String>> = listOf("whnt" to "CBS", "waay" to "ABC", "waff" to "NBC", "wzdx" to "FOX", "whdf" to "CW")
+    private val HOME_RE = Regex("(?:^|[^a-z0-9])(whnt|waay|waff|wzdx|whdf)(?:-?(?:tv|dt|cd|ld)?\\d{0,2})?(?![a-z0-9])")
+
+    /** Position of a Huntsville station in [HOME_LOCALS], or -1. */
+    fun homeRank(name: String): Int {
+        val m = HOME_RE.find(name.lowercase(Locale.ROOT)) ?: return -1
+        val sign = m.groupValues[1]
+        return HOME_LOCALS.indexOfFirst { it.first == sign }
+    }
+
+    /** Network of a Huntsville station's call sign, or null. */
+    fun homeNetwork(name: String): String? = homeRank(name).let { if (it >= 0) HOME_LOCALS[it].second else null }
+
+    private val NET_EXCL = Regex("\\b(?:news|sports?|business|deportes|weather|kids|family|life|soul|movies|classic|plus|now|live|reality|drama|mystery|comedy|soccer|nation|extra|college|latino|ocho|espanol)\\b")
+    private val SECN = Regex("^(?:sec network|secn|sec)$")
+    private val ACCN = Regex("^(?:acc network|accn|acc)$")
+    private val BTN = Regex("^(?:big ten network|big ten|big10 network|big10|btn)$")
+    private val ESPN = Regex("^(?:espn|espn2|espnu)$")
+    private val BROADCAST = Regex("(?:^| )(cbs|fox|abc|nbc|cw)\\d{0,2}(?= |$)")
+
+    /** Network of a plain network or affiliate channel ("ESPN", "FOX 54 Huntsville", "SEC Network"), or "". */
+    fun networkOf(name: String): String {
+        homeNetwork(name)?.let { return it }
+        val k = guideKey(name)
+        return when {
+            SECN.matches(k) -> "SECN"
+            ACCN.matches(k) -> "ACCN"
+            BTN.matches(k) -> "BTN"
+            ESPN.matches(k) -> k.uppercase(Locale.ROOT)
+            NET_EXCL.containsMatchIn(k) || k.contains('+') -> ""
+            else -> BROADCAST.find(k)?.groupValues?.get(1)?.uppercase(Locale.ROOT) ?: ""
+        }
+    }
+
+    /** ESPN broadcast name in the same codes ("SEC Network" -> "SECN", "The CW" -> "CW"). */
+    fun castNetwork(b: String): String {
+        val u = b.uppercase(Locale.ROOT).filter { it in 'A'..'Z' || it in '0'..'9' }
+        return when (u) {
+            "SECNETWORK" -> "SECN"
+            "ACCNETWORK" -> "ACCN"
+            "BIGTENNETWORK", "BIGTEN" -> "BTN"
+            "THECW" -> "CW"
+            else -> u
+        }
+    }
+
+    // ---------------------------------------------------------------- event channels
+
+    private val FOOTBALL = Regex("\\b(?:nfl|ncaaf|cfb|football|redzone|xfl|ufl|cfl)\\b")
+    private val LONG_EVENT = Regex("\\b(?:ufc|boxing|ppv|mma|pfl|wwe|aew|bellator|golf|pga)\\b")
+    private val BASEBALL = Regex("\\b(?:mlb|baseball|milb)\\b")
+    private val SHORT_GAME = Regex("\\b(?:nba|wnba|ncaab|ncaam|basketball|nhl|hockey|ahl)\\b")
+    private val SOCCER = Regex("\\b(?:mls|epl|soccer|premier league|la ?liga|serie a|bundesliga|uefa|champions league|futbol|liga mx)\\b")
+
+    /** Typical length in minutes for an event named [text] (lower case). */
+    internal fun eventMinutes(text: String): Int = when {
+        FOOTBALL.containsMatchIn(text) -> 210
+        LONG_EVENT.containsMatchIn(text) -> 240
+        BASEBALL.containsMatchIn(text) -> 180
+        SHORT_GAME.containsMatchIn(text) -> 150
+        SOCCER.containsMatchIn(text) -> 120
+        else -> 180
+    }
+
+    private val ZONES = mapOf(
+        "et" to "America/New_York", "est" to "America/New_York", "edt" to "America/New_York",
+        "ct" to "America/Chicago", "cst" to "America/Chicago", "cdt" to "America/Chicago",
+        "mt" to "America/Denver", "mst" to "America/Denver", "mdt" to "America/Denver",
+        "pt" to "America/Los_Angeles", "pst" to "America/Los_Angeles", "pdt" to "America/Los_Angeles",
+        "uk" to "Europe/London", "bst" to "Europe/London", "gmt" to "UTC", "utc" to "UTC",
+    )
+    private const val ZONE = "(et|est|edt|ct|cst|cdt|mt|mst|mdt|pt|pst|pdt|uk|gmt|bst|utc)"
+    private val AMPM = Regex("(?:^|[^\\d:])(\\d{1,2})(?::([0-5]\\d))?\\s*([ap])\\.?\\s*m\\b\\.?\\s*$ZONE?\\b", RegexOption.IGNORE_CASE)
+    private val CLK24 = Regex("(?:^|[^\\d:])([01]?\\d|2[0-3]):([0-5]\\d)\\s*$ZONE?\\b", RegexOption.IGNORE_CASE)
+    private val DATES = Regex(
+        "\\b(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\\b\\.?,?|\\b\\d{1,2}[/.]\\d{1,2}(?:[/.]\\d{2,4})?\\b|" +
+            "\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val DATE_MD = Regex("\\b(\\d{1,2})/(\\d{1,2})(?:/\\d{2,4})?\\b")
+    private val DATE_NAMED = Regex("\\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b", RegexOption.IGNORE_CASE)
+    private val EMPTY_BRACKETS = Regex("[(\\[]\\s*[)\\]]")
+    private val SPACES = Regex("\\s+")
+    private val JUNK = Regex("^[\\s|:;,.\\-–()\\[\\]@]+|[\\s|:;,.\\-–()\\[\\]@]+$")
+    private val NO_EVENT = Regex("\\b(?:no (?:event|game|stream)s?|off ?air|offline|tba|tbd|coming soon|not started|starts soon)\\b", RegexOption.IGNORE_CASE)
+    private val SEP = Regex("\\s(?:vs\\.?|v\\.?|versus|at)\\s|\\s?@\\s?", RegexOption.IGNORE_CASE)
+    private val PREFIX = Regex("^([^:|]{1,30}?)\\s*(?:[:|]|\\s[-–]\\s)\\s*(?=\\S)")
+    private val NUMBERED = Regex("^([A-Za-z+]+(?: [A-Za-z+]+){0,2} ?\\d{1,3})\\s+(?=\\S.*(?:\\s(?:vs\\.?|v\\.?|versus|at)\\s|@))", RegexOption.IGNORE_CASE)
+    private val VERSUS = Regex("^(.+?)(?:\\s(vs\\.?|v\\.?|versus|at)\\s|\\s?(@)\\s?)(.+)$", RegexOption.IGNORE_CASE)
+    private val CHANNEL_NO = Regex("^[A-Za-z+ ]+ ?\\d{1,2}$")
+    private val LETTER = Regex("[A-Za-z]")
+    private val TWO_LETTERS = Regex("[A-Za-z]{2}")
+    private const val MONTHS = "janfebmaraprmayjunjulaugsepoctnovdec"
+
+    /**
+     * An event channel's own listing: "NCAAF 05: Alabama vs Tennessee 3:30PM ET" -> "Alabama vs Tennessee" from
+     * 3:30 PM Eastern for 3.5 hours. The start is on the date in the name, else the nearest day with that time.
+     * Finished events give null. A name with a game but no time gives an [Programme.untimed] row.
+     * Needs a numbered or labelled prefix ("NFL 03:") or a time, so "Alien vs Predator" is not an event.
+     */
+    fun eventProgramme(name: String, group: String, now: Long): Programme? {
+        var s = SPACES.replace(LiveOrganizer.cleanName(name), " ")
+        var hh = -1
+        var mm = 0
+        var tz: String? = null
+        var last = AMPM.findAll(s).lastOrNull()
+        if (last != null) {
+            hh = (last.groupValues[1].toInt() % 12) + if (last.groupValues[3].equals("p", true)) 12 else 0
+            mm = last.groupValues[2].toIntOrNull() ?: 0
+            tz = ZONES[last.groupValues[4].lowercase(Locale.ROOT)]
+        } else {
+            last = CLK24.findAll(s).lastOrNull()
+            if (last != null) {
+                hh = last.groupValues[1].toInt()
+                mm = last.groupValues[2].toInt()
+                tz = ZONES[last.groupValues[3].lowercase(Locale.ROOT)]
+            }
+        }
+        if (last != null) {
+            val lead = if (last.value.first().isDigit()) 0 else 1
+            s = s.substring(0, last.range.first + lead) + " " + s.substring(last.range.last + 1)
+        }
+        // A date in the name ("10/11", "Oct 11") picks the day.
+        var md: IntArray? = null
+        val dm = DATE_MD.find(s)
+        val dn = DATE_NAMED.find(s)
+        if (dm != null && dm.groupValues[1].toInt() in 1..12 && dm.groupValues[2].toInt() in 1..31) {
+            md = intArrayOf(dm.groupValues[1].toInt(), dm.groupValues[2].toInt())
+        } else if (dn != null && dn.groupValues[2].toInt() in 1..31) {
+            md = intArrayOf(MONTHS.indexOf(dn.groupValues[1].lowercase(Locale.ROOT)) / 3 + 1, dn.groupValues[2].toInt())
+        }
+        s = DATES.replace(s, " ")
+        s = EMPTY_BRACKETS.replace(s, " ")
+        s = JUNK.replace(SPACES.replace(s, " "), "")
+        var prefix = ""
+        val p = PREFIX.find(s)
+        if (p != null && !SEP.containsMatchIn(" " + p.groupValues[1] + " ")) {
+            prefix = p.groupValues[1].trim()
+            s = s.substring(p.range.last + 1)
+        } else {
+            NUMBERED.find(s)?.let { q ->
+                prefix = q.groupValues[1]
+                s = s.substring(q.range.last + 1)
+            }
+        }
+        s = JUNK.replace(s, "")
+        if (s.isEmpty() || NO_EVENT.containsMatchIn(s) || (prefix.isEmpty() && last == null)) return null
+        val v = VERSUS.find(s)
+        val title = if (v != null) {
+            val a = JUNK.replace(v.groupValues[1], "")
+            val b = JUNK.replace(v.groupValues[4], "")
+            if (!LETTER.containsMatchIn(a) || !LETTER.containsMatchIn(b)) return null
+            val at = v.groupValues[3].isNotEmpty() || v.groupValues[2].equals("at", true)
+            a + (if (at) " at " else " vs ") + b
+        } else {
+            if (prefix.isEmpty() || last == null || !TWO_LETTERS.containsMatchIn(s)) return null
+            if (CHANNEL_NO.matches(prefix)) s else "$prefix: $s"
+        }
+        val dur = eventMinutes("$name $group".lowercase(Locale.ROOT)) * 60_000L
+        if (hh < 0) {
+            val top = now / 3_600_000L * 3_600_000L
+            return Programme(title, top, top + dur, "", untimed = true)
+        }
+        val zone = tz?.let { TimeZone.getTimeZone(it) } ?: TimeZone.getDefault()
+        var bestStart = 0L
+        var bestGap = Long.MAX_VALUE
+        for (k in -1..1) {
+            val c = Calendar.getInstance(zone, Locale.US)
+            c.timeInMillis = now
+            if (md != null) {
+                val y = c.get(Calendar.YEAR) + k
+                c.clear()
+                c.set(y, md[0] - 1, md[1], hh, mm, 0)
+            } else {
+                c.add(Calendar.DAY_OF_MONTH, k)
+                c.set(Calendar.HOUR_OF_DAY, hh)
+                c.set(Calendar.MINUTE, mm)
+                c.set(Calendar.SECOND, 0)
+                c.set(Calendar.MILLISECOND, 0)
+            }
+            val start = c.timeInMillis
+            val end = start + dur
+            val gap = if (now < start) start - now else if (now >= end) now - end + 1 else 0L
+            if (gap < bestGap) { bestGap = gap; bestStart = start }
+        }
+        if (now >= bestStart + dur || bestStart - now > 18 * 3_600_000L) return null
+        return Programme(title, bestStart, bestStart + dur, "")
+    }
+
+    // ---------------------------------------------------------------- the network's game
+
+    /** The live or next game on [net] from [games] (schedules already loaded), as a programme. */
+    fun gameProgramme(net: String, games: List<Game>, now: Long): Programme? {
+        if (net.isEmpty()) return null
+        var live: Game? = null
+        var next: Game? = null
+        for (g in games) {
+            if (g.final || g.broadcasts.none { castNetwork(it) == net }) continue
+            if (g.live) {
+                if (live == null || g.startMs > live.startMs) live = g
+            } else if (g.startMs > now - 30 * 60_000L && g.startMs - now < 12 * 3_600_000L && (next == null || g.startMs < next.startMs)) {
+                next = g
+            }
+        }
+        val g = live ?: next ?: return null
+        val dur = when (g.league.sport) {
+            Sport.FOOTBALL -> 210
+            Sport.BASEBALL -> 180
+            Sport.BASKETBALL, Sport.HOCKEY -> 150
+            Sport.SOCCER -> 120
+        } * 60_000L
+        val sep = if (g.league.sport == Sport.SOCCER) " vs " else " at "
+        val title = g.away.short.ifEmpty { g.away.name } + sep + g.home.short.ifEmpty { g.home.name }
+        val end = maxOf(g.startMs + dur, if (live != null) now + 30 * 60_000L else 0L)
+        return Programme(title, g.startMs, end, if (live != null && g.detail.isNotEmpty()) "Live now. ${g.detail}" else "")
+    }
+
+    /** Games in the schedules already loaded (no network). */
+    fun loadedGames(): List<Game> = League.entries.flatMap { Games.cached(it)?.games.orEmpty() }
+
+    /**
+     * Now and next for a channel: the real guide first; with none, the event channel's own title, then the live
+     * or next game on its network.
+     */
+    fun nowNext(ch: Channel, guide: Map<String, List<Programme>>, now: Long, games: () -> List<Game> = ::loadedGames): Pair<Programme?, Programme?> {
+        val real = Epg.nowNext(Epg.keyOf(ch), guide, now)
+        if (real.first != null || real.second != null) return real
+        val fb = eventProgramme(ch.name, ch.group, now) ?: gameProgramme(networkOf(ch.name), games(), now) ?: return real
+        return if (fb.untimed || fb.start <= now) fb to null else null to fb
     }
 }

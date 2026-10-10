@@ -399,6 +399,7 @@ object GameMatcher {
     private const val S_GUIDE_ONE = 60
     private const val S_EVENT_ONE = 55
     private const val S_NETWORK = 30
+    private const val S_HOME = 15
     private const val MAX_PER_GAME = 40
     private const val MAX_PER_NETWORK = 10
 
@@ -502,6 +503,8 @@ object GameMatcher {
         /** 0 = US, 1 = unknown country, 2 = elsewhere. */
         val region = ByteArray(n)
         val quality = IntArray(n)
+        /** Huntsville station rank ([LiveFill.homeRank]), -1 for other channels. */
+        val home = IntArray(n)
         val wi = WordIndex()
 
         init {
@@ -537,6 +540,7 @@ object GameMatcher {
                 }
                 if (w.contains("backup")) q -= 1
                 quality[i] = q
+                home[i] = LiveFill.homeRank(ch.name)
             }
         }
     }
@@ -703,11 +707,12 @@ object GameMatcher {
     /** Normalized broadcast name -> network. */
     private val NETWORKS: Map<String, Network> = buildMap {
         fun reg(n: Network, vararg names: String) = names.forEach { put(norm(it), n) }
-        reg(net("CBS", listOf("cbs", "wcbs", "kcbs"), LOCAL_EXCLUDE), "CBS")
-        reg(net("FOX", listOf("fox", "wnyw", "kttv"), LOCAL_EXCLUDE), "FOX")
-        reg(net("NBC", listOf("nbc", "wnbc", "knbc"), LOCAL_EXCLUDE), "NBC")
-        reg(net("ABC", listOf("abc", "wabc", "kabc"), LOCAL_EXCLUDE + setOf("australia", "au")), "ABC")
-        reg(net("CW", listOf("cw", "the cw"), LOCAL_EXCLUDE), "CW", "The CW")
+        // Huntsville call signs (WHNT, WAAY, WAFF, WZDX, WHDF) find their station even when the name has no network.
+        reg(net("CBS", listOf("cbs", "wcbs", "kcbs", "whnt"), LOCAL_EXCLUDE), "CBS")
+        reg(net("FOX", listOf("fox", "wnyw", "kttv", "wzdx"), LOCAL_EXCLUDE), "FOX")
+        reg(net("NBC", listOf("nbc", "wnbc", "knbc", "waff"), LOCAL_EXCLUDE), "NBC")
+        reg(net("ABC", listOf("abc", "wabc", "kabc", "waay"), LOCAL_EXCLUDE + setOf("australia", "au")), "ABC")
+        reg(net("CW", listOf("cw", "the cw", "whdf"), LOCAL_EXCLUDE), "CW", "The CW")
         reg(net("ESPN", listOf("espn"), setOf("2", "u", "news", "deportes", "classic", "plus", "8", "ocho", "college", "extra", "brasil", "brazil", "mexico", "argentina", "colombia", "chile", "caribbean", "africa", "nl", "1", "3", "4", "5", "6", "7")), "ESPN")
         reg(net("ESPN2", listOf("espn2", "espn 2"), setOf("deportes")), "ESPN2")
         reg(net("ESPNU", listOf("espnu", "espn u")), "ESPNU")
@@ -869,9 +874,11 @@ object GameMatcher {
                 ct.wi.forEachDoc(keyWord(ct.wi, p)) { i ->
                     val w = ct.toks[i] ?: return@forEachDoc
                     if (find(w, p, false) < 0) return@forEachDoc
-                    if (nw.exclude.isNotEmpty() && w.any { it in nw.exclude && it !in p }) return@forEachDoc
+                    // A Huntsville station of this network counts even as "WHNT News 19".
+                    val home = ct.home[i] >= 0 && LiveFill.HOME_LOCALS[ct.home[i]].second == nw.label
+                    if (!home && nw.exclude.isNotEmpty() && w.any { it in nw.exclude && it !in p }) return@forEachDoc
                     if (nw.domesticOnly && ct.region[i].toInt() == 2) return@forEachDoc
-                    if (nw.needCtx && !ct.sportsCtx[i]) return@forEachDoc
+                    if (!home && nw.needCtx && !ct.sportsCtx[i]) return@forEachDoc
                     val bits = ct.sport[i]
                     if (bits != 0 && bits and own == 0) return@forEachDoc
                     val key = ct.dedupe[i] ?: return@forEachDoc
@@ -879,10 +886,12 @@ object GameMatcher {
                     if (prev == null || rank(ct, i) > rank(ct, prev)) found[key] = i
                 }
             }
-            found.values.sortedByDescending { rank(ct, it) }.take(MAX_PER_NETWORK).forEach { i ->
+            found.values.sortedWith(compareByDescending<Int> { if (ct.home[it] >= 0) 1 else 0 }.thenByDescending { rank(ct, it) }).take(MAX_PER_NETWORK).forEach { i ->
                 // The plain network ("CBS", "CBS HD") before local affiliates ("CBS 5 KPHO").
                 val exact = if (ct.cleanWords[i] <= nw.phrases.minOf { it.size.coerceAtLeast(1) }) 4 else 0
-                offer(i, S_NETWORK + exact + primary, nw.label)
+                // Huntsville stations first among a network's channels.
+                val home = if (ct.home[i] >= 0 && LiveFill.HOME_LOCALS[ct.home[i]].second == nw.label) S_HOME else 0
+                offer(i, S_NETWORK + exact + primary + home, nw.label)
             }
         }
 

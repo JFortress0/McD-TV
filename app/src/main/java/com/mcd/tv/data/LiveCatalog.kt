@@ -439,6 +439,14 @@ object LiveOrganizer {
         return built
     }
 
+    /** [items] with Huntsville stations first, in [LiveFill.HOME_LOCALS] order; the rest keep their order. */
+    internal fun homeFirst(items: List<Int>, channels: List<Channel>): List<Int> {
+        val rank = HashMap<Int, Int>()
+        for (i in items) { val r = LiveFill.homeRank(channels[i].name); if (r >= 0) rank[i] = r }
+        if (rank.isEmpty()) return items
+        return items.filter { it in rank }.sortedBy { rank.getValue(it) } + items.filter { it !in rank }
+    }
+
     /** Organizes a playlist. Drops separators, /movie/ and /series/ entries and repeated stream URLs. */
     fun build(source: List<Channel>): LiveIndex {
         val n = source.size
@@ -470,7 +478,9 @@ object LiveOrganizer {
         val bySection = LinkedHashMap<String, ArrayList<Int>>()
         for (i in channels.indices) bySection.getOrPut(sectionOf[i]) { ArrayList() }.add(i)
         val sections = SECTION_ORDER.mapNotNull { name ->
-            val idx = bySection[name] ?: return@mapNotNull null
+            val found = bySection[name] ?: return@mapNotNull null
+            // Local: Huntsville stations first (WHNT, WAAY, WAFF, WZDX, WHDF), then the rest in playlist order.
+            val idx = if (name == LOCAL) homeFirst(found, channels) else found
             val subs = LinkedHashMap<String, ArrayList<Int>>()
             for (i in idx) subs.getOrPut(subOf[i]) { ArrayList() }.add(i)
             val ordered: List<Pair<String, List<Int>>> = when (name) {
