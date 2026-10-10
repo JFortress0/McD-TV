@@ -90,7 +90,10 @@ private fun DetailBody(nav: Nav, d: Details) {
     val context = LocalContext.current
 
     // TV: resume the last episode watched, else S1E1.
-    val last = remember { Library.history().firstOrNull { it.meta.historyKey == "tv:${t.id}" } }
+    // Where this profile left off on any device (resume sync), before Play / Resume is pressed.
+    LaunchedEffect(Unit) { com.mcd.tv.data.ResumeCloud.pull() }
+    val cloud = com.mcd.tv.data.ResumeCloud.version
+    val last = remember(cloud) { Library.history().firstOrNull { it.meta.historyKey == "tv:${t.id}" } }
     var season by remember { mutableIntStateOf(last?.meta?.season?.takeIf { it > 0 } ?: d.seasons.firstOrNull()?.number ?: 1) }
 
     fun meta(s: Int = 0, e: Int = 0) = PlayMeta(t.type, t.id, t.name, t.poster, t.backdrop, s, e)
@@ -109,7 +112,7 @@ private fun DetailBody(nav: Nav, d: Details) {
     LaunchedEffect(more) {
         if (more) { withFrameNanos { }; runCatching { moreFocus.requestFocus() } }
     }
-    val movieProgress = remember { if (t.type == "movie") Library.history().firstOrNull { it.meta.historyKey == "movie:${t.id}" } else null }
+    val movieProgress = remember(cloud) { if (t.type == "movie") Library.history().firstOrNull { it.meta.historyKey == "movie:${t.id}" } else null }
     val playLabel = when {
         t.type == "tv" && last != null -> "▶  Resume S${last.meta.season}E${last.meta.episode}"
         movieProgress != null && !movieProgress.finished && movieProgress.positionMs > 60_000 -> "▶  Resume"

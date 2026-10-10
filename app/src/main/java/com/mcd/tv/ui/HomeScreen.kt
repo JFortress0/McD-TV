@@ -99,8 +99,11 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
             HomeData(tr.await(), svc ?: Tmdb.popular("movie"), svc != null, np.await(), tm.await())
         }
     }
-    val history = remember { Library.history().sortedByDescending { it.updatedAt } }
-    val continueWatching = remember { Library.continueWatching().sortedByDescending { it.updatedAt } }
+    // Positions saved on the phones or the other TVs (resume sync) are merged in, then the rows re-read.
+    LaunchedEffect(Unit) { com.mcd.tv.data.ResumeCloud.pull() }
+    val cloud = com.mcd.tv.data.ResumeCloud.version
+    val history = remember(cloud) { Library.history().sortedByDescending { it.updatedAt } }
+    val continueWatching = remember(cloud) { Library.continueWatching().sortedByDescending { it.updatedAt } }
     val firstFocus = remember { FocusRequester() }
     val favorites = remember { Library.favorites() }
     // Picked for <name>: learned from this profile's history, favorites, likes, "Not for me" and Settings > Taste.
