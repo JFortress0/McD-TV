@@ -127,6 +127,7 @@ a{color:var(--accent)}
   <div class="card"><span id="wallState"></span>
     <label>Wall address (your jarvis-wall Netlify site)</label><input id="wallUrl" placeholder="https://jarvis-wall.netlify.app">
     <label>Wall key (WALL_KEY on Netlify). Leave blank to keep the current one.</label><input id="wallKey" type="password" placeholder="Paste to replace" autocomplete="off">
+    <label>Baby due date (the Wall counts down to it). Leave blank to hide.</label><input id="wallDue" type="date">
     <label><input type="checkbox" id="wallStart" style="width:auto"> This TV opens in Wall mode</label>
     <p class="hint">Photo frame and family calendar for a wall TV. Linked TVs share the address and key. "Opens in Wall mode" is for this TV only.</p>
   </div>
@@ -259,7 +260,7 @@ function render() {
   $("tmdbState").innerHTML = state.tmdb_set ? '<span class="pill ok">TMDB key set</span>' : '<span class="pill no">No TMDB key</span>';
   $("mdbState").innerHTML = state.mdblist_set ? '<span class="pill ok">MDBList key set</span>' : '<span class="pill no">No MDBList key</span>';
   $("wallState").innerHTML = state.wall_key_set ? '<span class="pill ok">Wall key set</span>' : '<span class="pill no">No wall key</span>';
-  $("wallUrl").value = state.wall_url || ""; $("wallStart").checked = !!state.wall_start;
+  $("wallUrl").value = state.wall_url || ""; $("wallStart").checked = !!state.wall_start; $("wallDue").value = state.wall_due || "";
   $("jarvisState").innerHTML = state.jarvis_set ? '<span class="pill ok">Jarvis key set</span>' : '<span class="pill no">No Jarvis key</span>';
   $("m3u").value = state.m3u_url || ""; $("stream").value = state.custom_stream_url || "";
   $("origin").value = state.origin_filter || "no_asia";
@@ -290,7 +291,7 @@ function moveAddon(i, d) { const [a] = addons.splice(i, 1); addons.splice(i + d,
 function dirty(on) { dirtyFlag = on; $("saveBtn").disabled = !on; if (on) { $("saveMsg").className = "msg"; $("saveMsg").textContent = "Unsaved changes"; } }
 $("addonIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addAddon(); });
 ["m3u", "stream", "tmdb", "mdb", "jarvisKey", "wallUrl", "wallKey"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
-["origin", "usOnly", "slow", "intro", "wallStart"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
+["origin", "usOnly", "slow", "intro", "wallStart", "wallDue"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
 
 async function save() {
   if ($("addonIn").value.trim()) { addAddon(); return; }
@@ -299,7 +300,7 @@ async function save() {
     addon_urls: addons.map((a) => a.url),
     m3u_url: $("m3u").value.trim(), custom_stream_url: $("stream").value.trim(),
     origin_filter: $("origin").value, us_only: $("usOnly").checked, slow_connection: $("slow").checked, play_intro: $("intro").checked,
-    wall_url: $("wallUrl").value.trim(), wall_start: $("wallStart").checked,
+    wall_url: $("wallUrl").value.trim(), wall_start: $("wallStart").checked, wall_due: $("wallDue").value,
   };
   if ($("wallKey").value.trim()) data.wall_key = $("wallKey").value.trim();
   if ($("tmdb").value.trim()) data.tmdb_key = $("tmdb").value.trim();
