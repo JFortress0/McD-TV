@@ -77,6 +77,7 @@ sealed interface Screen {
     data object NoiseRun : Screen
     data object Genres : Screen
     data object Settings : Screen
+    data object Update : Screen
     data object PhoneSetup : Screen
     data object RdConnect : Screen
     data object AccountPage : Screen
@@ -207,6 +208,22 @@ private fun App(startScreen: Screen? = null) {
 
     BackHandler(enabled = stack.size > 1) { pop() }
 
+    // A new version is out: open "Update Jarvis" once per launch, on the Home screen (never mid-movie).
+    // Skipped in the automated QA run, which drives screens itself.
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        if (com.mcd.tv.data.Prefs.qaMode || com.mcd.tv.ui.ProfileStart.skip) return@LaunchedEffect
+        kotlinx.coroutines.delay(8_000) // after the intro and profile picker
+        runCatching { com.mcd.tv.data.Updater.check(ctx) }
+    }
+    val update = com.mcd.tv.data.Updater.available
+    LaunchedEffect(update, stack.last()) {
+        if (update != null && !com.mcd.tv.data.Updater.promptShown && stack.last() == Screen.Home && !com.mcd.tv.data.Prefs.qaMode) {
+            com.mcd.tv.data.Updater.promptShown = true
+            stack.add(Screen.Update)
+        }
+    }
+
     // "Open on TV" / "Play on TV" from the Jarvis web app. In the background this still runs,
     // so the new screen is simply there when the app comes back to the front.
     LaunchedEffect(Unit) {
@@ -271,6 +288,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.NoiseRun -> NoiseRunScreen(nav)
         Screen.Genres -> GenresScreen(nav)
         Screen.Settings -> SettingsScreen(nav)
+        Screen.Update -> com.mcd.tv.ui.UpdateScreen(nav)
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)
         Screen.AccountPage -> AccountScreen(nav)
