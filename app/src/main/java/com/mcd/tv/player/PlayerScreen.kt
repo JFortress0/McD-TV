@@ -259,7 +259,10 @@ fun PlayerScreen(
                     setShowNextButton(false)
                     setShowPreviousButton(false)
                     setControllerVisibilityListener(
-                        PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == View.VISIBLE },
+                        PlayerView.ControllerVisibilityListener { v ->
+                            controlsVisible = v == View.VISIBLE
+                            if (v != View.VISIBLE) keepFocus() // the hidden buttons can't take remote keys
+                        },
                     )
                     keepScreenOn = true
                     isFocusable = true
