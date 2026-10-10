@@ -55,7 +55,9 @@ app/src/main/java/com/mcd/tv/
   player/            Media3 player and remote-key handling
 app/src/main/res/    fonts, intro video, launcher icon and TV banner
 docs/                GitHub Pages: Control page, web app, install guide, /get redirect
-server/              optional account server (not in use)
+.claude/agents/      focus agents: live-tv, web-app, tv-app, qa (see CLAUDE.md)
+tools/               unit-test runner (no Android SDK needed) and web app tests (tools/webtest)
+rd-proxy/            Netlify relay: Real-Debrid, IPTV channel list, resume and house sync, invites
 ```
 
 ## Build
