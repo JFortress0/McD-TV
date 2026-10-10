@@ -2749,7 +2749,7 @@ async function renderSources(v, tok, type, id, q) {
       return true;
     }
     const f = SI.info(s);
-    S.playing = { key: posKey(meta), meta, cands, back: location.hash,
+    S.playing = { key: posKey(meta), meta, cands, back: location.hash, direct: res.direct || "",
       line: [f.resolution, f.source, f.sizeLabel, s.addon].filter(Boolean).join(" · ") };
     location.hash = `#/play/${type}/${id}` + (type === "tv" ? `?s=${season}&e=${episode}` : "");
     return true;
@@ -2835,14 +2835,17 @@ function renderPlayer(v, tok, type, id, q) {
   }
   const m = P.meta;
   document.title = m.label + " | Jarvis";
+  // The original file in a player app: the way out when the in-app version won't start.
+  const vlcBtn = P.direct ? (isMac ? `<a class="btn small primary" href="iina://weblink?url=${encodeURIComponent(P.direct)}">Open in IINA</a>`
+    : `<a class="btn small primary" href="vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(P.direct)}">Open in VLC</a>`) : "";
   const bd = m.backdrop ? ` poster="${IMG}w1280${esc(m.backdrop)}"` : "";
   v.innerHTML = `<div class="player">
     <div class="pl-top"><a class="pl-back" href="${esc(P.back)}" aria-label="Back to sources">&#8249; Back</a>
       <div class="pl-title"><b>${esc(m.label)}</b><span class="muted" id="plLine">${esc(P.line)}</span></div></div>
     <div class="pl-stage"><video id="vid" controls playsinline webkit-playsinline preload="auto"${bd}></video>
-      <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><a class="btn small primary" href="${esc(P.back)}">Pick another source</a></div></div>
+      <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><div class="rowf" style="justify-content:center;gap:8px;flex-wrap:wrap">${vlcBtn}<a class="btn small${vlcBtn ? "" : " primary"}" href="${esc(P.back)}">Pick another source</a></div></div></div>
     <div class="pl-bar"><button class="btn primary big" id="fsBtn">&#9974; Full screen</button>
-      <a class="btn" href="${esc(P.back)}">Other sources</a>
+      <a class="btn" href="${esc(P.back)}">Other sources</a>${vlcBtn.replace("btn small primary", "btn")}
       <button class="btn" ${playAttrs({ type, id, name: m.name }, m.season, m.episode)}>&#9654; Play on TV instead</button></div></div>`;
   const vid = $("#vid", v), msg = $("#plMsg", v);
   let i = 0, resumed = false, lastSave = 0, lastRelay = 0, gone = false;
@@ -2850,8 +2853,13 @@ function renderPlayer(v, tok, type, id, q) {
   const showMsg = (text) => { $("#plMsgText", v).textContent = text; msg.classList.remove("hidden"); };
   const kindLabel = { hls: "Real-Debrid stream", mp4: "Real-Debrid stream (MP4)", webm: "Real-Debrid stream (WebM)", direct: "Original file" };
   let watchdog = 0;
+  let stallT = 0, started = false;
+  vid.addEventListener("playing", () => { started = true; clearTimeout(stallT); if (!msg.classList.contains("hidden") && msg.dataset.stall) msg.classList.add("hidden"); });
   function load() {
     const c = P.cands[i];
+    clearTimeout(stallT);
+    // Still spinning after 20 s (Real-Debrid is still making a phone version of a big file): offer the player app.
+    stallT = setTimeout(() => { if (!gone && !started && P.direct) { showMsg("This is taking a while. Real-Debrid is still preparing a phone version of this file. Open it in " + (isMac ? "IINA" : "VLC") + " instead, or pick another source."); msg.dataset.stall = "1"; } }, 20000);
     // Nothing loads within 25 s (the format can't play here, or the server never answers): try the next way.
     clearTimeout(watchdog);
     watchdog = setTimeout(() => { if (!gone && vid.readyState < 1) next(); }, 25000);
@@ -4143,7 +4151,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.25";
+const BUILD = "2026-10-10.26";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
