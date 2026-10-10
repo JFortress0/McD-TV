@@ -78,6 +78,7 @@ sealed interface Screen {
     data object Genres : Screen
     data object Settings : Screen
     data object Update : Screen
+    data class Taste(val profile: String) : Screen
     data object PhoneSetup : Screen
     data object RdConnect : Screen
     data object AccountPage : Screen
@@ -289,6 +290,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.Genres -> GenresScreen(nav)
         Screen.Settings -> SettingsScreen(nav)
         Screen.Update -> com.mcd.tv.ui.UpdateScreen(nav)
+        is Screen.Taste -> com.mcd.tv.ui.TasteScreen(nav, s.profile)
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)
         Screen.AccountPage -> AccountScreen(nav)
