@@ -1,0 +1,8 @@
+{
+  "name": "jarvis-rd",
+  "private": true,
+  "description": "Jarvis relay on Netlify: Real-Debrid proxy, IPTV app-API relay, resume sync.",
+  "dependencies": {
+    "@netlify/blobs": "11.1.1"
+  }
+}
