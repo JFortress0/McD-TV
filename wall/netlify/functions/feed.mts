@@ -3,6 +3,7 @@
 // They never reach the TV, the repo or the browser. The TV gets plain JSON: titles, times and colors.
 import type { Config } from "@netlify/functions"
 import ICAL from "ical.js"
+import { getStore } from "@netlify/blobs"
 
 type Source = { name: string; tag: string; color: string; kind: string; url: string }
 type Out = { s: number; t: string; start?: number; end?: number; day?: string; endDay?: string; loc?: string }
@@ -11,9 +12,18 @@ const DEFAULT_COLORS = ["#00E5FF", "#7C9CFF", "#4ADE80", "#FF7AB6", "#FFB300", "
 const DAY_MS = 86_400_000
 let cache: { at: number; body: string } | null = null
 
-function sources(): Source[] {
-  let raw: unknown
-  try { raw = JSON.parse(process.env.WALL_CALENDARS || "[]") } catch { return [] }
+/** Calendars saved from the phone page (Netlify Blobs), else the WALL_CALENDARS env var. */
+async function sources(): Promise<Source[]> {
+  let saved: unknown = null
+  try { saved = await getStore("wall-config").get("calendars", { type: "json" }) } catch { /* no store yet */ }
+  return clean(Array.isArray(saved) && saved.length ? saved : envList())
+}
+
+function envList(): unknown {
+  try { return JSON.parse(process.env.WALL_CALENDARS || "[]") } catch { return [] }
+}
+
+export function clean(raw: unknown): Source[] {
   if (!Array.isArray(raw)) return []
   return raw
     .filter((c) => c && typeof c.url === "string" && /^(https?|webcal):\/\//i.test(c.url))
@@ -130,7 +140,7 @@ export default async (req: Request) => {
   if (!keyOk(req)) return new Response(JSON.stringify({ error: "bad_key" }), { status: 401, headers: json })
   if (cache && Date.now() - cache.at < 120_000) return new Response(cache.body, { headers: json })
 
-  const list = sources()
+  const list = await sources()
   const now = Date.now()
   const from = new Date(now - 40 * DAY_MS) // covers the whole month view
   const to = new Date(now + 70 * DAY_MS)

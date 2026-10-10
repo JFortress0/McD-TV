@@ -28,6 +28,12 @@ button.ghost{background:transparent;color:var(--cyan);border:1px solid var(--lin
 .grid button{position:absolute;top:4px;right:4px;margin:0;padding:4px 8px;font-size:12px;background:rgba(2,6,10,.8);color:var(--coral);border:1px solid var(--coral)}
 .count{font:500 12px Orbitron,Arial,sans-serif;letter-spacing:2px;color:var(--cyan);text-transform:uppercase;margin-bottom:10px}
 .hidden{display:none}
+.cal{border-top:1px solid #0A2230;padding:12px 0}.cal:first-child{border-top:0}
+.cal .row{display:flex;gap:8px;margin-bottom:8px}.cal input,.cal select{flex:1;min-width:0;padding:10px;border:1px solid var(--line);background:#061722;color:var(--text);font:inherit}
+.cal input[type=color]{flex:0 0 46px;padding:2px;height:44px}.cal .tag{flex:0 0 90px}
+.cal .saved{font-size:14px;color:var(--cyan);margin:-2px 0 6px}.cal button{margin-top:0;padding:8px 12px;font-size:13px}
+.help{color:var(--muted);font-size:15px}.help b{color:var(--text)}
+details summary{cursor:pointer;color:var(--cyan)}
 </style>
 </head>
 <body>
@@ -50,6 +56,19 @@ button.ghost{background:transparent;color:var(--cyan);border:1px solid var(--lin
   <div class="card">
     <div class="count" id="count">Photos</div>
     <div class="grid" id="grid"></div>
+  </div>
+  <div class="card">
+    <div class="count">Calendars</div>
+    <p class="help">Paste each calendar's private link. Links go straight to Jarvis and are never shown again here.</p>
+    <details class="help"><summary>Where to find each link</summary>
+      <p><b>Google Calendar</b> (your Gmails, 29B work, Taylor): on a computer, calendar.google.com &gt; gear &gt; Settings &gt; click the calendar on the left &gt; Integrate calendar &gt; <b>Secret address in iCal format</b> &gt; copy.</p>
+      <p><b>Taylor's shifts:</b> Inovalon (ShiftHound) already copies them to her Google Calendar. Use the secret address of that calendar.</p>
+      <p><b>SNHU:</b> Brightspace &gt; Calendar &gt; Subscribe &gt; copy the link.</p>
+    </details>
+    <div id="cals"></div>
+    <button class="ghost" id="addCal">Add calendar</button>
+    <button id="saveCals">Save calendars</button>
+    <p id="calMsg" class="help"></p>
   </div>
 </div>
 
@@ -74,6 +93,7 @@ async function unlock() {
   if (!code) return;
   try {
     await load();
+    loadCals().catch((e) => { $("calMsg").textContent = e.message; });
     try { localStorage.setItem("wall_code", code); } catch {}
     $("signin").classList.add("hidden"); $("main").classList.remove("hidden");
   } catch (e) {
@@ -125,6 +145,51 @@ async function upload(files) {
   setTimeout(() => { $("prog").style.width = "0"; }, 1500);
   load().catch(() => {});
 }
+
+
+// ---- Calendars ----
+const SUGGEST = [
+  { name: "J Work", tag: "Work", kind: "work", color: "#00E5FF" },
+  { name: "J Personal", tag: "J", kind: "personal", color: "#7C9CFF" },
+  { name: "J USAF Gmail", tag: "J2", kind: "personal", color: "#4ADE80" },
+  { name: "Taylor Work", tag: "Taylor", kind: "work", color: "#FF7AB6" },
+  { name: "SNHU", tag: "SNHU", kind: "school", color: "#FFB300" },
+];
+let cals = [];
+function calRow(c, i) {
+  const d = document.createElement("div"); d.className = "cal";
+  const kinds = ["work", "personal", "family", "school"].map((k) => `<option ${k === c.kind ? "selected" : ""}>${k}</option>`).join("");
+  d.innerHTML = `<div class="row"><input data-f="name" placeholder="Name" value=""><input class="tag" data-f="tag" placeholder="Short tag" value="">
+    <input type="color" data-f="color"></div>
+    <div class="row"><select data-f="kind">${kinds}</select><button class="ghost" data-rm>Remove</button></div>
+    ${c.host ? `<div class="saved">Link saved (${c.host}). Paste below only to replace it.</div>` : ""}
+    <input data-f="url" type="password" autocomplete="off" placeholder="${c.host ? "Paste to replace" : "Paste the private iCal link"}">`;
+  d.querySelector('[data-f=name]').value = c.name || "";
+  d.querySelector('[data-f=tag]').value = c.tag || "";
+  d.querySelector('[data-f=color]').value = c.color || "#00E5FF";
+  d.querySelectorAll("[data-f]").forEach((el) => el.addEventListener("input", () => { cals[i][el.dataset.f] = el.value; }));
+  d.querySelector("[data-rm]").onclick = () => { cals.splice(i, 1); drawCals(); };
+  return d;
+}
+function drawCals() { const box = $("cals"); box.innerHTML = ""; cals.forEach((c, i) => box.append(calRow(c, i))); }
+async function loadCals() {
+  const { calendars } = await (await api("/api/calendars")).json();
+  cals = calendars.length ? calendars.map((c) => ({ ...c, url: "" })) : SUGGEST.map((c) => ({ ...c, url: "" }));
+  drawCals();
+}
+$("addCal").onclick = () => { cals.push({ name: "", tag: "", kind: "personal", color: "#C084FC", url: "" }); drawCals(); };
+$("saveCals").onclick = async () => {
+  const list = cals.filter((c) => c.url.trim() || c.host);
+  if (!list.length) { $("calMsg").textContent = "Paste at least one link first."; return; }
+  try {
+    const r = await fetch("/api/calendars", { method: "PUT", headers: { "X-Wall-Key": code, "Content-Type": "application/json" },
+      body: JSON.stringify(list.map(({ host, ...c }) => c)) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error === "bad_url" ? `The link for "${j.name}" doesn't look like a calendar link.` : "Save failed (" + r.status + ").");
+    $("calMsg").textContent = `Saved ${j.count} calendars. The wall picks them up within 5 minutes.`;
+    loadCals();
+  } catch (e) { $("calMsg").textContent = e.message; }
+};
 
 $("go").onclick = unlock;
 $("code").addEventListener("keydown", (e) => { if (e.key === "Enter") unlock(); });

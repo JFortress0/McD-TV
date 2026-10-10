@@ -5,7 +5,8 @@ Backend for the Wall screen in the app: a photo frame plus a merged family calen
 - Live at `https://jarvis-wall.netlify.app` (Netlify project `jarvis-wall`).
 - `GET /api/feed`: every calendar in `WALL_CALENDARS`, merged into one JSON list for the next 10 weeks, plus the weather. Repeats, moved repeats and cancelled repeats are handled (ical.js).
 - `/api/photos`: photo list, photo files, upload and delete. Photos are kept in Netlify Blobs (store `wall-photos`).
-- `/` (public/index.html): phone page to add and remove photos. It shrinks each photo to 1920 px JPEG before sending it.
+- `/` (public/index.html): phone page to add and remove photos (shrunk to 1920 px JPEG in the browser) and to paste calendar links.
+- `/api/calendars`: the calendar list from the phone page, kept in Netlify Blobs (store `wall-config`). Links are write-only: the page never shows a saved link again. The feed uses this list first, then `WALL_CALENDARS`.
 
 ## Environment variables (Netlify > jarvis-wall > Project configuration > Environment variables)
 
@@ -13,7 +14,7 @@ Backend for the Wall screen in the app: a photo frame plus a merged family calen
 |---|---|
 | `WALL_KEY` | Read-only key. Goes on the Control page (Wall section). The TV uses it to read the calendar and photos. |
 | `UPLOAD_CODE` | Code for the photo page. Can add and remove photos. Share it with family members who add photos. |
-| `WALL_CALENDARS` | JSON list of calendars, see below. The secret calendar links live only here. |
+| `WALL_CALENDARS` | Optional fallback: JSON list of calendars, see below. Normally the list is set on the phone page. |
 | `WALL_LAT`, `WALL_LON`, `WALL_TZ` | Optional. Weather location and time zone. Default: Huntsville, AL, America/Chicago. |
 
 `WALL_CALENDARS` example (one line in Netlify):
