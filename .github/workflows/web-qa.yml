@@ -1,0 +1,39 @@
+# Checks the web app (docs/app) on every change to it: script syntax, then headless Chromium against a mock
+# IPTV server (tools/webtest). Nothing real is called: ESPN is mocked, every other host is blocked.
+# Free (GitHub Actions minutes); it never deploys anything, so it costs no Netlify credits.
+name: Web QA
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", "tools/webtest/**", ".github/workflows/web-qa.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Script syntax (node --check)
+        run: |
+          for f in docs/app/index.html docs/index.html docs/app/resume.html; do
+            python3 -c "import re,sys; s=open(sys.argv[1]).read(); open('/tmp/x.js','w').write('\n'.join(re.findall(r'<script>(.*?)</script>', s, re.S)))" "$f"
+            node --check /tmp/x.js && echo "ok $f"
+          done
+      - name: Install Playwright Chromium
+        working-directory: tools/webtest
+        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: Headless checks (390 px and 1280 px)
+        working-directory: tools/webtest
+        run: |
+          python3 srv.py &
+          sleep 1
+          node qa.mjs
