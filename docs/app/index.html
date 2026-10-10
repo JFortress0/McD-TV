@@ -1888,14 +1888,17 @@ function addonPanelHTML() {
     <div class="rowf" style="margin-top:10px"><input id="addonIn" type="url" placeholder="https://…/manifest.json" autocomplete="off"><button class="btn small primary" data-act="addonadd">Add</button></div>`;
 }
 // Which app opens files a browser can't play (MKV, DTS and Dolby audio; IPTV channels): "vlc", "infuse", "iina" or "ask".
-// Default: IINA on a Mac (free, plays everything, opens links from web pages), VLC on iPhone and iPad.
+// Default: IINA on a Mac (free, plays everything, opens links from web pages), Infuse on iPhone and iPad.
 const EXT_KEY = "mcdtv_web_extplayer";
+// Oct 2026: the house switched phones from VLC to Infuse (Infuse can start where you left off and report
+// where you stopped). Once per device, a saved "VLC" choice becomes Infuse; picking VLC again sticks.
+try { if (!localStorage.getItem("mcdtv_web_ext_mig1")) { if (localStorage.getItem(EXT_KEY) === "vlc") localStorage.setItem(EXT_KEY, "infuse"); localStorage.setItem("mcdtv_web_ext_mig1", "1"); } } catch {}
 const isMac = (() => { try { return /Mac/.test(navigator.platform) && !(navigator.maxTouchPoints > 1); } catch { return false; } })();
 const extPref = () => {
   const v = LS.get(EXT_KEY);
   if (v === "ask") return v;
   if (isMac) return "iina"; // VLC and Infuse links only open their iPhone apps
-  return v === "infuse" ? v : "vlc";
+  return v === "vlc" ? v : "infuse"; // Infuse unless VLC was picked: it can resume where you left off
 };
 const EXT_NAME = { vlc: "VLC", infuse: "Infuse", iina: "IINA" };
 // Many IPTV providers only answer player apps they know. IINA (mpv) identifies itself as VLC for live channels:
@@ -3027,7 +3030,8 @@ const LV = (() => {
     // The browser can't play this channel (provider blocks browsers, or an http stream on this https page):
     // hand it to the player app, named the way the provider accepted for the channel list.
     if (st.ext || mixedBlocked(ch.url)) {
-      const app = isMac ? "iina" : extPref() === "infuse" ? "infuse" : "vlc";
+      // Live channels always go to VLC on a phone (the provider accepts VLC); movies and shows go to Infuse.
+      const app = isMac ? "iina" : "vlc";
       const link = extUrl(app, ch.url) + (app === "iina" ? "&mpv_user-agent=" + encodeURIComponent(st.ua || LIVE_UA) : "");
       toast("Opening " + ch.name + " in " + EXT_NAME[app] + "…", "ok");
       location.href = link;
@@ -3142,7 +3146,7 @@ function renderSettings(v) {
       <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small${p.id === S.profile ? " primary" : ""}" data-act="setprofile" data-pid="${p.id}"${p.id === S.profile ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</div>
     </div>
     <div class="panel"><h2>Real-Debrid on this device</h2><div id="rdPanel">${rdPanelHTML()}</div></div>
-    <div class="panel"><h2>Player app</h2><p class="muted">Browsers can't play MKV files or DTS and Dolby sound. Jarvis hands those to this app. ${isMac ? `On a Mac: IINA, free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : "VLC and Infuse are on the App Store."}</p>
+    <div class="panel"><h2>Player app</h2><p class="muted">Browsers can't play MKV files or DTS and Dolby sound. Jarvis hands those to this app. ${isMac ? `On a Mac: IINA, free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : "Movies and shows: Infuse (it picks up where you left off). Live TV channels always open in VLC. Both are free on the App Store."}</p>
       <div class="rowf" style="margin-top:10px">${extPrefSelect("extPrefSet")}</div></div>
     <div class="panel"><h2>Addons on this device</h2>${addonPanelHTML()}</div>
     <div class="panel"><h2>Ask Jarvis</h2>
@@ -3415,7 +3419,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.6";
+const BUILD = "2026-10-10.7";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
