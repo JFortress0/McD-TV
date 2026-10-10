@@ -348,6 +348,6 @@ private class ProgressSaver(private val meta: PlayMeta?) {
         if (!force && lastSavedMs >= 0 && kotlin.math.abs(pos - lastSavedMs) <= 5_000) return
         if (force && pos == lastSavedMs) return
         lastSavedMs = pos
-        Library.record(meta, pos, dur)
+        Library.record(meta, pos, dur, urgent = force)
     }
 }
