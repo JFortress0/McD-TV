@@ -100,7 +100,7 @@ a{color:var(--accent)}
     <div class="grow"><div class="name">Browse on your phone or computer</div><div class="hint">Posters, trailers and cast. Tap Play on TV and the TV starts it.</div></div>
     <a class="btnlink" id="webAppLink" href="app/">Open Jarvis web app</a>
   </div>
-  <p class="hint">Adding or removing an addon or website saves to the TV right away. For the other boxes, tap <b>Save to TV</b>. Changes are sent to your TV over the internet, encrypted end to end. Jarvis must be open on the TV to receive them, or they apply the next time it opens (within 12 hours).</p>
+  <p class="hint">Adding or removing an addon saves to the TV right away. For the other boxes, tap <b>Save to TV</b>. Changes are sent to your TV over the internet, encrypted end to end. Jarvis must be open on the TV to receive them, or they apply the next time it opens (within 12 hours).</p>
 
   <h2>Addons (sources)</h2>
   <div class="card">
@@ -108,16 +108,6 @@ a{color:var(--accent)}
     <label>Add an addon: paste its manifest.json URL or stremio:// link</label>
     <div class="row"><input id="addonIn" placeholder="https://…/manifest.json"><button class="primary" onclick="addAddon()">Add</button></div>
     <div class="msg" id="addonMsg"></div>
-  </div>
-
-  <h2>Websites (Home &gt; More &gt; Websites)</h2>
-  <div class="card">
-    <ul id="sites"></ul>
-    <div class="row" style="margin-top:8px">
-      <input id="siteName" placeholder="Name" style="max-width:170px">
-      <input id="siteUrl" placeholder="https://example.com">
-      <button class="primary" onclick="addSite()">Add</button>
-    </div>
   </div>
 
   <h2>Real-Debrid</h2>
@@ -189,7 +179,7 @@ a{color:var(--accent)}
 // ---------- Link: "#<id>.<key>" (the key never leaves this browser; it is not sent to any server) ----------
 const RELAY = "https://ntfy.sh/";
 let link = parseLink(location.hash) || parseLink(localStorageGet("mcdtv_link"));
-let key = null, state = null, addons = [], sites = [], lastNoteTs = 0;
+let key = null, state = null, addons = [], lastNoteTs = 0;
 const $ = (id) => document.getElementById(id);
 
 function localStorageGet(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } }
@@ -264,8 +254,7 @@ let dirtyFlag = false;
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 function render() {
   addons = (state.addon_urls || []).map((u) => ({ url: u, name: (state.addon_names || {})[u] || "" }));
-  sites = (state.websites || []).map((p) => [p[0], p[1]]);
-  drawAddons(); drawSites();
+  drawAddons();
   $("rd").innerHTML = state.rd_connected ? '<span class="pill ok">Connected</span>' : '<span class="pill no">Not connected</span>';
   $("tmdbState").innerHTML = state.tmdb_set ? '<span class="pill ok">TMDB key set</span>' : '<span class="pill no">No TMDB key</span>';
   $("mdbState").innerHTML = state.mdblist_set ? '<span class="pill ok">MDBList key set</span>' : '<span class="pill no">No MDBList key</span>';
@@ -281,10 +270,6 @@ function drawAddons() {
   $("addons").innerHTML = addons.length ? addons.map((a, i) => `<li><div class="grow"><div class="name">${esc(a.name || "Addon")}</div><div class="url">${esc(a.url)}</div></div>
     <button class="small" onclick="moveAddon(${i},-1)" ${i ? "" : "disabled"}>↑</button><button class="small" onclick="moveAddon(${i},1)" ${i < addons.length - 1 ? "" : "disabled"}>↓</button>
     <button class="small" onclick="removeAddon(${i})">Remove</button></li>`).join("") : '<li class="hint">No addons yet.</li>';
-}
-function drawSites() {
-  $("sites").innerHTML = sites.length ? sites.map(([n, u], i) => `<li><div class="grow"><div class="name">${esc(n)}</div><div class="url">${esc(u)}</div></div>
-    <button class="small" onclick="removeSite(${i})">Remove</button></li>`).join("") : '<li class="hint">No websites yet.</li>';
 }
 function normAddon(u) {
   u = u.trim(); if (u.startsWith("stremio://")) u = "https://" + u.slice(10);
@@ -302,25 +287,16 @@ async function addAddon() {
 }
 function removeAddon(i) { addons.splice(i, 1); drawAddons(); dirty(true); save(); }
 function moveAddon(i, d) { const [a] = addons.splice(i, 1); addons.splice(i + d, 0, a); drawAddons(); dirty(true); save(); }
-function addSite() {
-  let u = $("siteUrl").value.trim(); if (!u) return;
-  if (!/^https?:\/\//.test(u)) u = "https://" + u;
-  const n = $("siteName").value.trim() || u.replace(/^https?:\/\//, "").split("/")[0];
-  sites.push([n, u]); $("siteUrl").value = ""; $("siteName").value = ""; drawSites(); dirty(true); save();
-}
-function removeSite(i) { sites.splice(i, 1); drawSites(); dirty(true); save(); }
 function dirty(on) { dirtyFlag = on; $("saveBtn").disabled = !on; if (on) { $("saveMsg").className = "msg"; $("saveMsg").textContent = "Unsaved changes"; } }
-$("siteUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") addSite(); });
 $("addonIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addAddon(); });
 ["m3u", "stream", "tmdb", "mdb", "jarvisKey", "wallUrl", "wallKey"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
 ["origin", "usOnly", "slow", "intro", "wallStart"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
 
 async function save() {
-  if ($("siteUrl").value.trim()) { addSite(); return; }
   if ($("addonIn").value.trim()) { addAddon(); return; }
   if (!state) { $("saveMsg").className = "err"; $("saveMsg").textContent = "Waiting for the TV first. Open Jarvis on the TV."; return; }
   const data = {
-    addon_urls: addons.map((a) => a.url), websites: sites,
+    addon_urls: addons.map((a) => a.url),
     m3u_url: $("m3u").value.trim(), custom_stream_url: $("stream").value.trim(),
     origin_filter: $("origin").value, us_only: $("usOnly").checked, slow_connection: $("slow").checked, play_intro: $("intro").checked,
     wall_url: $("wallUrl").value.trim(), wall_start: $("wallStart").checked,
