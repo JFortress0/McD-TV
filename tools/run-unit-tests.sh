@@ -30,7 +30,7 @@ MAIN="$ROOT/app/src/main/java/com/mcd/tv/data"
 TEST_ROOT="$ROOT/app/src/test/java"
 STUBS="$ROOT/tools/jvm-stubs"
 OUT="$ROOT/app/build/local-unit-tests"
-MAIN_FILES=(LiveCatalog.kt Live.kt Games.kt StreamInfo.kt Epg.kt Http.kt)
+MAIN_FILES=(LiveCatalog.kt Live.kt Games.kt StreamInfo.kt Epg.kt Http.kt Taste.kt)
 
 say() { echo "[unit-tests] $*" >&2; }
 die() { say "ERROR: $*"; exit 1; }
