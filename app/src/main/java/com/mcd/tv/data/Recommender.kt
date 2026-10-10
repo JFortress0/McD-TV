@@ -108,10 +108,10 @@ object Recommender {
 
     /**
      * Starting point for a profile that never opened Settings > Taste. Dad starts on war, crime, comedy,
-     * history and stand-up; the others start blank and learn from watching. Saving the Taste screen replaces it.
+     * history, stand-up and poker; the others start blank and learn from watching. Saving the Taste screen replaces it.
      */
     private val DEFAULTS = mapOf(
-        "p1" to """{"likeGenres":[10752,80,35,36],"avoidGenres":[],"likeWords":["stand-up comedy"],"avoidWords":[]}""",
+        "p1" to """{"likeGenres":[10752,80,35,36],"avoidGenres":[],"likeWords":["stand-up comedy","poker"],"avoidWords":[]}""",
     )
 
     fun saveChoices(profile: String, likeGenres: Set<Int>, avoidGenres: Set<Int>, likeWords: List<String>, avoidWords: List<String>) {

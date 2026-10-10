@@ -294,7 +294,7 @@ object Taste {
         listOf("hbo", "cinemax", "showtime", "starz", "epix", "mgm", "max", "encore", "the movie channel") to setOf(Tag.MOVIES, Tag.ACTION),
         listOf("syfy", "action", "grit") to setOf(Tag.ACTION),
         listOf("espn", "espn2", "espnu", "fox sports", "fs1", "fs2", "nfl network", "nfl redzone", "redzone", "nba tv", "mlb network", "nhl network",
-            "cbs sports", "nbc sports", "golf", "acc network", "sec network", "big ten", "btn", "tennis", "ufc", "bein", "willow", "dazn", "marquee", "bally") to setOf(Tag.SPORTS),
+            "cbs sports", "nbc sports", "golf", "acc network", "sec network", "big ten", "btn", "tennis", "ufc", "bein", "willow", "dazn", "marquee", "bally", "pokergo", "poker") to setOf(Tag.SPORTS),
         listOf("cnn", "fox news", "msnbc", "newsmax", "cnbc", "bloomberg", "news", "weather", "abc news", "cbs news", "nbc news", "c-span", "newsnation") to setOf(Tag.NEWS),
         listOf("disney", "nick", "nickelodeon", "cartoon", "boomerang", "pbs kids", "nick jr", "universal kids", "baby", "kids") to setOf(Tag.KIDS),
         listOf("tlc", "hgtv", "food network", "bravo", "e!", "mtv", "vh1", "we tv", "lifetime", "travel", "cooking", "own") to setOf(Tag.REALITY),
@@ -364,6 +364,8 @@ object Taste {
         val lastWatched: Long = 0L,
         /** What's on now (guide title + description), or "". */
         val nowText: String = "",
+        /** What's on in the next few hours (guide titles + descriptions), or "". */
+        val soonText: String = "",
     )
 
     data class ChannelPick(val index: Int, val score: Double, val reason: Reason)
@@ -410,9 +412,9 @@ object Taste {
         now: Long,
         max: Int = 60,
     ): List<ChannelPick> {
-        val weights = tagWeights(taste, tagMinutes, kids)
-        val likeWords = taste.choices.likeWords.map { it.lowercase(Locale.ROOT) }.filter { it.isNotBlank() }
-        val avoidWords = taste.choices.avoidWords.map { it.lowercase(Locale.ROOT) }.filter { it.isNotBlank() }
+        val matcher = ProgrammeMatcher(taste, tagMinutes, kids)
+        val weights = matcher.weights
+        val avoidWords = matcher.avoidWords
         val best = HashMap<String, ChannelPick>()
         for (c in channels) {
             val watched = c.minutes >= 3.0
@@ -428,18 +430,11 @@ object Taste {
             val habit = if (c.minutes > 0) min(1.0, ln(1 + c.minutes) / ln(1 + 240.0)) * (0.5 + 0.5 * recency) else 0.0
             val kind = if (tags.isEmpty()) 0.0 else tags.maxOf { weights[it] ?: 0.0 }
             // On now: guide text matching liked tags or topics.
-            val nowW = words(c.nowText)
-            var onNow = 0.0
-            if (nowW.isNotEmpty()) {
-                if (avoidWords.any { hasPhrase(nowW, it) }) onNow -= 1.0
-                if (likeWords.any { hasPhrase(nowW, it) }) onNow += 1.0
-                for ((tag, list) in TAG_WORDS) {
-                    val w = weights[tag] ?: 0.0
-                    if (w > 0.2 && list.any { hasPhrase(nowW, it) }) onNow = max(onNow, 0.6 * min(1.0, w))
-                }
-            }
+            val onNow = matcher.score(c.nowText)
+            // Coming up in the next few hours (a poker final at 9, a WWII documentary at 10) counts a little less.
+            val soon = max(0.0, matcher.score(c.soonText))
             val major = if (MAJOR.any { hasPhrase(nameWords, it) && nameWords.size <= words(it).size + 2 }) 0.25 else 0.0
-            val score = 3.0 * habit + (if (c.favorite) 1.2 else 0.0) + 1.2 * kind + 1.0 * onNow + major
+            val score = 3.0 * habit + (if (c.favorite) 1.2 else 0.0) + 1.2 * kind + 1.0 * onNow + 0.5 * soon + major
             if (score <= 0.15) continue
             val reason = when {
                 habit >= 0.25 || c.favorite -> Reason.WATCH_AGAIN
@@ -452,6 +447,31 @@ object Taste {
             if (prev == null || score > prev.score + 1e-9) best[key] = ChannelPick(c.index, score, reason)
         }
         return best.values.sortedByDescending { it.score }.take(max)
+    }
+
+    /**
+     * How well one programme (guide title + description) fits a profile: 1 = a topic it asked for
+     * ("poker", "stand-up comedy"), up to 0.6 = the kind of show it likes (war, crime, comedy), 0 = nothing
+     * known, below 0 = a topic it skips. Used for the For You ranking and to highlight shows in My Guide.
+     */
+    class ProgrammeMatcher(taste: TasteProfile, tagMinutes: Map<Tag, Double> = emptyMap(), kids: Boolean = false) {
+        val weights: Map<Tag, Double> = tagWeights(taste, tagMinutes, kids)
+        val likeWords: List<String> = taste.choices.likeWords.map { it.lowercase(Locale.ROOT).trim() }.filter { it.isNotBlank() }
+        val avoidWords: List<String> = taste.choices.avoidWords.map { it.lowercase(Locale.ROOT).trim() }.filter { it.isNotBlank() }
+
+        fun score(text: String): Double {
+            if (text.isBlank()) return 0.0
+            val w = words(text)
+            if (w.isEmpty()) return 0.0
+            if (avoidWords.any { hasPhrase(w, it) }) return -1.0
+            if (likeWords.any { hasPhrase(w, it) }) return 1.0
+            var s = 0.0
+            for ((tag, list) in TAG_WORDS) {
+                val tw = weights[tag] ?: 0.0
+                if (tw > 0.2 && list.any { hasPhrase(w, it) }) s = max(s, 0.6 * min(1.0, tw))
+            }
+            return s
+        }
     }
 
     private fun clamp(v: Double) = clampValue(v)

@@ -14,13 +14,19 @@ object LiveForYou {
     const val ON_NOW = "On now for you"
     const val YOUR_KIND = "Your kind of channels"
 
+    /** How far ahead My Guide looks (and how far "coming up" counts for the ranking). */
+    const val WINDOW_MS = 3 * 60 * 60_000L
+
+    /** The picked channels, plus the matcher My Guide uses to highlight shows for this profile. */
+    class Result(val section: LiveSection, val matcher: Taste.ProgrammeMatcher)
+
     suspend fun build(
         index: LiveIndex,
         favorites: Set<String>,
         guide: Map<String, List<Programme>>,
         profile: String = Prefs.activeProfile,
         now: Long = System.currentTimeMillis(),
-    ): LiveSection {
+    ): Result {
         val taste = runCatching { Recommender.taste(profile) }.getOrDefault(TasteProfile.EMPTY)
         val stats = Prefs.liveStats(profile)
         return withContext(Dispatchers.Default) { rank(index, favorites, guide, taste, stats, profile == Prefs.KIDS_PROFILE, now) }
@@ -34,7 +40,7 @@ object LiveForYou {
         stats: Map<String, Pair<Double, Long>>,
         kids: Boolean,
         now: Long,
-    ): LiveSection {
+    ): Result {
         val n = index.size
         val section = arrayOfNulls<String>(n)
         for (s in index.sections) for (i in s.items) if (i in 0 until n && section[i] == null) section[i] = s.name
@@ -52,7 +58,10 @@ object LiveForYou {
             val ch = index.channels[i]
             val country = LiveOrganizer.country(ch.group, ch.name)
             val st = stats[ch.url]
-            val cur = if (guide.isEmpty()) null else Epg.nowNext(Epg.keyOf(ch), guide, now).first
+            val progs = if (guide.isEmpty()) null else guide[Epg.keyOf(ch)]
+            val cur = progs?.firstOrNull { it.start <= now && it.end > now }
+            val soon = progs?.filter { it.start > now && it.start < now + WINDOW_MS }?.take(6)
+                ?.joinToString(" | ") { it.title + " " + it.desc.take(120) } ?: ""
             inputs.add(
                 Taste.ChannelInput(
                     index = i,
@@ -63,6 +72,7 @@ object LiveForYou {
                     minutes = st?.first ?: 0.0,
                     lastWatched = st?.second ?: 0L,
                     nowText = cur?.let { it.title + " " + it.desc.take(200) } ?: "",
+                    soonText = soon,
                 ),
             )
         }
@@ -76,6 +86,9 @@ object LiveForYou {
             val g = picks.filter { it.reason == r }.map { it.index }.toIntArray()
             if (g.isEmpty()) null else LiveSubgroup(label, g)
         }
-        return LiveSection("For You", items, if (groups.size > 1) groups else emptyList())
+        return Result(
+            LiveSection("My Guide", items, if (groups.size > 1) groups else emptyList()),
+            Taste.ProgrammeMatcher(taste, tagMinutes, kids),
+        )
     }
 }
