@@ -79,6 +79,7 @@ sealed interface Screen {
     data object Settings : Screen
     data object Update : Screen
     data class Taste(val profile: String) : Screen
+    data object JoinHouse : Screen
     data object PhoneSetup : Screen
     data object RdConnect : Screen
     data object AccountPage : Screen
@@ -212,16 +213,29 @@ private fun App(startScreen: Screen? = null) {
     // A new version is out: open "Update Jarvis" once per launch, on the Home screen (never mid-movie).
     // Skipped in the automated QA run, which drives screens itself.
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    // Checks right after start, then every 6 hours for as long as the app runs (Fire TVs keep it in memory).
     LaunchedEffect(Unit) {
         if (com.mcd.tv.data.Prefs.qaMode || com.mcd.tv.ui.ProfileStart.skip) return@LaunchedEffect
         kotlinx.coroutines.delay(8_000) // after the intro and profile picker
-        runCatching { com.mcd.tv.data.Updater.check(ctx) }
+        while (true) {
+            runCatching { com.mcd.tv.data.Updater.check(ctx) }
+            kotlinx.coroutines.delay(6 * 3600_000L)
+        }
     }
     val update = com.mcd.tv.data.Updater.available
     LaunchedEffect(update, stack.last()) {
-        if (update != null && !com.mcd.tv.data.Updater.promptShown && stack.last() == Screen.Home && !com.mcd.tv.data.Prefs.qaMode) {
+        // Each new version is offered once (the next Home visit after it is found).
+        if (update != null && com.mcd.tv.data.Updater.promptedFor != update.code && stack.last() == Screen.Home && !com.mcd.tv.data.Prefs.qaMode) {
+            com.mcd.tv.data.Updater.promptedFor = update.code
             com.mcd.tv.data.Updater.promptShown = true
             stack.add(Screen.Update)
+        }
+    }
+    // A new TV: offer "Join my other TVs" once, so it gets the house's settings and profiles.
+    LaunchedEffect(stack.last()) {
+        if (stack.last() == Screen.Home && !com.mcd.tv.ui.ProfileStart.skip && com.mcd.tv.data.HouseJoin.shouldOffer(ctx)) {
+            com.mcd.tv.data.HouseJoin.markSeen()
+            stack.add(Screen.JoinHouse)
         }
     }
 
@@ -291,6 +305,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.Settings -> SettingsScreen(nav)
         Screen.Update -> com.mcd.tv.ui.UpdateScreen(nav)
         is Screen.Taste -> com.mcd.tv.ui.TasteScreen(nav, s.profile)
+        Screen.JoinHouse -> com.mcd.tv.ui.JoinHouseScreen(nav)
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)
         Screen.AccountPage -> AccountScreen(nav)
