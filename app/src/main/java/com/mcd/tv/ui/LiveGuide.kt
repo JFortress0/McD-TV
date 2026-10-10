@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,7 +66,13 @@ private val GuideGold = Color(0xFFFFC94D)
 /** One block in a channel's row. [p] null = no guide info (or a gap). */
 private class GuideBlock(val p: Programme?, val start: Long, val end: Long, val match: Double, val playable: Boolean)
 
-private class FocusedShow(val ch: Channel, val name: String, val p: Programme?, val match: Double)
+/** [next]: what follows [p] on that channel (shown when [p] is wrapping up). */
+private class FocusedShow(val ch: Channel, val name: String, val p: Programme?, val match: Double, val next: Programme? = null)
+
+/** A show starting soon on one of the guide's channels: [pos] is its row in the shown list. */
+private class SoonShow(val pos: Int, val name: String, val p: Programme, val match: Double)
+
+private const val SOON_MS = 30 * 60_000L
 
 @Composable
 internal fun MyGuidePane(
@@ -95,6 +102,14 @@ internal fun MyGuidePane(
         if (!onlyMine) rows else rows.filter { (_, b) -> b.any { it.match >= 0.5 } }
     }
     val shownItems = remember(shown) { shown.map { it.first }.toIntArray() }
+    // Starting in the next 30 minutes on these channels: shows that fit your taste first, then by start time.
+    val soon = remember(shown, guide, now / 60_000) {
+        shown.mapIndexedNotNull { pos, (i, _) ->
+            val p = guide[Epg.keyOf(index.channels[i])].orEmpty().firstOrNull { it.start > now && it.start - now <= SOON_MS }
+                ?: return@mapIndexedNotNull null
+            SoonShow(pos, index.names[i], p, matcher?.score(p.title + " " + p.desc) ?: 0.0)
+        }.sortedWith(compareByDescending<SoonShow> { if (it.match >= 0.5) 1 else 0 }.thenBy { it.p.start }).take(16)
+    }
 
     Column(Modifier.fillMaxSize().padding(end = 24.dp)) {
         GuidePreview(focused, now)
@@ -102,6 +117,19 @@ internal fun MyGuidePane(
             ActionButton("All my channels  ${rows.size}", { onlyMine = false }, primary = !onlyMine)
             val mine = rows.count { (_, b) -> b.any { it.match >= 0.5 } }
             ActionButton("★ Shows for me  $mine", { onlyMine = true }, primary = onlyMine)
+        }
+        if (soon.isNotEmpty()) {
+            Text("STARTING SOON", style = hudLabelStyle(11.sp, McdColors.Accent), modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                items(count = soon.size) { k ->
+                    val x = soon[k]
+                    val mins = ((x.p.start - now + 59_999) / 60_000).coerceAtLeast(1)
+                    ActionButton(
+                        "${if (x.match >= 0.5) "★ " else ""}${guideTime(x.p.start)}  ${x.p.title}  ·  ${x.name}  (in $mins min)",
+                        { onPlay(shownItems, x.pos) },
+                    )
+                }
+            }
         }
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val gridW = (maxWidth - ChannelCol).coerceAtLeast(200.dp)
@@ -133,7 +161,8 @@ internal fun MyGuidePane(
                                 onMenu = { onMenu(ch) },
                                 onFocus = { b ->
                                     if (b != null) {
-                                        focused = FocusedShow(ch, name, b.p, b.match)
+                                        val next = b.p?.let { cur -> guide[Epg.keyOf(ch)].orEmpty().firstOrNull { it.start >= cur.end - 60_000L && it.start > cur.start } }
+                                        focused = FocusedShow(ch, name, b.p, b.match, next)
                                         onFocusChannel(ch, name)
                                     } else {
                                         onFocusChannel(null, "")
@@ -342,10 +371,21 @@ private fun GuidePreview(f: FocusedShow?, now: Long) {
                     Text(if (f.match >= 0.95) "★ YOUR TOPIC" else "★ FOR YOU", color = GuideGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            Text(
-                p?.desc?.ifBlank { null } ?: "OK plays this channel.",
-                color = McdColors.Muted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
+            val nx = f.next
+            if (p != null && nx != null && p.start <= now && p.end - now <= SOON_MS) {
+                // Wrapping up: what comes on next.
+                val left = ((p.end - now + 59_999) / 60_000).coerceAtLeast(1)
+                Text(
+                    "Ends in $left min.  UP NEXT at ${guideTime(nx.start)}: ${nx.title}",
+                    color = McdColors.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(nx.desc.ifBlank { "OK plays this channel." }, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            } else {
+                Text(
+                    p?.desc?.ifBlank { null } ?: "OK plays this channel.",
+                    color = McdColors.Muted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
