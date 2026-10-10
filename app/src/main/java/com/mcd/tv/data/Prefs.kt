@@ -171,6 +171,16 @@ object Prefs {
         nowFav
     }
 
+    /** Sets a favorite channel of [profile] (any profile, not only the active one): the web app's star. */
+    fun setLiveFavorite(profile: String, url: String, on: Boolean) = synchronized(listLock) {
+        if (profile !in PROFILE_IDS || url.isBlank()) return@synchronized
+        val k = "live_favorites@$profile"
+        val cur = strList(k)
+        if ((url in cur) == on) return@synchronized
+        putStrList(k, if (on) cur + url else cur - url)
+        ProfileSync.onLiveFavorite(profile, url, on)
+    }
+
     /** For ProfileSync: runs [block] under the lock of the JSON list settings (Live TV favorites). */
     internal fun <T> withListLock(block: () -> T): T = synchronized(listLock) { block() }
 

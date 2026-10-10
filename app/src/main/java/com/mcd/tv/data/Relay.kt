@@ -219,6 +219,26 @@ object Relay {
                 if (ts > 0L && System.currentTimeMillis() - ts > 2 * 60_000L) return // the page stopped waiting long ago
                 scope.launch { runCatching { publishResolve(cmd) } }
             }
+            // The web app's ☆ on a Live TV channel: add or remove that profile's favorite. The phone may use a
+            // different copy of the link (M3U vs. the provider's app API), so it is matched by stream number.
+            "live_fav" -> {
+                val pid = Library.validProfile(cmd.optString("profile")) ?: return
+                val url = cmd.optString("url")
+                if (!url.startsWith("http")) return
+                val on = cmd.optBoolean("on", true)
+                scope.launch {
+                    runCatching {
+                        val sid = streamNumber(url)
+                        val same = { u: String -> u == url || (sid != null && streamNumber(u) == sid) }
+                        if (on) {
+                            val mine = runCatching { M3u.load() }.getOrDefault(emptyList()).firstOrNull { same(it.url) }?.url ?: url
+                            Prefs.setLiveFavorite(pid, mine, true)
+                        } else {
+                            liveFavoritesOf(pid).map { it.toString() }.filter(same).forEach { Prefs.setLiveFavorite(pid, it, false) }
+                        }
+                    }
+                }
+            }
             // Progress from "Play here", so Continue Watching on the TV stays in sync.
             "progress" -> runCatching { recordWebProgress(cmd) }
             // Ask Jarvis from the web app. The key stays on the TV; the answer can take up to 30 s,
@@ -397,6 +417,10 @@ object Relay {
         if (!withSites) publishWebList(req, pid, "websites", sites)
         if (!withLiveFavs) publishWebList(req, pid, "live_favorites", liveFavs)
     }
+
+    /** The stream number at the end of a live link (".../live/user/pass/123.m3u8" or ".../user/pass/123"). */
+    private fun streamNumber(url: String): String? =
+        Regex("""/(\d+)(?:\.[A-Za-z0-9]+)?(?:\?.*)?$""").find(url)?.groupValues?.get(1)
 
     /** [profile]'s favorite Live TV channels (stream URLs), read without changing the active profile. */
     private fun liveFavoritesOf(profile: String): List<Any> = runCatching {
