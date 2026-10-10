@@ -63,6 +63,16 @@ for (const w of [390,1280]) {
   const star1=await p.$eval('.lv-row .lv-star',e=>e.innerText+'|'+e.getAttribute('aria-pressed'));
   await p.click('.lv-row .lv-star'); await p.waitForTimeout(300); const f2=await fv();
   log(w,'fav toggle',f0,f1,f2,'star after add',star1); if(!(f1===f0+1&&f2===f0)) fails.push(`${w} favorite toggle ${f0}->${f1}->${f2}`);
+  // Settings > Check network: runs, lists TMDB, addons, the relay and the TV link (all mocked here), shows no keys
+  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(800);
+  if(!await p.$('#netBtn')) fails.push(`${w} Check network button missing`); else {
+    await p.click('#netBtn'); await p.waitForFunction(()=>!document.querySelector('#netBtn').disabled,null,{timeout:15000}).catch(()=>fails.push(`${w} network check never finished`));
+    const net=await p.$$eval('#netList li',r=>r.map(x=>x.innerText.replace(/\s+/g,' ')));
+    log(w,'netcheck',net.join(' || '));
+    if(net.length<3) fails.push(`${w} network check listed ${net.length} rows`);
+    if(net.some(x=>x.includes('Checking'))) fails.push(`${w} network check left a row pending`);
+    if(net.some(x=>/api_key|password|username=/.test(x))) fails.push(`${w} network check shows a key or login`);
+  }
   log(w,'pageerrors',errs.length?errs.join(' | '):'none','blocked hosts',[...blocked].join(','),'espn calls',espn.length);
   if(errs.length) fails.push(...errs.map(e=>`${w} pageerror ${e}`));
   await ctx.close();
