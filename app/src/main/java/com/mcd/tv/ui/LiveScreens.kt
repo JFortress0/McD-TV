@@ -171,8 +171,12 @@ private fun PlaylistBrowser(nav: Nav) {
     }
 }
 
+/**
+ * The Live TV browser: Games, Favorites, My Guide, Recent, sections and All. With [onPick] it is a channel
+ * picker (Multiview's "choose a channel"): the same screen, but OK hands the channel back instead of playing it.
+ */
 @Composable
-private fun LiveBrowser(nav: Nav, index: LiveIndex) {
+internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)? = null) {
     var favorites by remember { mutableStateOf(Prefs.liveFavorites) }
     val recents = remember { Prefs.liveRecents }
     val favItems = remember(index, favorites) { index.indicesOf(favorites) }
@@ -255,9 +259,13 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
     }
 
     val play: (IntArray, Int) -> Unit = { list, pos ->
-        LiveSession.channels = index.channelsOf(list)
-        lastPlayed = index.channels[list[pos]].url
-        nav.push(Screen.LivePlay(pos))
+        if (onPick != null) {
+            onPick(index.channels[list[pos]])
+        } else {
+            LiveSession.channels = index.channelsOf(list)
+            lastPlayed = index.channels[list[pos]].url
+            nav.push(Screen.LivePlay(pos))
+        }
     }
     val toggleFavorite: (Channel) -> Unit = { ch ->
         Prefs.toggleLiveFavorite(ch.url)
@@ -269,11 +277,13 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
         Row(Modifier.weight(1f).fillMaxWidth().padding(start = 24.dp, top = 4.dp)) {
             Column(Modifier.width(200.dp).fillMaxHeight()) {
                 // Multiview: watch 1, 2 or 4 channels at once (UP from the top of the rail).
-                ActionButton(
-                    "Multiview",
-                    { nav.push(Screen.Multiview) },
-                    Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                )
+                if (onPick == null) {
+                    ActionButton(
+                        "Multiview",
+                        { nav.push(Screen.Multiview) },
+                        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    )
+                }
                 LiveRail(
                     entries = entries,
                     selected = sel,
@@ -362,7 +372,7 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
                 }
             }
         }
-        HintBar(hint, favSet, gamesMode = sel.startsWith(GAME))
+        HintBar(hint, favSet, gamesMode = sel.startsWith(GAME), picking = onPick != null)
     }
 }
 
@@ -851,7 +861,7 @@ private fun LiveChannelCard(
 
 /** Bottom line: what OK and Menu do on the focused card. */
 @Composable
-private fun HintBar(hint: FocusedChannel, favSet: Set<String>, gamesMode: Boolean = false) {
+private fun HintBar(hint: FocusedChannel, favSet: Set<String>, gamesMode: Boolean = false, picking: Boolean = false) {
     val ch = hint.channel
     Row(
         Modifier.fillMaxWidth().height(30.dp).background(McdColors.Ink.copy(alpha = 0.6f)).drawBehind { drawLine(McdColors.Line, Offset(0f, 0f), Offset(size.width, 0f), 1f) }.padding(start = 32.dp, end = 32.dp),
@@ -860,11 +870,11 @@ private fun HintBar(hint: FocusedChannel, favSet: Set<String>, gamesMode: Boolea
         if (ch != null) {
             val fav = ch.url in favSet
             Text(hint.name, color = McdColors.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            KeyHint("OK", "Play")
+            KeyHint("OK", if (picking) "Put in this tile" else "Play")
             Spacer(Modifier.width(18.dp))
             KeyHint("☰", if (fav) "★ Favorite (press to remove)" else "☆ Add to favorites")
         } else if (gamesMode) {
-            KeyHint("OK", "Watch the game on its best channel")
+            KeyHint("OK", if (picking) "Put the game's best channel in this tile" else "Watch the game on its best channel")
             Spacer(Modifier.width(18.dp))
             KeyHint("☰", "Every channel showing it")
         } else {

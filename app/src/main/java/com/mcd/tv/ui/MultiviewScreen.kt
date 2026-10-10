@@ -306,6 +306,7 @@ private fun Multiview(nav: Nav, index: LiveIndex) {
         }
         chooserSlot?.let { slot ->
             ChannelChooser(
+                nav = nav,
                 index = index,
                 slot = slot,
                 current = slots.getOrNull(slot),
@@ -873,13 +874,10 @@ private fun TileOptions(
 
 // ============================== Channel chooser ==============================
 
-private const val CH_SEARCH = "search"
-
-private class ChooserEntry(val key: String, val label: String, val items: IntArray?)
-
-@kotlin.OptIn(ExperimentalComposeUiApi::class)
+/** Same layout as Live TV (Games by league, Favorites, My Guide, Recent, sections), picking instead of playing. */
 @Composable
 private fun ChannelChooser(
+    nav: Nav,
     index: LiveIndex,
     slot: Int,
     current: String?,
@@ -887,29 +885,8 @@ private fun ChannelChooser(
     onRemove: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    val entries = remember(index) {
-        val fav = index.indicesOf(Prefs.liveFavorites)
-        val recent = index.indicesOf(Prefs.liveRecents)
-        buildList {
-            if (fav.isNotEmpty()) add(ChooserEntry("fav", "★  Favorites", fav))
-            if (recent.isNotEmpty()) add(ChooserEntry("recent", "Recent", recent))
-            add(ChooserEntry(CH_SEARCH, "⌕  Search", null))
-            index.sections.forEach { add(ChooserEntry("sec:" + it.name, it.name, it.items)) }
-            add(ChooserEntry("all", "All channels", index.all))
-        }
-    }
-    var selected by remember { mutableStateOf(entries.first { it.key != CH_SEARCH }.key) }
-    val requesters = remember { HashMap<String, FocusRequester>() }
-    val requesterFor: (String) -> FocusRequester = { k -> requesters.getOrPut(k) { FocusRequester() } }
-    val focusManager = LocalFocusManager.current
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        runCatching { requesterFor(selected).requestFocus() }
-    }
-    val entry = entries.firstOrNull { it.key == selected } ?: entries.first()
-
-    Column(Modifier.fillMaxSize().background(McdColors.Navy).hudBackground().padding(start = 32.dp, top = 24.dp)) {
-        Row(Modifier.fillMaxWidth().padding(end = 32.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.fillMaxSize().background(McdColors.Navy).hudBackground().padding(top = 20.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 32.dp, end = 32.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("CHOOSE A CHANNEL FOR TILE ${slot + 1}", style = broadcastStyle(22.sp), modifier = Modifier.weight(1f))
             if (current != null) {
                 ActionButton("Remove channel", onRemove)
@@ -917,199 +894,8 @@ private fun ChannelChooser(
             }
             ActionButton("Cancel", onCancel)
         }
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            Column(
-                Modifier
-                    .width(210.dp)
-                    .fillMaxHeight()
-                    .focusProperties { enter = { requesterFor(selected) } }
-                    .focusGroup()
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                entries.forEach { e ->
-                    ChooserRailItem(
-                        label = e.label,
-                        count = e.items?.size,
-                        selected = e.key == selected,
-                        requester = requesterFor(e.key),
-                        onFocus = { selected = e.key },
-                        onClick = { focusManager.moveFocus(FocusDirection.Right) },
-                    )
-                }
-            }
-            Spacer(Modifier.width(16.dp))
-            Box(Modifier.weight(1f).fillMaxHeight()) {
-                key(entry.key) {
-                    val items = entry.items
-                    if (items == null) {
-                        ChooserSearch(index, current, onPick)
-                    } else if (items.isEmpty()) {
-                        StatusText("No channels here.")
-                    } else {
-                        ChooserGrid(items, index, current, onPick)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChooserRailItem(label: String, count: Int?, selected: Boolean, requester: FocusRequester, onFocus: () -> Unit, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .focusRequester(requester)
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocus()
-            }
-            .hudBrackets(focused, McdColors.AccentBright, inset = 0.dp, arm = 6.dp, stroke = 1.5.dp)
-            .clip(HudShapeSmall)
-            .background(
-                when {
-                    focused -> McdColors.Accent.copy(alpha = 0.16f)
-                    selected -> McdColors.Raised.copy(alpha = 0.7f)
-                    else -> Color.Transparent
-                },
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            color = when {
-                focused -> McdColors.AccentBright
-                selected -> McdColors.Accent
-                else -> McdColors.Muted
-            },
-            fontSize = 15.sp,
-            fontWeight = if (focused || selected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (count != null) {
-            Text("%,d".format(count), color = McdColors.Muted.copy(alpha = 0.8f), fontSize = 12.sp, maxLines = 1)
-        }
-    }
-}
-
-@Composable
-private fun ChooserSearch(index: LiveIndex, current: String?, onPick: (String) -> Unit) {
-    var query by remember { mutableStateOf("") }
-    var results by remember(index) { mutableStateOf(IntArray(0)) }
-    LaunchedEffect(index, query) {
-        delay(300)
-        results = withContext(Dispatchers.Default) { index.search(query, 200) }
-    }
-    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    val firstResult = remember { FocusRequester() }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val toResults: () -> Unit = {
-        keyboard?.hide()
-        results = index.search(query, 200)
-        scope.launch {
-            androidx.compose.runtime.withFrameNanos { }
-            androidx.compose.runtime.withFrameNanos { }
-            runCatching { firstResult.requestFocus() }
-        }
-    }
-    Column(Modifier.fillMaxSize()) {
-        BasicTextField(
-            value = query,
-            onValueChange = { query = it },
-            singleLine = true,
-            textStyle = TextStyle(color = McdColors.White, fontSize = 18.sp),
-            cursorBrush = SolidColor(McdColors.Red),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, showKeyboardOnFocus = false),
-            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                onSearch = { toResults() }, onDone = { toResults() }, onNext = { toResults() }, onGo = { toResults() },
-            ),
-            decorationBox = { inner ->
-                Box {
-                    if (query.isEmpty()) Text("Channel name… (press OK to type)", color = McdColors.Muted, fontSize = 18.sp)
-                    inner()
-                }
-            },
-            modifier = Modifier.padding(top = 4.dp, end = 32.dp, bottom = 8.dp).fillMaxWidth()
-                .onPreviewKeyEvent { e ->
-                    if (e.key == Key.DirectionDown && results.isNotEmpty() && query.isNotBlank()) {
-                        if (e.type == KeyEventType.KeyDown) toResults()
-                        true
-                    } else {
-                        false
-                    }
-                }
-                .background(McdColors.Card, HudShape).border(1.5.dp, McdColors.Accent, HudShape)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        )
-        val q = query.trim()
-        when {
-            q.isEmpty() -> StatusText("Search all ${"%,d".format(index.size)} channels by name.")
-            results.isEmpty() -> StatusText("No channels match \"$q\".")
-            else -> ChooserGrid(results, index, current, onPick, firstFocus = firstResult)
-        }
-    }
-}
-
-@Composable
-private fun ChooserGrid(list: IntArray, index: LiveIndex, current: String?, onPick: (String) -> Unit, firstFocus: FocusRequester? = null) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
-        state = rememberLazyGridState(),
-        contentPadding = PaddingValues(start = 6.dp, end = 32.dp, top = 8.dp, bottom = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        items(count = list.size) { pos ->
-            val i = list[pos]
-            val ch = index.channels[i]
-            val name = index.names[i]
-            Column {
-                HudCard(
-                    onClick = { onPick(ch.url) },
-                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                        .then(if (pos == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier),
-                ) { _ ->
-                    Box(Modifier.fillMaxSize()) {
-                        if (ch.logo != null) {
-                            AsyncImage(
-                                model = ch.logo,
-                                contentDescription = null,
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
-                            )
-                        } else {
-                            Text(
-                                name,
-                                style = broadcastStyle(15.sp),
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.align(Alignment.Center).padding(8.dp),
-                            )
-                        }
-                        if (ch.url == current) {
-                            LiveBadge(Modifier.align(Alignment.TopStart).padding(7.dp), text = "IN THIS TILE")
-                        }
-                    }
-                }
-                Text(
-                    name,
-                    color = McdColors.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LiveBrowser(nav, index, onPick = { ch -> onPick(ch.url) })
         }
     }
 }
