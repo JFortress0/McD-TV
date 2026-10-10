@@ -11,18 +11,14 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.lifecycle.lifecycleScope
-import com.mcd.tv.data.Account
 import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.Relay
 import com.mcd.tv.data.RemoteNav
 import com.mcd.tv.data.PlayMeta
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
-import com.mcd.tv.ui.AccountScreen
 import com.mcd.tv.ui.AskJarvisScreen
 import com.mcd.tv.ui.BrowseGridScreen
 import com.mcd.tv.ui.BrowseScreen
@@ -85,7 +81,6 @@ sealed interface Screen {
     data object Wall : Screen
     data object PhoneSetup : Screen
     data object RdConnect : Screen
-    data object AccountPage : Screen
     data object RdCloud : Screen
     data class Person(val id: Int) : Screen
     /** openSources = go straight to the source list once the title loads (Services catalog). */
@@ -127,14 +122,6 @@ class MainActivity : ComponentActivity() {
         // with a QA extra ("--ez qa true", or "--es screen ...") starts it here too.
         if (intent?.hasExtra("qa") == true || !intent?.getStringExtra("screen").isNullOrEmpty()) LocalWeb.start()
         Relay.start() // internet setup link (works from any network)
-        // Signed in to a Jarvis account? Pick up changes made on other TVs.
-        lifecycleScope.launch {
-            // Pick up changes made on the web page or another TV: now, then every 2 minutes.
-            while (true) {
-                runCatching { Account.pull() }
-                kotlinx.coroutines.delay(120_000)
-            }
-        }
         // QA hook: "--es screen settings" opens a screen directly (used by the automated emulator test).
         val screenExtra = intent?.getStringExtra("screen") ?: ""
         // "--es screen ask --es ask 'that movie where…'" opens Ask Jarvis and asks right away.
@@ -168,11 +155,6 @@ class MainActivity : ComponentActivity() {
         setContent { McdTheme { App(startScreen) } }
     }
 
-    override fun onStop() {
-        super.onStop()
-        // Leaving the app (Home button, TV off): save lists and history to the account.
-        if (Account.signedIn) Thread { runCatching { runBlocking { Account.push() } } }.start()
-    }
 }
 
 @Composable
@@ -316,7 +298,6 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.Wall -> com.mcd.tv.ui.WallScreen(nav)
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)
-        Screen.AccountPage -> AccountScreen(nav)
         Screen.RdCloud -> RdCloudScreen(nav)
         is Screen.Person -> PersonScreen(nav, s.id)
         is Screen.Detail -> DetailScreen(nav, s.type, s.id, s.openSources)
