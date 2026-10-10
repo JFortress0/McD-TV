@@ -40,6 +40,7 @@ fun SettingsScreen(nav: Nav) {
     var origin by remember { mutableStateOf(Prefs.origin) }
     var slow by remember { mutableStateOf(Prefs.slowConnection) }
     var intro by remember { mutableStateOf(Prefs.playIntro) }
+    var wallStart by remember { mutableStateOf(Prefs.wallStart) }
     var maxMovie by remember { mutableIntStateOf(Prefs.maxMovieGb) }
     var maxEpisode by remember { mutableIntStateOf(Prefs.maxEpisodeGb) }
     val rd by rememberLoad(Prefs.rdAccessToken) { if (RealDebrid.connected) RealDebrid.accountSummary() else "Not connected" }
@@ -57,6 +58,19 @@ fun SettingsScreen(nav: Nav) {
                     color = McdColors.Muted, fontSize = 16.sp,
                 )
                 ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
+            }
+
+            HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Jarvis Wall")
+                Text(
+                    if (com.mcd.tv.data.Wall.configured) "Photo frame and family calendar. Turn on \"Open in Wall\" on the wall TV."
+                    else "Photo frame and family calendar. Add the wall address and key on the Control page first.",
+                    color = McdColors.Muted, fontSize = 16.sp,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionButton("Open Wall", { nav.push(Screen.Wall) }, primary = true)
+                    ActionButton("Open in Wall on start: ${if (wallStart) "ON" else "OFF"}", { wallStart = !wallStart; Prefs.wallStart = wallStart })
+                }
             }
 
             HudPanel(Modifier.fillMaxWidth()) {

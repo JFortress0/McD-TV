@@ -81,6 +81,8 @@ sealed interface Screen {
     data class Taste(val profile: String) : Screen
     data object JoinHouse : Screen
     data object ConnectPhone : Screen
+    /** Jarvis Wall: photo frame and family calendar for a wall TV. */
+    data object Wall : Screen
     data object PhoneSetup : Screen
     data object RdConnect : Screen
     data object AccountPage : Screen
@@ -160,6 +162,7 @@ class MainActivity : ComponentActivity() {
             "services" -> Screen.Services
             "search" -> Screen.Search
             "ask" -> Screen.AskJarvis(askExtra)
+            "wall" -> Screen.Wall
             else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
         }
         setContent { McdTheme { App(startScreen) } }
@@ -177,6 +180,8 @@ private fun App(startScreen: Screen? = null) {
     val stack = remember {
         when {
             startScreen != null -> mutableStateListOf<Screen>(Screen.Home, startScreen)
+            // A wall TV opens straight into the Wall. BACK goes to Home.
+            Prefs.wallStart -> mutableStateListOf<Screen>(Screen.Home, Screen.Wall)
             Prefs.playIntro -> mutableStateListOf<Screen>(Screen.Intro)
             !com.mcd.tv.ui.ProfileStart.skip -> mutableStateListOf<Screen>(Screen.Profiles)
             else -> mutableStateListOf<Screen>(Screen.Home)
@@ -308,6 +313,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         is Screen.Taste -> com.mcd.tv.ui.TasteScreen(nav, s.profile)
         Screen.JoinHouse -> com.mcd.tv.ui.JoinHouseScreen(nav)
         Screen.ConnectPhone -> com.mcd.tv.ui.ConnectPhoneScreen(nav)
+        Screen.Wall -> com.mcd.tv.ui.WallScreen(nav)
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)
         Screen.AccountPage -> AccountScreen(nav)

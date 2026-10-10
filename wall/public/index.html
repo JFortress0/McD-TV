@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#02060A">
+<meta name="robots" content="noindex">
+<title>Jarvis Wall Photos</title>
+<style>
+:root{--bg:#02060A;--panel:rgba(6,23,34,.85);--line:#0E6A7A;--cyan:#00E5FF;--bright:#7DF9FF;--text:#EAFBFF;--muted:#8FB8C4;--amber:#FFB300;--coral:#FF4D6D}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg) radial-gradient(ellipse at top,#031018,var(--bg) 70%);color:var(--text);font:17px/1.4 "Rajdhani","Arial Narrow",Arial,sans-serif;padding:20px 16px 60px}
+h1{font:700 20px Orbitron,Arial,sans-serif;letter-spacing:3px;text-transform:uppercase;text-shadow:0 0 12px rgba(0,229,255,.7);margin:0 0 4px}
+h1 span{color:var(--cyan)}
+.sub{color:var(--muted);margin:0 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);padding:16px;margin-bottom:16px;clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+label{display:block;color:var(--muted);margin-bottom:6px}
+input[type=password]{width:100%;padding:12px;border:1px solid var(--line);background:#061722;color:var(--text);font:inherit}
+button,.pick{display:inline-block;margin-top:12px;background:var(--cyan);color:var(--bg);border:0;padding:13px 18px;font:700 16px inherit;font-family:inherit;text-transform:uppercase;letter-spacing:1px;cursor:pointer;clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+button.ghost{background:transparent;color:var(--cyan);border:1px solid var(--line)}
+.pick input{display:none}
+#msg{min-height:1.4em;color:var(--muted)}
+#msg.err{color:var(--coral)}#msg.ok{color:var(--cyan)}
+.bar{height:4px;background:#0A2230;margin-top:10px}.bar i{display:block;height:100%;width:0;background:var(--cyan);transition:width .2s}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.grid figure{margin:0;position:relative;aspect-ratio:1;background:#061722;overflow:hidden}
+.grid img{width:100%;height:100%;object-fit:cover;display:block}
+.grid button{position:absolute;top:4px;right:4px;margin:0;padding:4px 8px;font-size:12px;background:rgba(2,6,10,.8);color:var(--coral);border:1px solid var(--coral)}
+.count{font:500 12px Orbitron,Arial,sans-serif;letter-spacing:2px;color:var(--cyan);text-transform:uppercase;margin-bottom:10px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<h1><span>&#9673;</span> Jarvis Wall</h1>
+<p class="sub">Add photos to the wall TV. They rotate with the calendar.</p>
+
+<div class="card" id="signin">
+  <label for="code">Upload code</label>
+  <input id="code" type="password" autocomplete="current-password" placeholder="Enter the upload code">
+  <button id="go">Unlock</button>
+</div>
+
+<div id="main" class="hidden">
+  <div class="card">
+    <label class="pick">Add photos<input id="files" type="file" accept="image/*" multiple></label>
+    <button class="ghost" id="lock">Lock</button>
+    <div class="bar"><i id="prog"></i></div>
+    <p id="msg"></p>
+  </div>
+  <div class="card">
+    <div class="count" id="count">Photos</div>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const LONG_EDGE = 1920, QUALITY = 0.85;
+let code = "";
+try { code = localStorage.getItem("wall_code") || ""; } catch {}
+
+function say(t, cls) { $("msg").textContent = t; $("msg").className = cls || ""; }
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), "X-Wall-Key": code } });
+  if (r.status === 401) throw new Error("Wrong code.");
+  if (r.status === 403) throw new Error("This code can view but not upload.");
+  if (!r.ok) throw new Error("Server error " + r.status + ".");
+  return r;
+}
+
+async function unlock() {
+  code = $("code").value.trim() || code;
+  if (!code) return;
+  try {
+    await load();
+    try { localStorage.setItem("wall_code", code); } catch {}
+    $("signin").classList.add("hidden"); $("main").classList.remove("hidden");
+  } catch (e) {
+    $("signin").classList.remove("hidden"); $("main").classList.add("hidden");
+    alert(e.message);
+  }
+}
+
+async function load() {
+  const { photos } = await (await api("/api/photos")).json();
+  $("count").textContent = photos.length + (photos.length === 1 ? " photo" : " photos");
+  const g = $("grid"); g.innerHTML = "";
+  for (const id of photos) {
+    const f = document.createElement("figure");
+    const img = document.createElement("img");
+    img.loading = "lazy"; img.alt = "";
+    img.src = "/api/photos/" + id + "?key=" + encodeURIComponent(code);
+    const b = document.createElement("button"); b.textContent = "Remove";
+    b.onclick = async () => {
+      if (!confirm("Remove this photo from the wall?")) return;
+      try { await api("/api/photos/" + id, { method: "DELETE" }); f.remove(); load(); } catch (e) { say(e.message, "err"); }
+    };
+    f.append(img, b); g.append(f);
+  }
+}
+
+// Shrink to 1920 px on the long edge as JPEG. Browsers apply the photo's rotation tag when drawing.
+async function shrink(file) {
+  let src;
+  try { src = await createImageBitmap(file, { imageOrientation: "from-image" }); }
+  catch {
+    src = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error("Can't read " + file.name)); i.src = URL.createObjectURL(file); });
+  }
+  const w = src.width, h = src.height, s = Math.min(1, LONG_EDGE / Math.max(w, h));
+  const c = document.createElement("canvas"); c.width = Math.round(w * s); c.height = Math.round(h * s);
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+  return await new Promise((ok, bad) => c.toBlob((b) => b ? ok(b) : bad(new Error("Can't convert " + file.name)), "image/jpeg", QUALITY));
+}
+
+async function upload(files) {
+  let done = 0, failed = 0;
+  for (const f of files) {
+    say(`Sending ${done + failed + 1} of ${files.length}…`);
+    try { const blob = await shrink(f); await api("/api/photos", { method: "POST", body: blob, headers: { "Content-Type": "image/jpeg" } }); done++; }
+    catch (e) { failed++; console.warn(e); }
+    $("prog").style.width = Math.round(100 * (done + failed) / files.length) + "%";
+  }
+  say(failed ? `Added ${done}. ${failed} could not be read.` : `Added ${done}. The wall picks them up within 30 minutes.`, failed ? "err" : "ok");
+  setTimeout(() => { $("prog").style.width = "0"; }, 1500);
+  load().catch(() => {});
+}
+
+$("go").onclick = unlock;
+$("code").addEventListener("keydown", (e) => { if (e.key === "Enter") unlock(); });
+$("files").addEventListener("change", (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) upload(fs); });
+$("lock").onclick = () => { try { localStorage.removeItem("wall_code"); } catch {} code = ""; $("code").value = ""; $("main").classList.add("hidden"); $("signin").classList.remove("hidden"); };
+if (code) unlock();
+</script>
+</body>
+</html>

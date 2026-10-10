@@ -1,0 +1,10 @@
+{
+  "name": "jarvis-wall",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.4",
+    "@netlify/functions": "^6.0.2",
+    "ical.js": "2.2.1"
+  }
+}

@@ -2,7 +2,7 @@
 
 Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next.
 
-Last updated: 2026-10-08.
+Last updated: 2026-10-10.
 
 ## Names that must not change
 
@@ -71,6 +71,14 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 - Every TV has a house id and key. TVs in the same house share keys, addons, playlist, Real-Debrid and preferences. Profile data (history, My List, favorites) syncs separately through `data/sync/ProfileSync.kt` on the same topic; see `docs/ROADMAP-sync.md`.
 - Each TV listens on `mcdtv-<house id>-house`. Changes are sent encrypted (same format as the relay), in parts under ntfy's 4 KB limit, stamped with the change time. A TV takes a copy only when it is newer.
 - "Use its settings here" on the Control page joins another TV's house. "Copy once" copies everything except Real-Debrid and does not link the TVs.
+
+### Jarvis Wall (`wall/`, `data/Wall.kt`, `ui/WallScreen.kt`)
+
+- Photo frame plus merged family calendar for a wall TV (a Fire Stick in the Hisense Roku TV's HDMI port). QA screen `wall`.
+- `wall/` is a separate Netlify project, `jarvis-wall.netlify.app`, base directory `wall`. `/api/feed` merges the iCal links in the env var `WALL_CALENDARS` (they never leave Netlify) and adds Open-Meteo weather. `/api/photos` keeps photos in Netlify Blobs; the phone page at `/` uploads them. See `wall/README.md`.
+- Keys: `WALL_KEY` (read only, goes on the Control page) and `UPLOAD_CODE` (photo page). Prefs `wall_url` and `wall_key` sync between linked TVs. `wall_start` (open straight into the Wall) and `wall_cache` (last feed) are per TV.
+- Screen: photo on the left 62%, clock, weather, agenda and a "Due soon" box (calendars of kind `school`) on the right. Minute 9 of every 10 shows the month grid. OK switches views (holds 10 minutes), LEFT / RIGHT change photo. Screen kept on; dims 11 PM to 6 AM.
+- No java.time: days are yyyymmdd Ints (`Wall.Day`), because minSdk is 24.
 
 ### Web pages (`docs/`, GitHub Pages)
 

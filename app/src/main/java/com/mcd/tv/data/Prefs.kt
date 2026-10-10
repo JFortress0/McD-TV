@@ -138,6 +138,27 @@ object Prefs {
         get() = str("jarvis_model").ifBlank { "claude-sonnet-5-5" }
         set(v) = put("jarvis_model", v)
 
+    // ---- Jarvis Wall (calendar and photo frame) ----
+    /** Address of the jarvis-wall Netlify site. Shared with linked TVs. */
+    var wallUrl: String
+        get() = str("wall_url")
+        set(v) = put("wall_url", v)
+
+    /** Read-only wall key (WALL_KEY on Netlify). Shared with linked TVs. */
+    var wallKey: String
+        get() = str("wall_key")
+        set(v) = put("wall_key", v)
+
+    /** This TV opens straight into the Wall (no intro, no profile picker). This TV only, never synced. */
+    var wallStart: Boolean
+        get() = sp.getBoolean("wall_start", false)
+        set(v) = sp.edit().putBoolean("wall_start", v).apply()
+
+    /** Last calendar feed, shown at once after a restart or while offline. This TV only. */
+    var wallCache: String
+        get() = str("wall_cache")
+        set(v) = sp.edit().putString("wall_cache", v).apply()
+
     // ---- Live TV ----
     var m3uUrl: String
         get() = str("m3u_url")

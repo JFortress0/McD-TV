@@ -603,6 +603,9 @@ object Relay {
         if (d.has("us_only")) Prefs.usOnly = d.optBoolean("us_only")
         if (d.has("slow_connection")) Prefs.slowConnection = d.optBoolean("slow_connection")
         if (d.has("play_intro")) Prefs.playIntro = d.optBoolean("play_intro")
+        if (d.has("wall_url")) Prefs.wallUrl = d.optString("wall_url")
+        d.optString("wall_key").takeIf { it.isNotBlank() }?.let { Prefs.wallKey = it }
+        if (d.has("wall_start")) Prefs.wallStart = d.optBoolean("wall_start")
     }
 
     /** Sends the TV's current setup to the Control page (encrypted). */
@@ -625,6 +628,9 @@ object Relay {
             .put("us_only", Prefs.usOnly)
             .put("slow_connection", Prefs.slowConnection)
             .put("play_intro", Prefs.playIntro)
+            .put("wall_url", Prefs.wallUrl)
+            .put("wall_key_set", Prefs.wallKey.isNotBlank())
+            .put("wall_start", Prefs.wallStart)
             .put("rd_connected", RealDebrid.connected)
             .put("version", com.mcd.tv.BuildConfig.VERSION_NAME)
             .put("device_name", HouseSync.deviceName())

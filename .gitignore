@@ -12,3 +12,6 @@ server/data/
 __pycache__/
 *.pyc
 Claude outputs/
+
+node_modules/
+.netlify/
