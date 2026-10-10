@@ -105,7 +105,7 @@ fun TasteScreen(nav: Nav, profile: String) {
                 )
             }
         }
-        Text("Topics you like (comma separated), for example: stand-up comedy, mafia, navy seals", color = McdColors.White, fontSize = 16.sp)
+        Text("Topics you like (comma separated), for example: stand-up comedy, poker, mafia, navy seals", color = McdColors.White, fontSize = 16.sp)
         TasteField(likeText, { likeText = it })
         Text("Topics to skip (comma separated). Titles and live shows about these are left out of your suggestions.", color = McdColors.White, fontSize = 16.sp)
         TasteField(avoidText, { avoidText = it })

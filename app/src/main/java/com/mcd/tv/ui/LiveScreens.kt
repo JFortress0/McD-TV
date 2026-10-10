@@ -187,11 +187,12 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
     val gamesUi = rememberGamesUi()
     val leagues = GameBoard.visibleLeagues()
     val leagueCounts = leagues.map { GameBoard.gameCount(it) }
-    // For You: channels picked for this profile (habits, taste, what's on now). Rebuilt when the guide arrives.
-    var forYou by remember(index) { mutableStateOf<com.mcd.tv.data.LiveSection?>(null) }
+    // My Guide: channels picked for this profile (habits, taste, what's on now). Rebuilt when the guide arrives.
+    var forYouResult by remember(index) { mutableStateOf<com.mcd.tv.data.LiveForYou.Result?>(null) }
+    val forYou = forYouResult?.section
     val guideNow = LiveSession.guide
     LaunchedEffect(index, guideNow) {
-        forYou = runCatching { com.mcd.tv.data.LiveForYou.build(index, Prefs.liveFavorites.toHashSet(), guideNow) }.getOrNull()
+        forYouResult = runCatching { com.mcd.tv.data.LiveForYou.build(index, Prefs.liveFavorites.toHashSet(), guideNow) }.getOrNull()
     }
     val forYouCount = forYou?.count ?: 0
     val entries = remember(index, favItems.size, recentItems.size, leagues, leagueCounts, forYouCount) {
@@ -203,7 +204,7 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
             }
             add(RailEntry(KEY_SEARCH, "⌕  Search", null))
             add(RailEntry(KEY_FAV, "★  Favorites", favItems.size))
-            if (forYouCount > 0) add(RailEntry(KEY_FORYOU, "✦  For You", forYouCount))
+            if (forYouCount > 0) add(RailEntry(KEY_FORYOU, "✦  My Guide", forYouCount))
             if (recentItems.isNotEmpty()) add(RailEntry(KEY_RECENT, "Recent", recentItems.size))
             index.sections.forEach { add(RailEntry(SEC + it.name, it.name, it.count)) }
             add(RailEntry(KEY_ALL, "All channels", index.size))
@@ -299,6 +300,28 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
                     val league = League.entries.firstOrNull { GAME + it.name == sel } ?: League.NFL
                     // Keyed by league: each one starts at its own top (and focus target).
                     androidx.compose.runtime.key(sel) { GamesPane(league, index, guide, gamesUi, play, restoreFocus) }
+                } else if (sel == KEY_FORYOU && guide.isNotEmpty() && forYou != null) {
+                    // Old-school TV guide of this profile's channels, its kind of shows lit up.
+                    MyGuidePane(
+                        index = index,
+                        items = forYou.items,
+                        matcher = forYouResult?.matcher,
+                        guide = guide,
+                        now = now,
+                        favSet = favSet,
+                        lastPlayed = lastPlayed,
+                        restoreFocus = restoreFocus,
+                        onPlay = play,
+                        onMenu = toggleFavorite,
+                        onFocusChannel = { ch, name ->
+                            if (ch != null) {
+                                hint.channel = ch
+                                hint.name = name
+                            } else {
+                                hint.channel = null
+                            }
+                        },
+                    )
                 } else if (sel == KEY_SEARCH) {
                     SearchPane(
                         index, favSet, guide, now, hint, lastPlayed, restoreFocus, play, toggleFavorite,
@@ -312,7 +335,7 @@ private fun LiveBrowser(nav: Nav, index: LiveIndex) {
                     val (title, base) = when (sel) {
                         KEY_FAV -> "Favorites" to favView
                         KEY_RECENT -> "Recent" to recentItems
-                        KEY_FORYOU -> "For You" to (forYou?.items ?: IntArray(0))
+                        KEY_FORYOU -> "My Guide" to (forYou?.items ?: IntArray(0))
                         KEY_ALL -> "All channels" to index.all
                         else -> (section?.name ?: "Channels") to (section?.items ?: IntArray(0))
                     }
