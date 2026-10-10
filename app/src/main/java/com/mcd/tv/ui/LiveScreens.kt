@@ -267,6 +267,10 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
             nav.push(Screen.LivePlay(pos))
         }
     }
+    // Favorites changed on a phone while this TV was off: apply them, then show them.
+    LaunchedEffect(Unit) {
+        if (com.mcd.tv.data.HouseCloud.pullLiveFavorites(Prefs.activeProfile)) favorites = Prefs.liveFavorites
+    }
     val toggleFavorite: (Channel) -> Unit = { ch ->
         Prefs.toggleLiveFavorite(ch.url)
         favorites = Prefs.liveFavorites
