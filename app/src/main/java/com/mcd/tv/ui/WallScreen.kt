@@ -283,10 +283,10 @@ private fun ColumnScope.AgendaPanel(feed: Wall.Feed?, now: Long, error: String?)
         }
     }
 
-    // School due dates in the next 10 days, so they never hide below the fold.
+    // School due dates in the next 10 days (school calendars, or titles starting with "SNHU"), so they never hide below the fold.
     val due = remember(feed, today) {
         feed.events.filter { e ->
-            feed.sources.getOrNull(e.source)?.kind == "school" &&
+            (feed.sources.getOrNull(e.source)?.kind == "school" || e.title.startsWith("SNHU", ignoreCase = true)) &&
                 e.lastDay >= today && e.firstDay <= Day.plus(today, 10) &&
                 (e.end ?: Long.MAX_VALUE) >= now
         }.take(3)
@@ -501,7 +501,7 @@ private fun timeLabel(e: Wall.Event, day: Int): String {
     val fmt = SimpleDateFormat("h:mm a", Locale.US)
     return when {
         e.firstDay < day -> "Until " + fmt.format(Date(en))
-        en - s < 60_000 -> fmt.format(Date(s)) // a deadline, not a meeting
+        en - s <= 60_000 -> fmt.format(Date(s)) // a deadline, not a meeting
         else -> fmt.format(Date(s)) + " to " + fmt.format(Date(en))
     }
 }
