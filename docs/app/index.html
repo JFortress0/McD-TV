@@ -3488,13 +3488,17 @@ const LV = (() => {
     return (SCHED[L.id] = { at: Date.now(), games, week, ok: res.some(Boolean) });
   }
   const words = (t) => String(t || "").toLowerCase().replace(/&/g, " and ").split(/[^a-z0-9+]+/).filter(Boolean);
-  function hasPhrase(w, p) { const q = words(p); if (!q.length) return false; for (let i = 0; i + q.length <= w.length; i++) { let ok = true; for (let k = 0; k < q.length; k++) if (w[i + k] !== q[k]) { ok = false; break; } if (ok) return true; } return false; }
+  const PQ = new Map();
+  function hasPhrase(w, p) { let q = PQ.get(p); if (!q) PQ.set(p, (q = words(p))); if (!q.length) return false; for (let i = 0; i + q.length <= w.length; i++) { let ok = true; for (let k = 0; k < q.length; k++) if (w[i + k] !== q[k]) { ok = false; break; } if (ok) return true; } return false; }
   const OTHER_SPORT = { football: /\b(nba|mlb|nhl|wnba|baseball|basketball|hockey|soccer|mls|premier)\b/, basketball: /\b(nfl|ncaaf|mlb|nhl|football|baseball|hockey|soccer|redzone)\b/, baseball: /\b(nfl|ncaaf|nba|nhl|football|basketball|hockey|soccer|redzone)\b/, hockey: /\b(nfl|ncaaf|nba|mlb|football|basketball|baseball|soccer|redzone)\b/, soccer: /\b(nfl|ncaaf|nba|mlb|nhl|basketball|baseball|hockey|redzone)\b/ };
   // ESPN network name -> channel-name phrases.
   const NETS = { CBS: ["cbs"], FOX: ["fox"], NBC: ["nbc"], ABC: ["abc"], ESPN: ["espn"], ESPN2: ["espn2", "espn 2"], ESPNU: ["espnu"], ESPNEWS: ["espnews"], "ESPN+": ["espn plus", "espn+"],
     FS1: ["fs1", "fox sports 1"], FS2: ["fs2", "fox sports 2"], "NFL Net": ["nfl network"], "NFL Network": ["nfl network"], NFLN: ["nfl network"], TNT: ["tnt"], TBS: ["tbs"], truTV: ["trutv", "tru tv"],
     "NBA TV": ["nba tv"], "MLB Network": ["mlb network"], MLBN: ["mlb network"], "NHL Network": ["nhl network"], "SEC Network": ["sec network"], SECN: ["sec network"], "ACC Network": ["acc network"], ACCN: ["acc network"],
     BTN: ["big ten network", "btn"], "Big Ten Network": ["big ten network", "btn"], CBSSN: ["cbs sports network"], "CBS Sports Network": ["cbs sports network"], USA: ["usa network"], Peacock: ["peacock"], "Prime Video": ["prime video", "amazon prime"], Netflix: ["netflix"], "Apple TV": ["apple tv", "mls season pass"] };
+  // Words and lower-case text of each channel, worked out once per playlist (16,000 channels: games open fast).
+  function chW(i) { const c = st.wc || (st.wc = []); return c[i] || (c[i] = words(st.list[i].raw)); }
+  function chT(i) { const c = st.tc || (st.tc = []); return c[i] || (c[i] = (st.list[i].group + " " + st.list[i].raw).toLowerCase()); }
   function channelsFor(g) {
     const list = st.list || [], fav = favs(), out = new Map();
     const sportsy = (ch) => ch.sec === "Sports" || ch.sec === "Events & PPV";
@@ -3503,8 +3507,8 @@ const LV = (() => {
     const A = team(g.away), H = team(g.home);
     const offer = (i, score, why) => { const ch = list[i]; const s = score + (fav.has(favKey(ch.url)) ? 25 : 0) + (/\b(hd|fhd)\b/i.test(ch.raw) ? 1 : 0); const o = out.get(i); if (!o || o.score < s) out.set(i, { i, score: s, why }); };
     list.forEach((ch, i) => {
-      const t = (ch.group + " " + ch.raw).toLowerCase(); if (other.test(t)) return;
-      const w = words(ch.raw);
+      const t = chT(i); if (other.test(t)) return;
+      const w = chW(i);
       const a = A.some((p) => hasPhrase(w, p)), h = H.some((p) => hasPhrase(w, p));
       if (a && h) offer(i, 100, "This game");
       // One team only: the channel must also name the league ("NFL 02: Eagles at ..."), so other sports' Eagles stay out.
@@ -3513,7 +3517,7 @@ const LV = (() => {
     g.casts.forEach((b, order) => {
       const phrases = NETS[b] || [b.toLowerCase()];
       const found = [];
-      list.forEach((ch, i) => { const w = words(ch.raw); if (!phrases.some((p) => hasPhrase(w, p))) return; if (other.test((ch.group + " " + ch.raw).toLowerCase())) return; if (ch.sec === "International") return; found.push(i); });
+      list.forEach((ch, i) => { const w = chW(i); if (!phrases.some((p) => hasPhrase(w, p))) return; if (other.test(chT(i))) return; if (ch.sec === "International") return; found.push(i); });
       found.slice(0, 40).forEach((i) => offer(i, 60 - order * 5 + (list[i].sid ? 3 : 0), b));
     });
     const seen = new Set();
@@ -3521,7 +3525,7 @@ const LV = (() => {
   }
   function leagueChannels(L) {
     const list = st.list || [], fav = favs(), hits = [];
-    list.forEach((ch, i) => { const w = words(ch.raw); const k = L.league.findIndex((p) => hasPhrase(w, p)); if (k >= 0 && (ch.sec === "Sports" || ch.sec === "Events & PPV")) hits.push({ i, s: 100 - k + (fav.has(favKey(ch.url)) ? 50 : 0) }); });
+    list.forEach((ch, i) => { const w = chW(i); const k = L.league.findIndex((p) => hasPhrase(w, p)); if (k >= 0 && (ch.sec === "Sports" || ch.sec === "Events & PPV")) hits.push({ i, s: 100 - k + (fav.has(favKey(ch.url)) ? 50 : 0) }); });
     const seen = new Set();
     return hits.sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.i).filter((i) => { const k = list[i].name.toLowerCase().replace(/\W+/g, ""); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
   }
@@ -4124,7 +4128,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.19";
+const BUILD = "2026-10-10.20";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
