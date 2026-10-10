@@ -492,6 +492,8 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
   .lv-wrap #lvChips .chip{text-align:left;display:flex;justify-content:space-between;gap:8px}
 }
 #lvChips .chip span+span{margin-left:8px;opacity:.75}
+.ho-ask{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;width:min(520px,calc(100% - 32px));background:var(--card);border:1px solid var(--accent);clip-path:var(--cut);padding:14px 16px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.ho-ask p{margin:6px 0 10px}
 .lv-list{display:flex;flex-direction:column;gap:8px;margin-top:6px}
 .lv-row{display:grid;grid-template-columns:88px minmax(0,170px) minmax(0,1fr) minmax(0,200px);gap:14px;align-items:center;width:100%;min-height:72px;padding:8px 12px;border:1px solid var(--line);background:var(--card);clip-path:var(--cut);cursor:pointer;color:var(--white);text-align:left;font:inherit;transition:border-color .15s,filter .15s}
 .lv-row:hover,.lv-row:focus-visible{border-color:var(--accent);filter:drop-shadow(0 0 8px rgba(0,229,255,.45));outline:none}
@@ -646,7 +648,7 @@ function origin() {
 const usOnly = () => !S.init || S.init.us_only !== false;
 function lists() {
   const i = S.plists[S.profile || "p1"] || {};
-  return { watchlist: i.watchlist || [], favorites: i.favorites || [], cont: i.continue || [], live: i.live_favorites || [] };
+  return { watchlist: i.watchlist || [], favorites: i.favorites || [], cont: RC.mergeCont(i.continue || []), live: i.live_favorites || [] };
 }
 function savePlists() { LS.set(PLISTS_KEY, JSON.stringify(S.plists)); }
 function profiles() {
@@ -678,6 +680,190 @@ const jarvisKey = () => (jarvisLocalOn() ? LS.get(JKEY) : "");
 const inWL = (type, id) => lists().watchlist.some((r) => r.type === type && +r.id === +id);
 const contFor = (type, id) => lists().cont.find((r) => r.type === type && +r.id === +id);
 function saveInit() { if (S.init) { LS.set(INIT_KEY, JSON.stringify(S.init)); if (typeof backupAddons === "function") backupAddons(); } }
+
+// ---------- resume sync (cloud) ----------
+// Where each profile left off, shared with the house's TVs through the Jarvis relay (rd-proxy/netlify/functions/
+// resume.mts), so the TV and the phone pick up where the other stopped, even when the TV is off. Encrypted here
+// with a key from the house key (the TV sends it with its settings); the relay sees only tags and ciphertext.
+// Same format as the TV (app/src/main/java/com/mcd/tv/data/ResumeCloud.kt).
+const RC = (() => {
+  const URL_R = "https://jarvis-rd.netlify.app/resume";
+  const last = {}; // profile -> newest first [{type, id, name, poster, backdrop, season, episode, pos, dur, at}]
+  const inflight = {};
+  let K = null, kFor = "";
+  const b64u = (u8) => { let s = ""; for (const b of u8) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+  const unb64u = (s) => { s = String(s).replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); };
+  const houseKey = () => { const h = S.init && S.init.house; return h ? String(h).split(".")[1] || "" : ""; };
+  async function keys() {
+    const hk = houseKey();
+    if (!hk || !(window.crypto && crypto.subtle)) return null;
+    if (K && kFor === hk) return K;
+    const mac = await crypto.subtle.importKey("raw", unb64u(hk), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const sign = async (label) => new Uint8Array(await crypto.subtle.sign("HMAC", mac, new TextEncoder().encode("jarvis-resume|" + label)));
+    const aes = await crypto.subtle.importKey("raw", await sign("enc"), "AES-GCM", false, ["encrypt", "decrypt"]);
+    const tag = async (label) => b64u(await sign(label)).slice(0, 22);
+    K = { tag, aes, house: await tag("house") }; kFor = hk;
+    return K;
+  }
+  const pid = () => S.profile || "p1";
+  async function list(profile = pid(), force = false) {
+    const k = await keys(); if (!k) return [];
+    const c = inflight[profile];
+    if (c && !force && Date.now() - c.at < 20000) return c.p;
+    const p = (async () => {
+      try {
+        const r = await fetch(`${URL_R}?h=${k.house}&p=${await k.tag("profile|" + profile)}`, { cache: "no-store" });
+        if (!r.ok) return last[profile] || [];
+        const j = await r.json(), out = [];
+        for (const rec of Object.values(j.e || {})) {
+          try {
+            const all = unb64u(rec.v);
+            const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, k.aes, all.slice(12));
+            const o = JSON.parse(new TextDecoder().decode(pt));
+            let pos = +o.pos || 0, at = +o.at || 0;
+            if (rec.pp != null && +rec.pt > at) { pos = +rec.pp * 1000; at = +rec.pt; } // a player app reported it
+            if (o.type && o.id) out.push({ ...o, id: +o.id, season: +o.season || 0, episode: +o.episode || 0, pos, dur: +o.dur || 0, at });
+          } catch {}
+        }
+        out.sort((a, b) => b.at - a.at);
+        last[profile] = out;
+        return out;
+      } catch { return last[profile] || []; }
+    })();
+    inflight[profile] = { at: Date.now(), p };
+    return p;
+  }
+  /** Saves one position. opts.nh: hash of a one-time code a player app can use to report where it stopped. */
+  async function push(m, pos, dur, opts = {}) {
+    const k = await keys(); if (!k || !m || !m.type || !m.id) return null;
+    const profile = pid(), at = Date.now();
+    const o = { type: m.type, id: +m.id, name: m.name || "", poster: m.poster || "", backdrop: m.backdrop || "",
+      season: +m.season || 0, episode: +m.episode || 0, pos: Math.max(0, Math.round(pos)), dur: Math.max(0, Math.round(dur || 0)), at };
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k.aes, new TextEncoder().encode(JSON.stringify(o))));
+    const v = new Uint8Array(12 + ct.length); v.set(iv); v.set(ct, 12);
+    const tk = await k.tag("title|" + m.type + ":" + m.id), ptag = await k.tag("profile|" + profile);
+    // Update the local copy right away (Continue Watching, the next resume).
+    const L = (last[profile] || []).filter((x) => !(x.type === o.type && +x.id === o.id));
+    last[profile] = [o, ...L];
+    try {
+      await fetch(`${URL_R}?h=${k.house}&p=${ptag}`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify({ k: tk, t: at, v: b64u(v), ...(opts.nh ? { nh: opts.nh } : {}) }), keepalive: true });
+    } catch {}
+    return { house: k.house, ptag, tk };
+  }
+  const peekFor = (type, id, profile = pid()) => (last[profile] || []).find((x) => x.type === type && +x.id === +id) || null;
+  /** Continue Watching: titles from the cloud (newest first), then the TV's list for the rest. */
+  function mergeCont(snap) {
+    const cl = last[pid()] || [];
+    if (!cl.length) return snap;
+    const seen = new Set(), out = [];
+    for (const r of cl) {
+      seen.add(r.type + ":" + r.id);
+      const prog = r.dur > 0 ? r.pos / r.dur : 0;
+      if (r.pos > 60000 && prog < 0.92) out.push({ type: r.type, id: r.id, season: r.season, episode: r.episode, progress: Math.round(prog * 100) / 100, at: r.at });
+    }
+    for (const x of snap) if (!seen.has(x.type + ":" + x.id)) out.push(x);
+    return out;
+  }
+  let sig = "";
+  /** Fetch, and redraw the list rows when something changed. */
+  function refresh() {
+    list(pid()).then((l) => {
+      const s2 = l.map((x) => x.type + x.id + ":" + x.at).join(",");
+      if (s2 !== sig) { const first = !sig && !l.length; sig = s2; if (!first) onListsChanged(); }
+    }).catch(() => {});
+  }
+  return { list, push, peekFor, mergeCont, refresh, b64u, ready: () => !!houseKey() };
+})();
+
+/**
+ * Where to start [m]: the newest of this browser's saved spot and the house's (cloud) for this exact
+ * episode, else the TV's Continue Watching. Milliseconds; 0 = from the start (or finished).
+ */
+function resumeAt(m, durMs) {
+  const saved = getPos(m);
+  const cl = RC.peekFor(m.type, m.id);
+  const cands = [];
+  if (saved) cands.push({ p: saved.p, at: saved.at || 0 });
+  if (cl && (m.type !== "tv" || (cl.season === +m.season && cl.episode === +m.episode))) cands.push({ p: cl.pos, at: cl.at });
+  cands.sort((a, b) => b.at - a.at);
+  const dur = durMs || (cl && cl.dur) || (saved && saved.d) || 0;
+  const top = cands[0];
+  if (top) return top.p > 30000 && (!dur || top.p < dur * 0.95) ? top.p : 0;
+  const c = lists().cont.find((r) => r.type === m.type && +r.id === +m.id);
+  if (c && dur && (m.type !== "tv" || (c.season === +m.season && c.episode === +m.episode)) && c.progress > 0.02 && c.progress < 0.92) return c.progress * dur;
+  return 0;
+}
+
+/**
+ * Infuse link that starts at [startMs] and, when Infuse closes, opens Jarvis's resume page with where it
+ * stopped (Infuse x-callback-url "position"; the page saves it for the house). Plain link if that can't be set up.
+ */
+async function infuseLink(m, direct, startMs, durMs) {
+  let link = "infuse://x-callback-url/play?url=" + encodeURIComponent(direct);
+  if (startMs > 30000) link += "&position=" + Math.floor(startMs / 1000);
+  try {
+    if (!RC.ready()) return link;
+    const n = RC.b64u(crypto.getRandomValues(new Uint8Array(18)));
+    const nh = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(n)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const r = await RC.push(m, startMs, durMs, { nh });
+    if (!r) return link;
+    const page = location.origin + location.pathname.replace(/[^/]*$/, "") + "resume.html";
+    link += "&x-success=" + encodeURIComponent(`${page}?h=${r.house}&p=${r.ptag}&k=${r.tk}&n=${n}&d=${Math.round((durMs || 0) / 1000)}`);
+  } catch {}
+  return link;
+}
+
+// ---------- hand-off to a player app (VLC): where you stopped ----------
+// VLC can't report back, so Jarvis remembers when it handed a title over; when you come back it estimates
+// where you stopped (start + time away, at most the length) and asks before saving it.
+const HANDOFF_KEY = "mcdtv_web_handoff";
+function noteHandoff(m, startMs, durMs) {
+  LS.set(HANDOFF_KEY, JSON.stringify({ m: { type: m.type, id: m.id, name: m.name, poster: m.poster, backdrop: m.backdrop, season: m.season, episode: m.episode, label: m.label || m.name },
+    start: Math.round(startMs || 0), dur: Math.round(durMs || 0), t0: Date.now(), profile: S.profile || "p1" }));
+}
+function askHandoff() {
+  const h = readJSON(HANDOFF_KEY);
+  if (!h || !h.m || $("#hoAsk")) return;
+  const away = Date.now() - (+h.t0 || 0);
+  if (away < 3 * 60000) return; // back within 3 minutes: nothing to save yet (ask on a later return)
+  if (away > 8 * 3600000 || (h.profile || "p1") !== (S.profile || "p1")) { LS.del(HANDOFF_KEY); return; }
+  const dur = +h.dur || 0;
+  let est = (+h.start || 0) + away;
+  if (dur) est = Math.min(est, dur);
+  const box = document.createElement("div");
+  box.id = "hoAsk"; box.className = "ho-ask"; box.setAttribute("role", "dialog");
+  const draw = () => {
+    box.innerHTML = `<b>Where did you stop in ${esc(h.m.label || h.m.name || "this")}?</b>
+      <p class="muted">About <b style="color:var(--white)">${fmtTime(est / 1000)}</b>${dur ? " of " + fmtTime(dur / 1000) : ""}, from how long you were away. Adjust if needed.</p>
+      <div class="rowf" style="gap:8px;flex-wrap:wrap">
+        <button class="btn small" type="button" data-ho="-600">-10 min</button><button class="btn small" type="button" data-ho="-60">-1 min</button>
+        <button class="btn small" type="button" data-ho="60">+1 min</button><button class="btn small" type="button" data-ho="600">+10 min</button></div>
+      <div class="rowf" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn small primary" type="button" data-ho="save">Save my spot</button>
+        ${dur ? `<button class="btn small" type="button" data-ho="done">I finished it</button>` : ""}
+        <button class="btn small" type="button" data-ho="skip">Didn't watch</button></div>`;
+  };
+  draw();
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ho]"); if (!b) return;
+    const a = b.dataset.ho;
+    if (a === "save" || a === "done") {
+      const p = a === "done" ? dur : est;
+      setPos(h.m, p, dur || p);
+      RC.push(h.m, p, dur || p);
+      if (S.link && S.key) relaySend({ cmd: "progress", type: h.m.type, id: h.m.id, season: h.m.season, episode: h.m.episode, position_ms: Math.round(p), duration_ms: Math.round(dur || p),
+        name: h.m.name, poster: h.m.poster || "", backdrop: h.m.backdrop || "", ts: Date.now(), profile: h.profile || "p1" }).catch(() => {});
+      toast(a === "done" ? "Marked as watched" : "Saved. Any TV picks up at " + fmtTime(p / 1000), "ok");
+    }
+    if (a === "save" || a === "done" || a === "skip") { LS.del(HANDOFF_KEY); box.remove(); onListsChanged(); return; }
+    est = Math.max(0, Math.min(dur || Infinity, est + (+a) * 1000)); draw();
+  });
+  document.body.appendChild(box);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { setTimeout(askHandoff, 600); RC.refresh(); } });
+window.addEventListener("pageshow", () => setTimeout(askHandoff, 800));
 
 // ---------- relay ----------
 function setStatus(s) {
@@ -1093,6 +1279,8 @@ async function route() {
     return;
   }
   if (needsKey && !keys().tmdb) { v.innerHTML = noKeyHTML(); return; }
+  // Resume positions from the house's other devices (Continue Watching, Resume, where playback starts).
+  if (["home", "list", "title", "sources"].includes(name)) RC.refresh();
   switch (name) {
     case "home": renderHome(v, tok); break;
     case "browse": path[1] ? renderGrid(v, tok, path[1], q) : renderBrowse(v); break;
@@ -1888,17 +2076,14 @@ function addonPanelHTML() {
     <div class="rowf" style="margin-top:10px"><input id="addonIn" type="url" placeholder="https://…/manifest.json" autocomplete="off"><button class="btn small primary" data-act="addonadd">Add</button></div>`;
 }
 // Which app opens files a browser can't play (MKV, DTS and Dolby audio; IPTV channels): "vlc", "infuse", "iina" or "ask".
-// Default: IINA on a Mac (free, plays everything, opens links from web pages), Infuse on iPhone and iPad.
+// Default: IINA on a Mac (free, plays everything, opens links from web pages), VLC on iPhone and iPad.
 const EXT_KEY = "mcdtv_web_extplayer";
-// Oct 2026: the house switched phones from VLC to Infuse (Infuse can start where you left off and report
-// where you stopped). Once per device, a saved "VLC" choice becomes Infuse; picking VLC again sticks.
-try { if (!localStorage.getItem("mcdtv_web_ext_mig1")) { if (localStorage.getItem(EXT_KEY) === "vlc") localStorage.setItem(EXT_KEY, "infuse"); localStorage.setItem("mcdtv_web_ext_mig1", "1"); } } catch {}
 const isMac = (() => { try { return /Mac/.test(navigator.platform) && !(navigator.maxTouchPoints > 1); } catch { return false; } })();
 const extPref = () => {
   const v = LS.get(EXT_KEY);
   if (v === "ask") return v;
   if (isMac) return "iina"; // VLC and Infuse links only open their iPhone apps
-  return v === "vlc" ? v : "infuse"; // Infuse unless VLC was picked: it can resume where you left off
+  return v === "infuse" ? v : "vlc"; // Infuse (Pro for Dolby / DTS files) only when picked
 };
 const EXT_NAME = { vlc: "VLC", infuse: "Infuse", iina: "IINA" };
 // Many IPTV providers only answer player apps they know. IINA (mpv) identifies itself as VLC for live channels:
@@ -2350,11 +2535,15 @@ async function renderSources(v, tok, type, id, q) {
     const box = document.createElement("div");
     box.className = "panel"; box.id = "extBox"; box.style.margin = "12px 0";
     const auto = extPref();
+    // Where this profile left off (any device). VLC and IINA can't start there: the time is shown to skip to.
+    const durGuess = (meta.runtimeMin || 0) * 60000;
+    const startMs = resumeAt(meta, durGuess);
+    const pick = startMs > 0 ? `<p style="margin-top:8px"><b>Pick up at ${fmtTime(startMs / 1000)}</b> <span class="muted">(where you left off${auto === "infuse" ? "; Infuse starts there" : ". Skip ahead to it in the player"})</span></p>` : "";
     box.innerHTML = `<h2>${auto === "ask" ? "Ready. Open it in a player app" : "Opening in " + EXT_NAME[auto] + "…"}</h2>
-      <p class="muted">${esc(SI.info(s).sizeLabel || "")} ${esc(ext)} file. Browsers can't play ${esc(ext)}. ${isMac ? `IINA (free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>) plays it, sound and all.` : "VLC (free on the App Store) plays it, sound and all."}</p>
+      <p class="muted">${esc(SI.info(s).sizeLabel || "")} ${esc(ext)} file. Browsers can't play ${esc(ext)}. ${isMac ? `IINA (free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>) plays it, sound and all.` : "VLC (free on the App Store) plays it, sound and all."}</p>${pick}
       <div class="rowf" style="margin-top:10px;flex-wrap:wrap;gap:8px">
         ${isMac ? `<a class="btn small primary" href="iina://weblink?url=${u}">Open in IINA</a>` : `<a class="btn small primary" href="vlc-x-callback://x-callback-url/stream?url=${u}">Open in VLC</a>
-        <a class="btn small" href="infuse://x-callback-url/play?url=${u}">Open in Infuse</a>`}
+        <a class="btn small" id="extInfuse" href="infuse://x-callback-url/play?url=${u}">Open in Infuse</a>`}
         <button class="btn small" type="button" id="extCopy">Copy link</button>
         ${res.rdId ? `<a class="btn small" href="https://real-debrid.com/streaming-${encodeURIComponent(res.rdId)}" target="_blank" rel="noopener">Real-Debrid player</a>` : ""}
       </div>
@@ -2366,8 +2555,19 @@ async function renderSources(v, tok, type, id, q) {
     });
     box.scrollIntoView({ behavior: "smooth", block: "start" });
     lock(false);
+    // When you come back, Jarvis asks where you stopped (VLC can't say); Infuse reports it itself.
+    $$("a.btn", box).forEach((a) => { if (/^(vlc|iina|infuse)/.test(a.getAttribute("href") || "")) a.addEventListener("click", () => noteHandoff(meta, startMs, durGuess)); });
+    const inf = isMac ? Promise.resolve("") : infuseLink(meta, res.direct, startMs, durGuess);
+    inf.then((l) => { const a = $("#extInfuse", box); if (a && l) a.href = l; });
     // Hand the file straight to the chosen app. iPhone may ask "Open in VLC?" the first time: tap Open.
-    if (auto !== "ask") setTimeout(() => { if (tok === routeTok) location.href = extUrl(auto, res.direct); }, 400);
+    if (auto !== "ask") {
+      setTimeout(async () => {
+        if (tok !== routeTok) return;
+        if (auto === "infuse") { location.href = (await inf) || extUrl(auto, res.direct); return; }
+        noteHandoff(meta, startMs, durGuess);
+        location.href = extUrl(auto, res.direct);
+      }, 400);
+    }
   }
   listEl.addEventListener("click", async (e) => {
     if (e.target.closest("#showHidden")) {
@@ -2445,6 +2645,7 @@ function renderPlayer(v, tok, type, id, q) {
     if (!(pos > 5000) || !(dur > 0)) return;
     setPos(m, pos, dur);
     lastSave = Date.now();
+    if (sendTv) RC.push(m, Math.min(pos, dur), dur); // the house's other devices (every 2 minutes, and on pause / leave)
     if (sendTv && S.link && S.key) {
       lastRelay = Date.now();
       relaySend({ cmd: "progress", type: m.type, id: m.id, season: m.season, episode: m.episode,
@@ -2461,15 +2662,8 @@ function renderPlayer(v, tok, type, id, q) {
     clearTimeout(watchdog);
     if (resumed) return;
     resumed = true;
-    const dur = durMs();
-    const saved = getPos(m);
-    let at = 0;
-    if (saved && saved.p > 30000 && (!dur || saved.p < dur * 0.95)) at = saved.p / 1000;
-    else {
-      // Nothing saved here: pick up where the TV left off (Continue Watching).
-      const c = contFor(m.type, m.id);
-      if (c && dur && (m.type !== "tv" || (c.season === m.season && c.episode === m.episode)) && c.progress > 0.02 && c.progress < 0.92) at = (c.progress * dur) / 1000;
-    }
+    // Pick up where this profile left off on any device (this browser, the cloud, the TV's list).
+    const at = resumeAt(m, durMs()) / 1000;
     if (at > 0) { try { vid.currentTime = at; toast("Resumed at " + fmtTime(at)); } catch {} }
   });
   vid.addEventListener("timeupdate", () => {
@@ -3146,7 +3340,7 @@ function renderSettings(v) {
       <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small${p.id === S.profile ? " primary" : ""}" data-act="setprofile" data-pid="${p.id}"${p.id === S.profile ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</div>
     </div>
     <div class="panel"><h2>Real-Debrid on this device</h2><div id="rdPanel">${rdPanelHTML()}</div></div>
-    <div class="panel"><h2>Player app</h2><p class="muted">Browsers can't play MKV files or DTS and Dolby sound. Jarvis hands those to this app. ${isMac ? `On a Mac: IINA, free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : "Movies and shows: Infuse (it picks up where you left off). Live TV channels always open in VLC. Both are free on the App Store."}</p>
+    <div class="panel"><h2>Player app</h2><p class="muted">Browsers can't play MKV files or DTS and Dolby sound. Jarvis hands those to this app. ${isMac ? `On a Mac: IINA, free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : "VLC is free on the App Store. Infuse also works for movies and shows (it starts where you left off), but most files need Infuse Pro. Live TV channels always open in VLC. Tip: with your Real-Debrid API token saved below, most movies and shows play right here instead, and pick up where you left off on any TV."}</p>
       <div class="rowf" style="margin-top:10px">${extPrefSelect("extPrefSet")}</div></div>
     <div class="panel"><h2>Addons on this device</h2>${addonPanelHTML()}</div>
     <div class="panel"><h2>Ask Jarvis</h2>
@@ -3419,7 +3613,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.7";
+const BUILD = "2026-10-10.8";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;

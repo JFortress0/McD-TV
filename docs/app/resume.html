@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>Jarvis</title>
+<style>
+  :root { --bg:#02060A; --card:#061722; --line:#0E6A7A; --accent:#00E5FF; --white:#EAFBFF; --muted:#8FB8C4; }
+  html, body { margin:0; background:var(--bg); color:var(--white); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:520px; margin:12vh auto 0; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); padding:20px; }
+  h1 { font-size:20px; letter-spacing:1px; margin:0 0 8px; }
+  p { color:var(--muted); margin:6px 0; }
+  b { color:var(--white); }
+  a.btn { display:inline-block; margin-top:14px; background:var(--accent); color:#02060A; font-weight:700; text-decoration:none; padding:10px 16px; }
+</style>
+</head>
+<body>
+<main><div class="card"><h1 id="t">Saving where you stopped…</h1><p id="m"></p>
+  <a class="btn" id="back" href="./">Back to Jarvis</a></div></main>
+<script>
+"use strict";
+// Infuse opens this page when it closes (x-success). It adds "position" (seconds) to the link Jarvis gave it.
+// The link carries opaque tags and a one-time code: the Jarvis relay saves the position for that title, and
+// every TV and phone of the house resumes there. Nothing here can read what you watched.
+(async () => {
+  const all = new URLSearchParams(location.search + "&" + location.hash.replace(/^#/, ""));
+  const get = (k) => all.getAll(k).filter(Boolean).pop() || "";
+  const pos = Math.floor(+get("position") || 0), d = Math.floor(+get("d") || 0);
+  const fmt = (s) => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
+  const T = document.getElementById("t"), M = document.getElementById("m");
+  // Keep the link (and its one-time code) out of history.
+  try { history.replaceState(null, "", location.pathname); } catch {}
+  if (!(pos > 5)) { T.textContent = "Nothing to save"; M.textContent = "Playback stopped at the start."; return; }
+  try {
+    const q = new URLSearchParams({ op: "pos", h: get("h"), p: get("p"), k: get("k"), n: get("n"), pos: String(pos) });
+    const r = await fetch("https://jarvis-rd.netlify.app/resume?" + q.toString(), { cache: "no-store" });
+    if (!r.ok) throw new Error(String(r.status));
+    T.textContent = d && pos >= d * 0.92 ? "Marked as watched" : "Saved your spot";
+    M.innerHTML = "You stopped at <b>" + fmt(pos) + "</b>" + (d ? " of " + fmt(d) : "") + ". Any TV or phone in the house picks up there.";
+  } catch {
+    T.textContent = "Couldn't save your spot";
+    M.innerHTML = "You stopped at <b>" + fmt(pos) + "</b>. Check your internet, then open the title in Jarvis and skip to that time.";
+  }
+})();
+</script>
+</body>
+</html>
