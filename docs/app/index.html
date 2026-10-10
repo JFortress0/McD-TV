@@ -502,7 +502,11 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
 .lv-row .lv-logo{height:52px;background:rgba(2,6,10,.55)}
 .lv-row .lv-logo img{max-height:46px;max-width:84%}
 .lv-nm b{display:block;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lv-nm .fav{color:var(--warn);font-size:12px;margin-left:4px}
+.lv-nm{display:flex;align-items:center;gap:6px;min-width:0}
+.lv-nm b{flex:0 1 auto;min-width:0}
+.lv-star{flex:0 0 auto;font-size:20px;line-height:1;padding:6px 8px;margin:-6px 0;color:var(--muted);cursor:pointer}
+.lv-star.on{color:var(--warn)}
+.lv-sports{margin-top:2px}
 .lv-now,.lv-next{min-width:0}
 .lv-now .t,.lv-next .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lv-now .t{font-weight:600;font-size:14px}
@@ -2908,7 +2912,7 @@ async function renderList(v, tok, tab) {
 // =====================================================================================
 const LIVE_NO = "Your provider's channels can't play in a web browser. Live TV works in the Jarvis TV app.";
 const HLS_JS = "https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js";
-const LIVE_SECTIONS = ["Favorites", "Sports", "News", "Kids", "Movies", "Entertainment", "24/7", "Local", "International", "All"];
+const LIVE_SECTIONS = ["Favorites", "Recent", "Sports", "News", "Kids", "Movies", "Entertainment", "24/7", "Local", "International", "All"];
 const mixedBlocked = (u) => { try { return location.protocol === "https:" && new URL(u).protocol === "http:"; } catch { return true; } };
 
 const LO = (() => {
@@ -3155,7 +3159,9 @@ const LV = (() => {
       for (const ch of raw) {
         if (LO.isSeparator(ch.name) || seen.has(ch.url)) continue;
         seen.add(ch.url);
-        list.push({ sid: ch.epg ? ch.sid : guideFor(ch.name), name: LO.cleanName(ch.name), raw: ch.name, logo: ch.logo, group: ch.group, url: ch.url, sec: LO.section(ch.group, ch.name) });
+        const sec = LO.section(ch.group, ch.name);
+        list.push({ sid: ch.epg ? ch.sid : guideFor(ch.name), name: LO.cleanName(ch.name), raw: ch.name, logo: ch.logo, group: ch.group, url: ch.url, sec,
+          tags: sec === "Sports" || sec === "Events & PPV" ? sportTags(ch.group + " " + ch.name) : [] });
       }
       if (!list.length) throw new Error("The playlist loaded but had no live channels in it.");
       if (!viaRelay && list.every((c) => mixedBlocked(c.url))) throw new Error(LIVE_NO);
@@ -3164,21 +3170,67 @@ const LV = (() => {
       if (st.key === url) st = { status: "error", list: null, msg: (e && e.message) || LIVE_NO, key: url };
     }
   }
-  function favs() { const f = new Set(lists().live); return f; }
+  // ---------- favorites, recent and sports, like the TV ----------
+  // Favorites come from the TV (each profile's own, in the TV's order) and can be changed here: a change goes
+  // to the TV too. Channels match by stream number, so the TV's and this app's copies of a link count as one.
+  const favKey = (u) => { const m = /\/(\d+)(?:\.[A-Za-z0-9]+)?(?:\?.*)?$/.exec(String(u || "")); return m ? "#" + m[1] : String(u || ""); };
+  function favs() { return new Set(lists().live.map(favKey)); }
+  function keyIdx() {
+    if (!st.keyIdx) { st.keyIdx = new Map(); (st.list || []).forEach((c, i) => { const k = favKey(c.url); if (!st.keyIdx.has(k)) st.keyIdx.set(k, i); }); }
+    return st.keyIdx;
+  }
+  const byKeys = (keys) => { const m = keyIdx(), seen = new Set(), out = []; for (const k of keys) { const i = m.get(k); if (i != null && !seen.has(i)) { seen.add(i); out.push(i); } } return out; };
+  const RECENT = () => "mcdtv_web_live_recent@" + (S.profile || "p1");
+  function recents() { try { const a = JSON.parse(LS.get(RECENT()) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
+  function noteRecent(ch) { LS.set(RECENT(), JSON.stringify([favKey(ch.url), ...recents().filter((k) => k !== favKey(ch.url))].slice(0, 20))); }
+  // Sports shortcuts: one tap to RedZone, NFL, NBA, MLB and the rest (the TV's Sports chips, by league).
+  const SPORTS = [["RedZone", /RED ?ZONE/], ["NFL", /\bNFL\b|SUNDAY TICKET|GAME ?PASS/], ["NBA", /\bW?NBA\b/], ["MLB", /\bMLB\b|BASEBALL/],
+    ["NHL", /\bNHL\b|HOCKEY/], ["College", /\bNCAA|\bSEC\b|\bACC\b|BIG ?(TEN|10|12)\b|\bBTN\b|ESPNU|COLLEGE|PAC.?12/],
+    ["Fights", /\bUFC\b|BOXING|\bWWE\b|\bMMA\b|\bPFL\b|\bAEW\b|WRESTLING|BELLATOR/], ["Soccer", /SOCCER|PREMIER LEAGUE|\bEPL\b|LA ?LIGA|SERIE A|BUNDESLIGA|\bMLS\b|UEFA|LIGA MX|CHAMPIONS LEAGUE|FUTBOL/],
+    ["Golf", /GOLF|\bPGA\b/], ["Racing", /\bF1\b|FORMULA|NASCAR|INDYCAR|MOTOGP/], ["Poker", /POKER/],
+    ["ESPN & more", /ESPN|\bFS[12]\b|FOX SPORTS|CBS SPORTS|NBC SPORTS|TNT SPORTS|BALLY|FANDUEL|\bSNY\b|\bNESN\b|\bMSG\b/]];
+  function sportTags(text) { const t = String(text || "").toUpperCase(); return SPORTS.filter(([, re]) => re.test(t)).map(([n]) => n); }
   function filtered() {
     const list = st.list || [];
     const q = view.q.trim().toLowerCase();
     if (q) return list.map((c, i) => i).filter((i) => list[i].name.toLowerCase().includes(q) || list[i].raw.toLowerCase().includes(q));
-    if (view.sec === "Favorites") { const f = favs(); return list.map((c, i) => i).filter((i) => f.has(list[i].url)); }
+    if (view.sec === "Favorites") return byKeys(lists().live.map(favKey));
+    if (view.sec === "Recent") return byKeys(recents());
     // Sections list channels with a guide first (the real networks), then the rest, each in playlist order.
     const guideFirst = (ix) => ix.filter((i) => list[i].sid).concat(ix.filter((i) => !list[i].sid));
     if (view.sec === "All") return guideFirst(list.map((c, i) => i));
+    if (view.sec === "Sports" && view.sub) return guideFirst(list.map((c, i) => i).filter((i) => list[i].tags.includes(view.sub)));
     return guideFirst(list.map((c, i) => i).filter((i) => list[i].sec === view.sec));
   }
   function counts() {
-    const c = { Favorites: 0, All: (st.list || []).length }; const f = favs();
-    for (const ch of st.list || []) { c[ch.sec] = (c[ch.sec] || 0) + 1; if (f.has(ch.url)) c.Favorites++; }
+    const c = { Favorites: filteredCount("Favorites"), Recent: filteredCount("Recent"), All: (st.list || []).length };
+    for (const ch of st.list || []) c[ch.sec] = (c[ch.sec] || 0) + 1;
     return c;
+  }
+  function filteredCount(sec) { return sec === "Favorites" ? byKeys(lists().live.map(favKey)).length : byKeys(recents()).length; }
+  function sportCounts() {
+    const c = {};
+    for (const ch of st.list || []) for (const t of ch.tags) c[t] = (c[t] || 0) + 1;
+    return c;
+  }
+  function sportBar() {
+    if (view.q || (view.sec !== "Sports" && view.sec !== "Favorites")) return "";
+    const c = sportCounts(), have = SPORTS.map(([n]) => n).filter((n) => c[n]);
+    if (!have.length) return "";
+    const chip = (n, label, on) => `<button class="chip${on ? " on" : ""}" type="button" data-act="livesport" data-sub="${esc(n)}">${esc(label)}</button>`;
+    return `<div class="chips lv-sports">${view.sec === "Sports" ? chip("", "All sports", !view.sub) : ""}${have.map((n) => chip(n, n, view.sec === "Sports" && view.sub === n)).join("")}</div>`;
+  }
+  function toggleFav(i) {
+    const ch = st.list && st.list[i]; if (!ch) return;
+    const pid = S.profile || "p1", k = favKey(ch.url);
+    const L = S.plists[pid] || (S.plists[pid] = { watchlist: [], favorites: [], continue: [], ts: 0 });
+    const cur = Array.isArray(L.live_favorites) ? L.live_favorites : [];
+    const on = !cur.some((u) => favKey(u) === k);
+    L.live_favorites = on ? [...cur, ch.url] : cur.filter((u) => favKey(u) !== k);
+    savePlists();
+    toast(on ? "★ " + ch.name + " added to Favorites" : ch.name + " removed from Favorites", "ok");
+    if (S.link) relaySend({ cmd: "live_fav", profile: pid, url: ch.url, on, ts: Date.now() }).catch(() => {});
+    drawGrid(true);
   }
   function tile(i, f) {
     const ch = st.list[i];
@@ -3251,9 +3303,10 @@ const LV = (() => {
       ? `<img loading="lazy" decoding="async" src="${esc(ch.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.nextElementSibling.hidden=false;this.remove()"><span class="ini" hidden>${ini}</span>`
       : `<span class="ini">${ini}</span>`;
     const [now, next] = guideHtml(ch);
+    const fav = f.has(favKey(ch.url));
     return `<button class="lv-row" type="button" data-act="live" data-idx="${i}" data-sid="${esc(ch.sid || "")}" title="${esc(ch.name)}">
       <span class="lv-logo">${logo}</span>
-      <span class="lv-nm"><b>${esc(ch.name)}${f.has(ch.url) ? `<span class="fav" aria-label="Favorite">&#9733;</span>` : ""}</b></span>
+      <span class="lv-nm"><b>${esc(ch.name)}</b><span class="lv-star${fav ? " on" : ""}" role="button" tabindex="0" data-act="livefav" data-idx="${i}" aria-label="${fav ? "Remove from" : "Add to"} favorites">${fav ? "&#9733;" : "&#9734;"}</span></span>
       <span class="lv-now">${now}</span><span class="lv-next">${next}</span></button>`;
   }
   function watchRows(g) {
@@ -3269,13 +3322,18 @@ const LV = (() => {
     if (!st.xt) return;
     $$(".lv-row[data-sid]", g).filter((r) => r.dataset.sid).slice(0, 16).forEach((r) => want(r.dataset.sid));
   }
-  function drawGrid() {
+  function drawGrid(keepScroll) {
     const g = $("#lvGrid"), more = $("#lvMore"); if (!g) return;
     const idx = filtered(), f = favs();
     const end = Math.min(idx.length, view.shown || PAGE);
     view.shown = end;
+    const sb = $("#lvSports"); if (sb) sb.innerHTML = sportBar();
+    const y = window.scrollY;
     g.innerHTML = idx.length ? `<div class="lv-list">${idx.slice(0, end).map((i) => row(i, f)).join("")}</div>`
-      : `<p class="muted">${view.q ? "No channels match." : view.sec === "Favorites" ? "No favorite channels yet. Mark favorites in Live TV on the TV." : "No channels here."}</p>`;
+      : `<p class="muted">${view.q ? "No channels match." : view.sec === "Favorites" ? "No favorite channels yet. Tap &#9734; next to a channel to add it, here or on the TV (&#9776; on the remote)." : view.sec === "Recent" ? "Channels you watch show up here." : "No channels here."}</p>`;
+    if (keepScroll) window.scrollTo(0, y);
+    const cc = counts();
+    $$("#lvChips .chip").forEach((b) => { const n = b.querySelector("span+span"); if (n && b.dataset.sec in cc) n.textContent = (cc[b.dataset.sec] || 0).toLocaleString(); });
     more.classList.toggle("hidden", end >= idx.length);
     watchRows(g);
     wantFirst(g);
@@ -3302,12 +3360,12 @@ const LV = (() => {
       return;
     }
     const c = counts();
-    if (!view.sec || (!c[view.sec] && view.sec !== "All")) view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : "All";
+    if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec))) view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All";
     v.innerHTML = `<div class="page"><h1>Live TV</h1>
       <div class="lv-wrap">
-      <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => s === "All" || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
+      <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => ["All", "Favorites", "Recent"].includes(s) || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
       <div><div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
-      <div id="lvGrid"></div><div class="more"><button class="btn hidden" id="lvMore" data-act="livemore">Show more</button></div></div></div></div>`;
+      <div id="lvSports"></div><div id="lvGrid"></div><div class="more"><button class="btn hidden" id="lvMore" data-act="livemore">Show more</button></div></div></div></div>`;
     let t = 0;
     $("#lvQ", v).addEventListener("input", (e) => { clearTimeout(t); t = setTimeout(() => { view.q = e.target.value; view.shown = 0; drawGrid(); }, 200); });
     drawGrid();
@@ -3343,6 +3401,7 @@ const LV = (() => {
   const nativeHls = () => { try { return !!document.createElement("video").canPlayType("application/vnd.apple.mpegurl"); } catch { return false; } };
   async function play(i) {
     const ch = st.list && st.list[i]; if (!ch) return;
+    noteRecent(ch);
     // The browser can't play this channel (provider blocks browsers, or an http stream on this https page):
     // hand it to the player app, named the way the provider accepted for the channel list.
     if (st.ext || mixedBlocked(ch.url)) {
@@ -3406,7 +3465,9 @@ const LV = (() => {
   return {
     show, play, closePlayer,
     reset() { st = { status: "idle", list: null, msg: "", key: "" }; view = { sec: "", q: "", shown: 0 }; },
-    section(sec) { view.sec = sec; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
+    section(sec) { view.sec = sec; view.sub = ""; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
+    sport(sub) { view.sec = "Sports"; view.sub = sub; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
+    fav: toggleFav,
     more() { view.shown += PAGE; drawGrid(); },
   };
 })();
@@ -3775,6 +3836,8 @@ document.addEventListener("click", async (e) => {
     case "rmjarvis": LS.set(JLOCAL, "0"); LS.del(JKEY); toast("Jarvis key removed from this device", "ok"); renderSettings($("#view")); break;
     case "live": LV.play(+d.idx); break;
     case "livesec": LV.section(d.sec); break;
+    case "livesport": LV.sport(d.sub || ""); break;
+    case "livefav": LV.fav(+d.idx); break;
     case "livemore": LV.more(); break;
     case "liveretry": LV.reset(); route(); break;
     case "dismisshint": { const h = $("#iosHint"); if (h) h.remove(); break; }
@@ -3792,7 +3855,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.13";
+const BUILD = "2026-10-10.14";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
