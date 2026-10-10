@@ -99,6 +99,10 @@ sealed interface Screen {
         val imdbId: String? = null,
         /** Extra HTTP headers some streams need (Referer, Origin, User-Agent), e.g. video found by the browser. */
         val headers: Map<String, String> = emptyMap(),
+        /** com.mcd.tv.data.SourceQueue id of the source list this came from (0 = none), for "Try next source". */
+        val queue: Int = 0,
+        /** Index of the playing source in that list. */
+        val queuePos: Int = -1,
     ) : Screen
 }
 
@@ -310,15 +314,21 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
             val next: (() -> Unit)? = if (m != null && m.type == "tv" && s.imdbId != null) {
                 { nav.replace(Screen.Sources(m.copy(episode = m.episode + 1), s.imdbId, autoPlay = true)) }
             } else null
-            androidx.compose.runtime.key(s.url) {
+            androidx.compose.runtime.key(s.url, s.queuePos) {
+                // A failed stream offers "Try next source" from the list it was picked from.
+                val nextSource = com.mcd.tv.ui.rememberNextSource(nav, s)
                 if (m != null && next != null) {
                     // TV episode: "Up next" countdown card before rolling into the next episode.
                     com.mcd.tv.ui.UpNextPlayer(
                         url = s.url, title = s.title, meta = m, headers = s.headers,
                         onNext = next, onCancel = { nav.back() }, onSleep = { nav.back() },
+                        nextSource = nextSource,
                     )
                 } else {
-                    PlayerScreen(url = s.url, title = s.title, meta = m, onEnded = next, headers = s.headers, onSleep = { nav.back() })
+                    PlayerScreen(
+                        url = s.url, title = s.title, meta = m, onEnded = next, headers = s.headers, onSleep = { nav.back() },
+                        nextSource = nextSource, onBack = { nav.back() },
+                    )
                 }
             }
         }
