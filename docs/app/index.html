@@ -3456,6 +3456,8 @@ const LV = (() => {
     { id: "EPL", label: "Premier League", emoji: "⚽", path: "soccer/eng.1", months: [8, 9, 10, 11, 12, 1, 2, 3, 4, 5], sport: "soccer", league: ["premier league", "epl"] },
   ];
   const ESPN = "https://site.api.espn.com/apis/site/v2/sports/";
+  // Where a network's game feed can be: sports channels and local affiliates (not Fox News, ABC News Live...).
+  const NET_SECS = new Set(["Sports", "Local", "Events & PPV", "Entertainment", "Other"]);
   const LEAGUE_WORD = { NFL: /\bnfl\b/, NCAAF: /\b(ncaaf|ncaa|cfb|college football)\b/, NBA: /\bnba\b/, MLB: /\bmlb\b/, NHL: /\bnhl\b/, WNBA: /\bwnba\b/, MLS: /\bmls\b/, EPL: /\b(epl|premier league)\b/ };
   const SCHED = {}; // league id -> { at, games: [...], week }
   const inSeason = (L) => L.months.includes(new Date().getMonth() + 1);
@@ -3511,14 +3513,13 @@ const LV = (() => {
       const w = chW(i);
       const a = A.some((p) => hasPhrase(w, p)), h = H.some((p) => hasPhrase(w, p));
       if (a && h) offer(i, 100, "This game");
-      // One team only: the channel must also name the league ("NFL 02: Eagles at ..."), so other sports' Eagles stay out.
-      else if ((a || h) && sportsy(ch) && LEAGUE_WORD[g.L.id].test(t) && /\b(vs|v|at|x)\b|@/.test(ch.raw.toLowerCase())) offer(i, 80, "This game");
+
     });
     g.casts.forEach((b, order) => {
       const phrases = NETS[b] || [b.toLowerCase()];
       const found = [];
-      list.forEach((ch, i) => { const w = chW(i); if (!phrases.some((p) => hasPhrase(w, p))) return; if (other.test(chT(i))) return; if (ch.sec === "International") return; found.push(i); });
-      found.slice(0, 40).forEach((i) => offer(i, 60 - order * 5 + (list[i].sid ? 3 : 0), b));
+      list.forEach((ch, i) => { const w = chW(i); if (!phrases.some((p) => hasPhrase(w, p))) return; if (other.test(chT(i))) return; if (!NET_SECS.has(ch.sec) || /\b(news|business|deportes|kids|weather)\b/.test(chT(i))) return; found.push(i); });
+      found.slice(0, 60).forEach((i) => offer(i, 60 - order * 5 + (list[i].sid ? 3 : 0) + (list[i].sec === "Local" ? 4 : 0), b));
     });
     const seen = new Set();
     return [...out.values()].sort((x, y) => y.score - x.score || x.i - y.i).filter((x) => { const k = list[x.i].name.toLowerCase().replace(/\b(hd|fhd|sd|4k|uhd)\b/g, "").replace(/\W+/g, ""); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
@@ -4128,7 +4129,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.20";
+const BUILD = "2026-10-10.21";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
