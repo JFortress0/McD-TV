@@ -2743,6 +2743,10 @@ async function renderSources(v, tok, type, id, q) {
     say("Getting the stream ready…");
     const cands = await playCandidates(res);
     if (tok !== routeTok) return true;
+    // Big files (4K, or 15 GB and up): Real-Debrid's phone version can take ages to start, so they go straight
+    // to the player app, which plays the original at full quality.
+    const fi = SI.info(s);
+    if (res.direct && (fi.resolution === "4K" || (fi.sizeGb || 0) >= 15)) { showExternal(res, s, true); return true; }
     if (!cands.length) {
       if (!res.direct) throw new Error("This source has no playable link");
       showExternal(res, s);
@@ -2755,7 +2759,7 @@ async function renderSources(v, tok, type, id, q) {
     return true;
   }
   /** The file is ready but this browser can't play it (MKV on iPhone): hand it to a player app. */
-  function showExternal(res, s) {
+  function showExternal(res, s, big) {
     const u = encodeURIComponent(res.direct);
     const ext = (String(res.filename || "").split(".").pop() || "MKV").toUpperCase();
     say("");
@@ -2767,7 +2771,7 @@ async function renderSources(v, tok, type, id, q) {
     const startMs = resumeAt(meta, durGuess);
     const pick = startMs > 0 ? `<p style="margin-top:8px"><b>Pick up at ${fmtTime(startMs / 1000)}</b> <span class="muted">(where you left off${auto === "infuse" ? "; Infuse starts there" : ". Skip ahead to it in the player"})</span></p>` : "";
     box.innerHTML = `<h2>${auto === "ask" ? "Ready. Open it in a player app" : "Opening in " + EXT_NAME[auto] + "…"}</h2>
-      <p class="muted">${esc(SI.info(s).sizeLabel || "")} ${esc(ext)} file. Browsers can't play ${esc(ext)}. ${isMac ? `IINA (free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>) plays it, sound and all.` : "VLC (free on the App Store) plays it, sound and all."}</p>${pick}
+      <p class="muted">${big ? `Big file (${esc([SI.info(s).resolution, SI.info(s).sizeLabel].filter(Boolean).join(", "))}): it starts faster and looks best in a player app.` : `${esc(SI.info(s).sizeLabel || "")} ${esc(ext)} file. Browsers can't play ${esc(ext)}.`} ${isMac ? `IINA (free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>) plays it, sound and all.` : "VLC (free on the App Store) plays it, sound and all."}</p>${pick}
       <div class="rowf" style="margin-top:10px;flex-wrap:wrap;gap:8px">
         ${isMac ? `<a class="btn small primary" href="iina://weblink?url=${u}">Open in IINA</a>` : `<a class="btn small primary" href="vlc-x-callback://x-callback-url/stream?url=${u}">Open in VLC</a>
         <a class="btn small" id="extInfuse" href="infuse://x-callback-url/play?url=${u}">Open in Infuse</a>`}
@@ -4151,7 +4155,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.26";
+const BUILD = "2026-10-10.27";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
