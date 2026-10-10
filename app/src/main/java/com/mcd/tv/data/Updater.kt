@@ -44,6 +44,9 @@ object Updater {
     /** The update screen opens by itself once per app launch. */
     var promptShown = false
 
+    /** The version code the update screen last opened by itself for (each new version is offered once). */
+    var promptedFor = 0L
+
     private var lastCheck = 0L
 
     @Suppress("DEPRECATION")
