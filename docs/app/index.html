@@ -900,6 +900,7 @@ function setStatus(s) {
   const dot = $("#tvdot"), lbl = $("#tvlbl");
   dot.className = "dot " + s;
   lbl.textContent = { none: "Not linked", connecting: "Connecting", online: "TV online", offline: "TV offline" }[s] || s;
+  if (s === "online") { const b = $("#lvStale"); if (b) b.remove(); }
   const st = $("#setStatus"); if (st) st.innerHTML = statusHTML();
   // "Getting set up with your TV" spinner: swap it for the offline help once the TV fails to answer.
   if (s === "offline" && !keys().tmdb && $("#view .spinner")) route();
@@ -3405,7 +3406,9 @@ const LV = (() => {
     }
     const c = counts();
     if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec))) { view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All"; view.auto = true; }
+    const stale = S.link && S.status === "offline" && !(RC.ready() && lists().live.length);
     v.innerHTML = `<div class="page"><h1>Live TV</h1>
+      ${stale ? `<div class="panel" id="lvStale" style="margin-bottom:12px"><h2>Your TV isn't answering this phone</h2><p class="muted">Favorites come from the TV. Open Jarvis on the TV and come back here. Still nothing after a minute? Link again: on the TV go to Settings &gt; Phone &amp; Computer Setup and scan the code with this phone's camera.</p></div>` : ""}
       <div class="lv-wrap">
       <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => ["All", "Favorites", "Recent"].includes(s) || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
       <div><div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
@@ -3901,7 +3904,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.15";
+const BUILD = "2026-10-10.16";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
