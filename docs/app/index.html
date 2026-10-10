@@ -3351,6 +3351,10 @@ function renderSettings(v) {
         : "Off: Ask Jarvis goes through your TV, which needs to be on. No key is kept on this device."}</p>
       ${jarvisKey() ? `<div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rmjarvis">Remove key from this device</button></div>` : ""}
     </div>
+    <div class="panel"><h2>Add a TV</h2>
+      <p class="muted">A new Jarvis TV shows an 8-digit code (it asks the first time, or Settings > Profiles > Join my other TVs on the TV). Type it here: the TV gets your profiles, settings and Real-Debrid.</p>
+      <div class="rowf" style="margin-top:10px;gap:8px"><input id="addTvCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px">
+        <button class="btn small primary" data-act="addtv">Add TV</button></div></div>
     <div class="panel"><h2>Set up another phone</h2>
       <p class="muted">Sends an invite with everything set up the way it is here: your TV link, sources, playlist, keys and player choice. They tap it and add Jarvis to their Home Screen. Only send it to people you'd hand your TV remote.</p>
       ${rdToken() ? `<label class="rowf" style="margin-top:10px;gap:8px;align-items:flex-start"><input type="checkbox" id="invTok" checked style="margin-top:4px">
@@ -3525,6 +3529,24 @@ document.addEventListener("click", async (e) => {
       try { await navigator.clipboard.writeText(m3u); toast("Playlist link copied", "ok"); } catch { prompt("Copy your playlist link:", m3u); }
       break;
     }
+    case "addtv": {
+      const inp = $("#addTvCode");
+      const code = String((inp && inp.value) || "").replace(/\D/g, "");
+      if (code.length !== 8) { toast("Type the 8 digits shown on the TV.", "warn"); break; }
+      const house = S.init && S.init.house;
+      if (!house) { toast("Open Jarvis once while one of your TVs is on (it sends its house link), then try again.", "warn"); break; }
+      try {
+        // Same as the TV (app/.../data/HouseJoin.kt): topic and key come from the code.
+        const sha = async (t) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)));
+        const topic = "mcdtv-join-" + [...await sha("jarvis-join|" + code)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 24);
+        const key = await crypto.subtle.importKey("raw", await sha("jarvis-join-key|" + code), "AES-GCM", false, ["encrypt", "decrypt"]);
+        const r = await fetch(RELAY + topic, { method: "POST", body: await encrypt({ type: "house_invite", house, ts: Date.now() }, key) });
+        if (!r.ok) throw new Error(String(r.status));
+        if (inp) inp.value = "";
+        toast("Sent. The TV joins in a few seconds.", "ok");
+      } catch { toast("Couldn't reach the relay. Check your internet and try again.", "warn"); }
+      break;
+    }
     case "invite": {
       const tk = $("#invTok");
       const url = inviteLink(d.pid, !!(tk && tk.checked));
@@ -3618,7 +3640,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.9";
+const BUILD = "2026-10-10.10";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
