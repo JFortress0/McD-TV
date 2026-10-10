@@ -780,7 +780,30 @@ const RC = (() => {
       if (s2 !== sig) { const first = !sig && !l.length; sig = s2; if (!first) onListsChanged(); }
     }).catch(() => {});
   }
-  return { list, push, peekFor, mergeCont, refresh, b64u, ready: () => !!houseKey() };
+  // Live TV favorites (stream numbers) per profile, kept beside the positions so a phone has them even when
+  // every TV is off. Same format on the TV (ResumeCloud.pushLiveFavs): profile tag "livefav|pN", key "list".
+  async function favGet(profile = pid()) {
+    const k = await keys(); if (!k) return null;
+    try {
+      const r = await fetch(`${URL_R}?h=${k.house}&p=${await k.tag("livefav|" + profile)}`, { cache: "no-store" });
+      if (!r.ok) return null;
+      const rec = ((await r.json()).e || {})[await k.tag("list")]; if (!rec) return null;
+      const all = unb64u(rec.v);
+      const o = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, k.aes, all.slice(12))));
+      return Array.isArray(o.ids) ? { ids: o.ids.map(String).filter((x) => /^\d+$/.test(x)), at: +rec.t || +o.at || 0 } : null;
+    } catch { return null; }
+  }
+  async function favPut(ids, profile = pid()) {
+    const k = await keys(); if (!k) return;
+    const at = Date.now(), iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k.aes, new TextEncoder().encode(JSON.stringify({ ids: ids.slice(0, 300), at }))));
+    const v = new Uint8Array(12 + ct.length); v.set(iv); v.set(ct, 12);
+    try {
+      await fetch(`${URL_R}?h=${k.house}&p=${await k.tag("livefav|" + profile)}`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify({ k: await k.tag("list"), t: at, v: b64u(v) }), keepalive: true });
+    } catch {}
+  }
+  return { list, push, peekFor, mergeCont, refresh, favGet, favPut, b64u, ready: () => !!houseKey() };
 })();
 
 /**
@@ -921,7 +944,8 @@ function applyInit(m) {
   let listsChanged = false;
   if (!old || (m.ts || 0) >= (old.ts || 0)) {
     const L = { watchlist: m.watchlist || [], favorites: m.favorites || [], continue: m.continue || [],
-      live_favorites: Array.isArray(m.live_favorites) ? m.live_favorites : (old && old.live_favorites) || [], ts: m.ts || 0 };
+      live_favorites: Array.isArray(m.live_favorites) ? m.live_favorites : (old && old.live_favorites) || [], ts: m.ts || 0,
+      live_fav_at: Array.isArray(m.live_favorites) ? Date.now() : (old && old.live_fav_at) || 0 };
     const sigL = (o) => JSON.stringify(o ? [o.watchlist, o.favorites, o.continue, o.live_favorites] : null);
     listsChanged = pid === (S.profile || "p1") && sigL(old) !== sigL(L);
     S.plists[pid] = L; savePlists();
@@ -962,7 +986,8 @@ function applyWebList(m) {
     if (parseRoute().path[0] === "websites") route();
   } else {
     const L = S.plists[pid] || (S.plists[pid] = { watchlist: [], favorites: [], continue: [], ts: 0 });
-    L.live_favorites = all; savePlists();
+    L.live_favorites = all; L.live_fav_at = Date.now(); savePlists();
+    if (pid === (S.profile || "p1")) LV.redraw();
   }
 }
 /** "addons" follow-up messages ({req, part, parts, addon_urls}): joined, then saved with the rest of web_init. */
@@ -1497,6 +1522,7 @@ function onListsChanged() {
     if (w) w.outerHTML = rowShell("watchlist", "My Watchlist", "#/list");
     homeListRows(routeTok, lists());
   } else if (name === "list") route();
+  else if (name === "live") LV.redraw();
   syncWL();
 }
 function syncWL() {
@@ -3173,7 +3199,7 @@ const LV = (() => {
   // ---------- favorites, recent and sports, like the TV ----------
   // Favorites come from the TV (each profile's own, in the TV's order) and can be changed here: a change goes
   // to the TV too. Channels match by stream number, so the TV's and this app's copies of a link count as one.
-  const favKey = (u) => { const m = /\/(\d+)(?:\.[A-Za-z0-9]+)?(?:\?.*)?$/.exec(String(u || "")); return m ? "#" + m[1] : String(u || ""); };
+  const favKey = (u) => { if (/^#\d+$/.test(String(u))) return String(u); const m = /\/(\d+)(?:\.[A-Za-z0-9]+)?(?:\?.*)?$/.exec(String(u || "")); return m ? "#" + m[1] : String(u || ""); };
   function favs() { return new Set(lists().live.map(favKey)); }
   function keyIdx() {
     if (!st.keyIdx) { st.keyIdx = new Map(); (st.list || []).forEach((c, i) => { const k = favKey(c.url); if (!st.keyIdx.has(k)) st.keyIdx.set(k, i); }); }
@@ -3220,6 +3246,22 @@ const LV = (() => {
     const chip = (n, label, on) => `<button class="chip${on ? " on" : ""}" type="button" data-act="livesport" data-sub="${esc(n)}">${esc(label)}</button>`;
     return `<div class="chips lv-sports">${view.sec === "Sports" ? chip("", "All sports", !view.sub) : ""}${have.map((n) => chip(n, n, view.sec === "Sports" && view.sub === n)).join("")}</div>`;
   }
+  /** Favorites from the cloud when they are newer than this phone's copy (a TV saved them while this app was closed). */
+  async function pullFavs() {
+    const pid = S.profile || "p1";
+    const c = await RC.favGet(pid).catch(() => null); if (!c) return;
+    const L = S.plists[pid] || (S.plists[pid] = { watchlist: [], favorites: [], continue: [], ts: 0 });
+    if (c.at <= (L.live_fav_at || 0)) return;
+    const mine = (L.live_favorites || []).map(favKey).join(","), theirs = c.ids.map((x) => "#" + x).join(",");
+    L.live_fav_at = c.at;
+    if (mine !== theirs) { L.live_favorites = c.ids.map((x) => "#" + x); savePlists(); redraw(); } else savePlists();
+  }
+  function redraw() {
+    if (st.status !== "ok" || !$("#lvGrid")) return;
+    // Favorites arrived after the page opened on another section it picked by itself: show them.
+    if (view.auto && view.sec !== "Favorites" && filteredCount("Favorites")) { view.sec = "Favorites"; view.sub = ""; view.shown = 0; }
+    drawGrid(true);
+  }
   function toggleFav(i) {
     const ch = st.list && st.list[i]; if (!ch) return;
     const pid = S.profile || "p1", k = favKey(ch.url);
@@ -3227,7 +3269,9 @@ const LV = (() => {
     const cur = Array.isArray(L.live_favorites) ? L.live_favorites : [];
     const on = !cur.some((u) => favKey(u) === k);
     L.live_favorites = on ? [...cur, ch.url] : cur.filter((u) => favKey(u) !== k);
+    L.live_fav_at = Date.now();
     savePlists();
+    RC.favPut(L.live_favorites.map(favKey).filter((x) => /^#\d+$/.test(x)).map((x) => x.slice(1)), pid).catch(() => {});
     toast(on ? "★ " + ch.name + " added to Favorites" : ch.name + " removed from Favorites", "ok");
     if (S.link) relaySend({ cmd: "live_fav", profile: pid, url: ch.url, on, ts: Date.now() }).catch(() => {});
     drawGrid(true);
@@ -3360,7 +3404,7 @@ const LV = (() => {
       return;
     }
     const c = counts();
-    if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec))) view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All";
+    if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec))) { view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All"; view.auto = true; }
     v.innerHTML = `<div class="page"><h1>Live TV</h1>
       <div class="lv-wrap">
       <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => ["All", "Favorites", "Recent"].includes(s) || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
@@ -3371,6 +3415,7 @@ const LV = (() => {
     drawGrid();
   }
   async function show(v, tok) {
+    pullFavs().catch(() => {});
     if (st.status === "idle" || st.status === "loading" || st.key !== String((S.init && S.init.m3u_url) || "").trim()) {
       if (!(S.init && S.init.m3u_url)) st = { status: "none", list: null, msg: "", key: "" };
       else {
@@ -3465,8 +3510,9 @@ const LV = (() => {
   return {
     show, play, closePlayer,
     reset() { st = { status: "idle", list: null, msg: "", key: "" }; view = { sec: "", q: "", shown: 0 }; },
-    section(sec) { view.sec = sec; view.sub = ""; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
-    sport(sub) { view.sec = "Sports"; view.sub = sub; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
+    redraw,
+    section(sec) { view.auto = false; view.sec = sec; view.sub = ""; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
+    sport(sub) { view.auto = false; view.sec = "Sports"; view.sub = sub; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
     fav: toggleFav,
     more() { view.shown += PAGE; drawGrid(); },
   };
@@ -3855,7 +3901,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.14";
+const BUILD = "2026-10-10.15";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
