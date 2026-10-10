@@ -115,8 +115,8 @@ class TasteTest {
     }
 
     private fun ch(i: Int, name: String, section: String = LiveOrganizer.ENTERTAINMENT, domestic: Boolean = true, fav: Boolean = false,
-                   minutes: Double = 0.0, last: Long = 0L, nowText: String = "") =
-        Taste.ChannelInput(i, name, section, domestic, fav, minutes, last, nowText)
+                   minutes: Double = 0.0, last: Long = 0L, nowText: String = "", soonText: String = "") =
+        Taste.ChannelInput(i, name, section, domestic, fav, minutes, last, nowText, soonText)
 
     @Test fun forYouRanksHabitsThenTasteAndCollapsesCopies() {
         val taste = Taste.build(emptyList(), TasteChoices(likeGenres = setOf(Taste.WAR, Taste.CRIME, Taste.COMEDY)), now)
@@ -161,5 +161,30 @@ class TasteTest {
             TasteProfile.EMPTY, emptyMap(), kids = true, now = now,
         )
         assertEquals(setOf(0, 2), picks.map { it.index }.toSet())
+    }
+
+    @Test fun pokerLaterTonightLiftsAChannel() {
+        val taste = Taste.build(emptyList(), TasteChoices(likeWords = listOf("poker")), now)
+        val picks = Taste.rankChannels(
+            listOf(
+                ch(0, "Some Sports Channel", LiveOrganizer.SPORTS, nowText = "College volleyball"),
+                ch(1, "Other Sports Channel", LiveOrganizer.SPORTS, nowText = "College volleyball", soonText = "World Series of Poker Main Event"),
+            ),
+            taste, emptyMap(), kids = false, now = now,
+        )
+        assertEquals(1, picks.first().index)
+    }
+
+    @Test fun programmeMatcherScoresTopicsKindsAndSkips() {
+        val taste = Taste.build(
+            emptyList(),
+            TasteChoices(likeGenres = setOf(Taste.WAR), likeWords = listOf("poker"), avoidWords = listOf("makeover")),
+            now,
+        )
+        val m = Taste.ProgrammeMatcher(taste)
+        assertEquals(1.0, m.score("High Stakes Poker"), 1e-9)
+        assertTrue(m.score("WWII in Color: Road to Victory") > 0.3)
+        assertEquals(-1.0, m.score("Extreme Home Makeover"), 1e-9)
+        assertEquals(0.0, m.score("Cooking with Ana"), 1e-9)
     }
 }
