@@ -53,7 +53,8 @@ object HouseJoin {
                 Prefs.putJson("join_seen", "1")
                 return true
             }
-            delay(3_000)
+            // Every 10 s: a 15-minute wait at 3 s was ~300 requests, enough for ntfy.sh to rate-limit the house.
+            delay(10_000)
         }
         return false
     }
