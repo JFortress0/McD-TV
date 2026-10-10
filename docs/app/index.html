@@ -3557,9 +3557,10 @@ const LV = (() => {
     const order = [...sc.games].sort((a, b) => (a.state === "in" ? 0 : a.state === "pre" ? 1 : 2) - (b.state === "in" ? 0 : b.state === "pre" ? 1 : 2) || a.start - b.start);
     for (const x of order) { const k = x.state === "in" ? "Live now" : dayName(x.start); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(x); }
     const y = window.scrollY;
+    // Games first (tap one for the channels showing it), then the league's own channels, as on the TV.
     g.innerHTML = `${sc.week && L.weekly ? `<p class="muted gm-week">Week ${sc.week}</p>` : ""}
-      ${lc.length ? `<div class="gm-h">League channels</div><div class="lv-list">${lc.map((i) => row(i, favs())).join("")}</div>` : ""}
-      ${[...byDay.entries()].map(([d, gs]) => `<div class="gm-h">${esc(d)}</div><div class="gm-grid">${gs.map(gameCard).join("")}</div>`).join("") || `<p class="muted">No ${esc(L.label)} games this week.</p>`}`;
+      ${[...byDay.entries()].map(([d, gs]) => `<div class="gm-h">${esc(d)}</div><div class="gm-grid">${gs.map(gameCard).join("")}</div>`).join("") || `<p class="muted">No ${esc(L.label)} games this week.</p>`}
+      ${lc.length ? `<div class="gm-h">League channels</div><div class="lv-list">${lc.slice(0, 8).map((i) => row(i, favs())).join("")}</div>` : ""}`;
     window.scrollTo(0, y);
     watchRows(g); wantFirst(g);
     $$("#lvChips .chip").forEach((b) => b.classList.toggle("on", b.dataset.sec === view.sec));
@@ -4131,7 +4132,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.22";
+const BUILD = "2026-10-10.23";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
