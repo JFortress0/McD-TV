@@ -2851,8 +2851,10 @@ const LV = (() => {
     const q = view.q.trim().toLowerCase();
     if (q) return list.map((c, i) => i).filter((i) => list[i].name.toLowerCase().includes(q) || list[i].raw.toLowerCase().includes(q));
     if (view.sec === "Favorites") { const f = favs(); return list.map((c, i) => i).filter((i) => f.has(list[i].url)); }
-    if (view.sec === "All") return list.map((c, i) => i);
-    return list.map((c, i) => i).filter((i) => list[i].sec === view.sec);
+    // Sections list channels with a guide first (the real networks), then the rest, each in playlist order.
+    const guideFirst = (ix) => ix.filter((i) => list[i].sid).concat(ix.filter((i) => !list[i].sid));
+    if (view.sec === "All") return guideFirst(list.map((c, i) => i));
+    return guideFirst(list.map((c, i) => i).filter((i) => list[i].sec === view.sec));
   }
   function counts() {
     const c = { Favorites: 0, All: (st.list || []).length }; const f = favs();
@@ -3413,7 +3415,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.5";
+const BUILD = "2026-10-10.6";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
