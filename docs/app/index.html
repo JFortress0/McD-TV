@@ -531,6 +531,7 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
 .lv-now .t{font-weight:600;font-size:14px}
 .lv-now small,.lv-next small{display:block;color:var(--muted);font-size:12px}
 .lv-next .t{color:var(--muted);font-size:13px}
+.lv-up{display:block;margin-top:5px;color:var(--white)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lv-tag{font-size:10px;font-weight:700;letter-spacing:.8px;color:var(--accent);margin-right:6px}
 .lv-bar{height:3px;background:rgba(14,106,122,.5);margin-top:5px;max-width:92%}
 .lv-bar i{display:block;height:3px;background:var(--accent)}
@@ -2814,8 +2815,6 @@ async function renderSources(v, tok, type, id, q) {
 
 // ---------- Player page (#/play/type/id?s=&e=) ----------
 function fmtTime(sec) { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); }
-// iPhone plays video full screen by itself when the page doesn't ask for inline playback.
-const IPHONE = /iPhone|iPod/.test(navigator.userAgent);
 function renderPlayer(v, tok, type, id, q) {
   const P = S.playing;
   const want = posKey({ type, id, season: +q.get("s") || 0, episode: +q.get("e") || 0 });
@@ -2831,7 +2830,7 @@ function renderPlayer(v, tok, type, id, q) {
   v.innerHTML = `<div class="player">
     <div class="pl-top"><a class="pl-back" href="${esc(P.back)}" aria-label="Back to sources">&#8249; Back</a>
       <div class="pl-title"><b>${esc(m.label)}</b><span class="muted" id="plLine">${esc(P.line)}</span></div></div>
-    <div class="pl-stage"><video id="vid" controls${IPHONE ? "" : " playsinline webkit-playsinline"} preload="auto"${bd}></video>
+    <div class="pl-stage"><video id="vid" controls playsinline webkit-playsinline preload="auto"${bd}></video>
       <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><a class="btn small primary" href="${esc(P.back)}">Pick another source</a></div></div>
     <div class="pl-bar"><button class="btn primary big" id="fsBtn">&#9974; Full screen</button>
       <a class="btn" href="${esc(P.back)}">Other sources</a>
@@ -3399,8 +3398,11 @@ const LV = (() => {
     const now = Date.now();
     const cur = c.list.find((p) => p.start <= now && p.end > now), nxt = c.list.find((p) => p.start > now);
     const pct = cur ? Math.max(0, Math.min(100, ((now - cur.start) / (cur.end - cur.start)) * 100)) : 0;
+    // Wrapping up (last 30 minutes): what starts next, right under it (phones hide the NEXT column).
+    const left = cur ? Math.round((cur.end - now) / 60000) : 0;
+    const upNext = cur && nxt && left <= 30 ? `<small class="lv-up"><span class="lv-tag">UP NEXT</span>${clock(nxt.start)} ${esc(nxt.title)}${left > 0 ? ` <span class="muted">(in ${left} min)</span>` : ""}</small>` : "";
     return [
-      cur ? `<span class="t"><span class="lv-tag">NOW</span>${esc(cur.title)}</span><small>${clock(cur.start)} to ${clock(cur.end)}</small><div class="lv-bar"><i style="width:${pct.toFixed(0)}%"></i></div>`
+      cur ? `<span class="t"><span class="lv-tag">NOW</span>${esc(cur.title)}</span><small>${clock(cur.start)} to ${clock(cur.end)}</small><div class="lv-bar"><i style="width:${pct.toFixed(0)}%"></i></div>${upNext}`
         : `<small>${c.list.length ? "Nothing listed right now" : "No guide for this channel"}</small>`,
       nxt ? `<small><span class="lv-tag" style="color:var(--muted)">NEXT</span>${clock(nxt.start)}</small><span class="t">${esc(nxt.title)}</span>` : "",
     ];
@@ -4132,7 +4134,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.23";
+const BUILD = "2026-10-10.24";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
