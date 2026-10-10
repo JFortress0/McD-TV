@@ -2,13 +2,16 @@ package com.mcd.tv.player
 
 import android.view.KeyEvent
 import android.view.View
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,6 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -46,6 +52,7 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.PlayMeta
+import com.mcd.tv.ui.ActionButton
 import com.mcd.tv.ui.McdColors
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -53,6 +60,15 @@ import kotlinx.coroutines.launch
 import com.mcd.tv.ui.broadcastStyle
 
 private const val SEEK_MS = 10_000L
+
+/** "Try next source" for a video picked from a source list (see com.mcd.tv.ui.rememberNextSource). */
+interface NextSource {
+    /** True while another source is left to try. */
+    fun hasMore(): Boolean
+
+    /** Opens the next source that works and switches the player to it (returns null), or returns what to tell the viewer. */
+    suspend fun tryNext(): String?
+}
 
 /** Builds a MediaItem, hinting the format when the URL makes it obvious. */
 private fun mediaItemFor(url: String): MediaItem {
@@ -81,6 +97,10 @@ fun PlayerScreen(
     sleepTimerEnabled: Boolean = true,
     /** Called when the sleep timer fires, after pausing (e.g. leave the player). Null: just pause. */
     onSleep: (() -> Unit)? = null,
+    /** When set, a failed stream shows "Try next source" and Back instead of a dead end. */
+    nextSource: NextSource? = null,
+    /** The panel's Back button (BACK on the remote works either way). */
+    onBack: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
@@ -243,8 +263,12 @@ fun PlayerScreen(
         onKeyEvent?.invoke(e, showing) == true || (sleepTimerEnabled && handleSleepKey(e))
     }
 
+    // With a next-source panel, the player view leaves the screen so its focus guard can't pull focus
+    // away from the panel's buttons. The player is already stopped by the error.
+    val showNextPanel = error != null && nextSource != null
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
+        if (!showNextPanel) AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 TvPlayerView(ctx).apply {
@@ -311,7 +335,11 @@ fun PlayerScreen(
             )
         }
 
-        error?.let { msg ->
+        val failed = error
+        if (failed != null && nextSource != null) {
+            NextSourcePanel(failed, nextSource, onBack, Modifier.align(Alignment.Center))
+        } else if (failed != null) {
+            val msg = failed
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -349,5 +377,74 @@ private class ProgressSaver(private val meta: PlayMeta?) {
         if (force && pos == lastSavedMs) return
         lastSavedMs = pos
         Library.record(meta, pos, dur, urgent = force)
+    }
+}
+
+/** Error panel with "Try next source" (focused) and Back. Says "No more sources." when the list is used up. */
+@Composable
+private fun NextSourcePanel(detail: String, next: NextSource, onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var more by remember { mutableStateOf(next.hasMore()) }
+    val nextFocus = remember { FocusRequester() }
+    val backFocus = remember { FocusRequester() }
+    var tryJob by remember { mutableStateOf<Job?>(null) }
+    // Leaving stops a lookup still running, so it can't open a player on top of the page you went back to.
+    fun leave() {
+        tryJob?.cancel()
+        onBack?.invoke()
+    }
+    BackHandler(enabled = onBack != null) { leave() }
+    // Focus the main choice; when the list runs out, the Try button goes away and Back takes focus.
+    LaunchedEffect(more) {
+        withFrameNanos { }
+        runCatching { if (more) nextFocus.requestFocus() else backFocus.requestFocus() }
+    }
+    Column(
+        modifier = modifier
+            .background(McdColors.Card.copy(alpha = 0.95f))
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(text = "CAN'T PLAY THIS STREAM", style = broadcastStyle(28.sp, McdColors.Red))
+        Text(text = detail, color = McdColors.White, fontSize = 16.sp, modifier = Modifier.padding(top = 12.dp))
+        val line = when {
+            busy -> "Getting the next source…"
+            note != null -> note
+            !more -> "No more sources."
+            else -> null
+        }
+        if (line != null) {
+            Text(text = line, color = McdColors.Amber, fontSize = 15.sp, modifier = Modifier.padding(top = 12.dp))
+        }
+        Row(
+            modifier = Modifier.padding(top = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (more) {
+                ActionButton(
+                    "Try next source",
+                    {
+                        if (!busy) {
+                            busy = true
+                            note = null
+                            tryJob = scope.launch {
+                                val msg = next.tryNext()
+                                // null: the player is switching to the next source.
+                                if (msg != null) {
+                                    note = msg
+                                    more = next.hasMore()
+                                    busy = false
+                                }
+                            }
+                        }
+                    },
+                    Modifier.focusRequester(nextFocus),
+                    primary = true,
+                )
+            }
+            ActionButton("Back", { leave() }, Modifier.focusRequester(backFocus))
+        }
     }
 }
