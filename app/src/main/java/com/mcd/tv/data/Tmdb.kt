@@ -17,7 +17,15 @@ data class Title(
     val language: String = "",
     /** "yyyy-MM-dd" (movies: release date, shows: first air date), or "" when unknown. */
     val releaseDate: String = "",
+    /** TMDB genre ids (from lists' genre_ids or details' genres). Not saved with Library lists. */
+    val genreIds: List<Int> = emptyList(),
+    /** Number of TMDB votes behind [rating]. */
+    val votes: Int = 0,
 )
+
+/** The parts of a title a list gives us, for a first pass of ranking (no keywords or people yet). */
+fun Title.basicFeatures(): Features =
+    Features("$type:$id", genreIds.toSet(), emptySet(), emptySet(), year.toIntOrNull() ?: 0, rating, votes, language)
 
 /** Where titles may come from. Set in Settings or the web page. */
 enum class OriginFilter(val key: String, val label: String) {
@@ -216,6 +224,10 @@ object Tmdb {
             } ?: emptyList(),
             language = o.s("original_language") ?: "",
             releaseDate = date,
+            genreIds = o.optJSONArray("genre_ids")?.let { a -> (0 until a.length()).map { a.optInt(it) } }
+                ?: o.optJSONArray("genres")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optInt("id") } }
+                ?: emptyList(),
+            votes = o.optInt("vote_count"),
         )
     }
 
@@ -280,9 +292,54 @@ object Tmdb {
         )
     }
 
-    /** "More like this" from TMDB, used for Suggested for You on Home. */
-    suspend fun recommendations(type: String, id: Int): List<Title> =
-        parseList(get("/$type/$id/recommendations").optJSONArray("results"), type)
+    /** "More like this" from TMDB (people who liked this also liked…). */
+    suspend fun recommendations(type: String, id: Int, page: Int = 1): List<Title> =
+        parseList(get("/$type/$id/recommendations", mapOf("page" to page.toString())).optJSONArray("results"), type)
+
+    /** TMDB's "similar" list (genre and keyword overlap). */
+    suspend fun similar(type: String, id: Int, page: Int = 1): List<Title> =
+        parseList(get("/$type/$id/similar", mapOf("page" to page.toString())).optJSONArray("results"), type)
+
+    /**
+     * What a title is about, for taste matching: genres, plot keywords, directors / creators and the
+     * top billed cast. One small request (keywords and credits only).
+     */
+    suspend fun features(type: String, id: Int): Features {
+        val o = get("/$type/$id", mapOf("append_to_response" to "keywords,credits"))
+        return featuresOf(o, type, id)
+    }
+
+    internal fun featuresOf(o: JSONObject, type: String, id: Int): Features {
+        fun ids(a: JSONArray?, max: Int = Int.MAX_VALUE): List<Int> =
+            a?.let { arr -> (0 until minOf(arr.length(), max)).mapNotNull { arr.optJSONObject(it)?.optInt("id")?.takeIf { v -> v > 0 } } } ?: emptyList()
+        val kw = o.optJSONObject("keywords")?.let { it.optJSONArray("keywords") ?: it.optJSONArray("results") }
+        val credits = o.optJSONObject("credits")
+        val crew = credits?.optJSONArray("crew")
+        val directors = crew?.let { a ->
+            (0 until a.length()).mapNotNull { a.optJSONObject(it) }.filter { it.optString("job") == "Director" }.map { it.optInt("id") }
+        } ?: emptyList()
+        val people = (ids(credits?.optJSONArray("cast"), 6) + directors + ids(o.optJSONArray("created_by"))).toSet()
+        val date = o.s("release_date") ?: o.s("first_air_date") ?: ""
+        return Features(
+            key = "$type:$id",
+            genres = ids(o.optJSONArray("genres")).toSet(),
+            keywords = ids(kw, 40).toSet(),
+            people = people,
+            year = date.take(4).toIntOrNull() ?: 0,
+            rating = o.optDouble("vote_average", 0.0),
+            votes = o.optInt("vote_count"),
+            language = o.s("original_language") ?: "",
+        )
+    }
+
+    /** The TMDB id of a plot keyword ("stand-up comedy"), or null. Used for Settings > Taste topics. */
+    suspend fun keywordId(name: String): Int? {
+        val q = name.trim()
+        if (q.isEmpty()) return null
+        val arr = get("/search/keyword", mapOf("query" to q)).optJSONArray("results") ?: return null
+        val all = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+        return (all.firstOrNull { it.optString("name").equals(q, ignoreCase = true) } ?: all.firstOrNull())?.optInt("id")?.takeIf { it > 0 }
+    }
 
     private fun region(): Map<String, String> = if (Prefs.usOnly) mapOf("region" to "US") else emptyMap()
 

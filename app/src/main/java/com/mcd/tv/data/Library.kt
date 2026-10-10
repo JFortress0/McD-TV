@@ -102,9 +102,14 @@ object Library {
     fun inNoise(t: Title) = contains("lib_noise", t)
     fun toggleNoise(t: Title) = toggle("lib_noise", t)
 
-    /** "Not for me": hidden from home rows. */
-    fun hidden() = loadTitles("lib_hidden")
+    /** "Not for me": hidden from home rows and suggestions, and counted as a dislike for taste. */
+    fun hidden(profile: String? = null) = loadTitles("lib_hidden", profile)
     fun hide(t: Title) { if (!contains("lib_hidden", t)) toggle("lib_hidden", t) }
+
+    /** "I like this": a strong like for taste (Picked for You, More Like This, Live TV For You). */
+    fun likes(profile: String? = null) = loadTitles("lib_likes", profile)
+    fun isLiked(t: Title) = contains("lib_likes", t)
+    fun toggleLike(t: Title) = toggle("lib_likes", t)
 
     // ---- History ----
     private fun PlayMeta.toJson() = JSONObject().put("type", type).put("tmdbId", tmdbId).put("name", name)

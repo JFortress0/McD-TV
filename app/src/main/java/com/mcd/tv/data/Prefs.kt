@@ -33,7 +33,7 @@ object Prefs {
      */
     private val PROFILE_KEYS = listOf(
         "lib_favorites", "lib_watchlist", "lib_noise", "lib_hidden", "lib_history", "lib_episodes",
-        "live_favorites", "live_recents", "live_last_url",
+        "live_favorites", "live_recents", "live_last_url", "lib_likes", "live_stats",
     )
 
     /** The profile watching now (this TV only, never synced). */
@@ -188,6 +188,43 @@ object Prefs {
     var liveLastUrl: String
         get() = str(profileKey("live_last_url"))
         set(v) = put(profileKey("live_last_url"), v)
+
+    // ---- Taste (Settings > Taste): genres and topics a profile likes or avoids ----
+    /**
+     * JSON {"likeGenres":[ids],"avoidGenres":[ids],"likeWords":["…"],"avoidWords":["…"]}, or "" when never set.
+     * Synced between the house's TVs with the profile (ProfileSync, META "taste").
+     */
+    fun tasteJson(profile: String = activeProfile): String = str("taste@$profile")
+
+    fun setTasteJson(profile: String, json: String) {
+        put("taste@$profile", json)
+        ProfileSync.onTaste(profile, str("taste@$profile"))
+    }
+
+    internal fun applySyncedTaste(profile: String, json: String) = put("taste@$profile", json)
+
+    // ---- Live TV minutes per channel (Live TV > For You), this TV only ----
+    /** Minutes watched and the last time, per stream URL, for [profile]. */
+    fun liveStats(profile: String = activeProfile): Map<String, Pair<Double, Long>> = synchronized(listLock) {
+        val o = runCatching { org.json.JSONObject(str("live_stats@$profile").ifBlank { "{}" }) }.getOrNull() ?: return@synchronized emptyMap()
+        val out = HashMap<String, Pair<Double, Long>>()
+        o.keys().forEach { k -> o.optJSONArray(k)?.let { a -> out[k] = a.optDouble(0, 0.0) to a.optLong(1, 0L) } }
+        out
+    }
+
+    /** Adds [minutes] of watching to a channel (keeps the 300 most watched). */
+    fun addLiveMinutes(url: String, minutes: Double) = synchronized(listLock) {
+        val k = profileKey("live_stats")
+        val o = runCatching { org.json.JSONObject(str(k).ifBlank { "{}" }) }.getOrNull() ?: org.json.JSONObject()
+        val cur = o.optJSONArray(url)
+        val m = (cur?.optDouble(0, 0.0) ?: 0.0) + minutes
+        o.put(url, JSONArray().put(m).put(System.currentTimeMillis()))
+        if (o.length() > 300) {
+            val keep = o.keys().asSequence().toList().sortedByDescending { o.optJSONArray(it)?.optDouble(0, 0.0) ?: 0.0 }.take(250).toSet()
+            o.keys().asSequence().toList().filter { it !in keep }.forEach { o.remove(it) }
+        }
+        sp.edit().putString(k, o.toString()).apply()
+    }
 
     // ---- Addons (Stremio protocol): list of manifest URLs ----
     var addonUrls: List<String>
