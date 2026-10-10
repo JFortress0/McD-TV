@@ -287,6 +287,8 @@ body.playmode header.top,body.playmode nav.tabbar{display:none}
 .pl-title span{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pl-stage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;min-height:200px}
 .pl-stage video{width:100%;max-height:calc(100dvh - 150px);background:#000;aspect-ratio:16/9}
+/* Phone turned sideways: the video fills the screen (turn back upright for the buttons). */
+@media (orientation:landscape) and (max-height:540px){body.playmode .pl-top,body.playmode .pl-bar{display:none}body.playmode .player{padding:0}body.playmode .pl-stage video{max-height:100dvh;height:100dvh;aspect-ratio:auto}}
 .pl-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(90%,460px);text-align:center;background:rgba(17,24,39,.94);border:1px solid var(--line);border-radius:12px;padding:18px}
 .pl-msg p{margin:0 0 12px}
 .pl-bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:12px 16px 18px}
@@ -1305,6 +1307,8 @@ function renderHome(v, tok) {
   if (isKids()) { renderKidsHome(v, tok, L); return; }
   v.innerHTML = `<section class="hero" id="hero"><div class="sk" style="position:absolute;inset:0;border-radius:0"></div></section>
     ${rowShell("continue", "Continue Watching", "#/list?tab=continue", true)}
+    ${rowShell("picked", "Picked for " + profileName(S.profile || "p1"), "")}
+    ${rowShell("because", "Because You Watched", "")}
     ${rowShell("watchlist", "My Watchlist", "#/list")}
     ${rowShell("trending", "Trending This Week", "#/browse/trending")}
     ${rowShell("pm", "Popular Movies", "#/browse/popular?type=movie")}
@@ -1313,14 +1317,118 @@ function renderHome(v, tok) {
     ${rowShell("new", "New Releases", "#/browse/new?type=movie")}
     <footer>Posters and info from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>`;
   homeListRows(tok, L);
+  const who = profileName(S.profile || "p1");
   const trending = api.trending("all");
-  trending.then((items) => { if (tok === routeTok) renderHero(items.filter((t) => t.backdrop).slice(0, 6), tok); })
+  // Picked for <profile> leads Home, as on the TV (Recommender.kt); Trending only when there are no picks.
+  const picks = pickedFor(S.profile || "p1", L).catch(() => []);
+  const heroOk = (items, kicker) => { if (tok !== routeTok) return false; const b = items.filter((t) => t.backdrop).slice(0, 6); if (!b.length) return false; renderHero(b, tok, kicker); return true; };
+  picks.then((items) => { if (!heroOk(items, "Picked for " + who)) return trending.then((t) => heroOk(t)); })
     .catch((e) => { const h = $("#hero"); if (h && tok === routeTok) h.innerHTML = `<div class="notice" style="padding-top:120px"><h2>Couldn't load</h2><p class="muted">${esc(e.message)}</p><button class="btn" data-act="reload">Try again</button></div>`; });
+  fillRow("picked", picks, posterCard, tok);
+  const bw = becauseWatched(L);
+  if (bw) { const h2 = $("#row-because h2"); if (h2) h2.textContent = "Because You Watched " + bw.name; fillRow("because", bw.items, posterCard, tok); }
+  else { const r = $("#row-because"); if (r) r.classList.add("hidden"); }
   fillRow("trending", trending, posterCard, tok);
   fillRow("pm", api.popular("movie"), posterCard, tok);
   fillRow("ps", api.popular("tv"), posterCard, tok);
   fillRow("top", api.top("movie"), posterCard, tok);
   fillRow("new", api.nowPlaying(), posterCard, tok);
+}
+// ---------- Picked for you ----------
+// Mirrors Recommender.kt on the TV: each profile has its own starting taste (Dad: war, crime, comedy, history,
+// stand-up, poker; Mom: her own favorites list; Kids: cartoons), plus what that profile watches and saves here.
+// Nothing crosses between profiles.
+const TASTE = {
+  p1: { genres: [10752, 80, 35, 36], words: ["stand-up", "comedian", "poker"] },
+  p2: { genres: [10749, 35, 14, 80, 10764, 99], words: ["true crime", "murder", "serial killer", "romantic comedy", "vampire", "fashion"] },
+  p3: { genres: [16, 10751], words: [] },
+};
+// Favorites a person listed: strong likes from day one, a different few each day, never suggested back.
+const STARTERS = {
+  p2: [["tv", "Project Runway", 2004], ["tv", "Taskmaster", 2015], ["tv", "Survivor", 2000], ["tv", "Criminal Minds", 2005],
+    ["movie", "Accepted", 2006], ["movie", "He's Just Not That Into You", 2009], ["movie", "The Love Hypothesis", 0],
+    ["movie", "The Lord of the Rings: The Fellowship of the Ring", 2001], ["movie", "The Lord of the Rings: The Return of the King", 2003],
+    ["movie", "The Hobbit: An Unexpected Journey", 2012], ["movie", "Harry Potter and the Philosopher's Stone", 2001],
+    ["movie", "Harry Potter and the Deathly Hallows: Part 2", 2011], ["tv", "Merlin", 2008], ["tv", "Desperate Housewives", 2004],
+    ["tv", "Game of Thrones", 2011], ["tv", "A Knight of the Seven Kingdoms", 2026], ["movie", "Saving Private Ryan", 1998],
+    ["tv", "Girls", 2012], ["tv", "The Sex Lives of College Girls", 2021], ["tv", "My Mad Fat Diary", 2013],
+    ["tv", "The Vampire Diaries", 2009], ["tv", "True Blood", 2008]],
+};
+// Movie genre -> the TV-show genre TMDB uses for it (shows have no War, Fantasy or Action of their own).
+const TV_GENRE = { 10752: 10768, 14: 10765, 878: 10765, 28: 10759, 12: 10759 };
+const canonGenre = (g) => ({ 10768: 10752, 10765: 14, 10759: 28 })[g] || g;
+const STARTER_CACHE = "mcdtv_web_starters";
+const normName = (n) => String(n || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+async function starterRefs(pid) {
+  const list = STARTERS[pid]; if (!list) return [];
+  let cache = {}; try { cache = JSON.parse(LS.get(STARTER_CACHE) || "{}") || {}; } catch {}
+  let changed = false;
+  const got = await mapPool(list, 4, async ([type, name, year]) => {
+    const k = type + "|" + name + "|" + (year || "");
+    if (!(k in cache)) {
+      const yp = year ? (type === "movie" ? { primary_release_year: year } : { first_air_date_year: year }) : {};
+      let res = (await tmdb(`/search/${type}`, { query: name, include_adult: "false", ...yp })).results || [];
+      if (!res.length && year) res = (await tmdb(`/search/${type}`, { query: name, include_adult: "false" })).results || [];
+      const hit = res.find((o) => normName(o.title || o.name) === normName(name)) || res[0];
+      cache[k] = hit ? hit.id : 0; changed = true;
+    }
+    return cache[k] ? { type, id: +cache[k] } : null;
+  });
+  if (changed) LS.set(STARTER_CACHE, JSON.stringify(cache));
+  return got.filter(Boolean);
+}
+function dayShuffle(arr, salt) {
+  let h = 2166136261; for (const c of today() + salt) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; const j = h % (i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+const recs = (r) => tmdb(`/${r.type}/${r.id}/recommendations`, {}).then((d) => toList(d.results, r.type)).catch(() => []);
+async function pickedFor(pid, L) {
+  const T = TASTE[pid] || TASTE.p1;
+  const own = [];
+  const seen = new Set();
+  for (const r of [...L.cont, ...L.favorites, ...L.watchlist]) {
+    if (!r || !r.type || !r.id) continue;
+    const k = r.type + ":" + r.id; if (seen.has(k)) continue; seen.add(k); own.push({ type: r.type, id: +r.id });
+  }
+  const starters = await starterRefs(pid).catch(() => []);
+  const skip = new Set([...own, ...starters].map((r) => r.type + ":" + r.id));
+  const seeds = [...own.slice(0, 4), ...dayShuffle(starters, pid).slice(0, own.length >= 4 ? 3 : 6)];
+  const mg = T.genres.join("|"), tg = [...new Set(T.genres.map((g) => TV_GENRE[g] || g))].join("|");
+  const pools = await Promise.all([
+    ...seeds.map(recs),
+    api.discover("movie", { with_genres: mg, "vote_count.gte": "300" }).catch(() => []),
+    api.discover("tv", { with_genres: tg, "vote_count.gte": "100" }).catch(() => []),
+    api.discover("movie", { with_genres: mg, sort_by: "vote_average.desc", "vote_count.gte": "1500" }).catch(() => []),
+  ]);
+  const like = new Set(T.genres.map(canonGenre));
+  const byKey = new Map();
+  pools.forEach((list, pi) => {
+    const fromSeed = pi < seeds.length;
+    for (const t of list) {
+      const k = t.type + ":" + t.id;
+      if (skip.has(k) || !kidsOk(t) || !t.poster) continue;
+      if ((t.genres || []).some((g) => (g === 16 || g === 10751) && !like.has(g))) continue; // no cartoons for grown-ups
+      const e = byKey.get(k) || { t, hits: 0 };
+      if (fromSeed) e.hits++;
+      byKey.set(k, e);
+    }
+  });
+  const scored = [...byKey.values()].map(({ t, hits }) => {
+    const g = (t.genres || []).map(canonGenre).filter((x) => like.has(x)).length;
+    const text = (t.name + " " + t.overview).toLowerCase();
+    const w = T.words.some((x) => text.includes(x)) ? 0.6 : 0;
+    return { t, s: hits * 1.2 + Math.min(g, 3) * 0.7 + w + Math.min(t.rating || 0, 9) / 10 + Math.log10((t.votes || 0) + 10) / 4 };
+  }).filter((x) => x.s > 1.2);
+  scored.sort((a, b) => b.s - a.s);
+  return scored.slice(0, 24).map((x) => x.t);
+}
+/** "Because You Watched <the last thing this profile watched>", or null when it hasn't watched anything yet. */
+function becauseWatched(L) {
+  const r = L.cont.find((x) => x && x.name) || L.favorites.find((x) => x && x.name);
+  if (!r || !r.type || !r.id) return null;
+  return { name: r.name, items: recs({ type: r.type, id: +r.id }).then((l) => l.filter((t) => kidsOk(t) && t.poster).slice(0, 20)) };
 }
 /** Kids profile Home: family and animation rows, like the TV (US rated G or PG movies, TMDB's Kids genre for shows). */
 function renderKidsHome(v, tok, L) {
@@ -2597,6 +2705,8 @@ async function renderSources(v, tok, type, id, q) {
 
 // ---------- Player page (#/play/type/id?s=&e=) ----------
 function fmtTime(sec) { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); }
+// iPhone plays video full screen by itself when the page doesn't ask for inline playback.
+const IPHONE = /iPhone|iPod/.test(navigator.userAgent);
 function renderPlayer(v, tok, type, id, q) {
   const P = S.playing;
   const want = posKey({ type, id, season: +q.get("s") || 0, episode: +q.get("e") || 0 });
@@ -2612,7 +2722,7 @@ function renderPlayer(v, tok, type, id, q) {
   v.innerHTML = `<div class="player">
     <div class="pl-top"><a class="pl-back" href="${esc(P.back)}" aria-label="Back to sources">&#8249; Back</a>
       <div class="pl-title"><b>${esc(m.label)}</b><span class="muted" id="plLine">${esc(P.line)}</span></div></div>
-    <div class="pl-stage"><video id="vid" controls playsinline webkit-playsinline preload="auto"${bd}></video>
+    <div class="pl-stage"><video id="vid" controls${IPHONE ? "" : " playsinline webkit-playsinline"} preload="auto"${bd}></video>
       <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><a class="btn small primary" href="${esc(P.back)}">Pick another source</a></div></div>
     <div class="pl-bar"><button class="btn primary big" id="fsBtn">&#9974; Full screen</button>
       <a class="btn" href="${esc(P.back)}">Other sources</a>
@@ -2676,6 +2786,13 @@ function renderPlayer(v, tok, type, id, q) {
   const onHide = () => save(true);
   window.addEventListener("pagehide", onHide);
   $("#fsBtn", v).addEventListener("click", async () => {
+    // iPhone: only the video's own full screen works, and only once the video has loaded.
+    if (vid.webkitEnterFullscreen && !document.fullscreenEnabled) {
+      const go = () => { try { vid.webkitEnterFullscreen(); } catch {} };
+      if (vid.paused) { const p = vid.play(); if (p && p.catch) p.catch(() => {}); }
+      if (vid.readyState >= 1) go(); else vid.addEventListener("loadedmetadata", go, { once: true });
+      return;
+    }
     try {
       if (vid.requestFullscreen) await vid.requestFullscreen();
       else if (vid.webkitRequestFullscreen) vid.webkitRequestFullscreen();
@@ -3670,7 +3787,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.11";
+const BUILD = "2026-10-10.12";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
