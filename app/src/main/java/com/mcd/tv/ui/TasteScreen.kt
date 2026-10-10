@@ -26,7 +26,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -68,6 +74,12 @@ fun TasteScreen(nav: Nav, profile: String) {
     var likeText by remember(profile) { mutableStateOf(words("likeWords")) }
     var avoidText by remember(profile) { mutableStateOf(words("avoidWords")) }
     val first = remember { FocusRequester() }
+    // The text boxes keep UP / DOWN for themselves (cursor moves), so focus is moved by hand:
+    // last genre <-> topics you like <-> topics to skip <-> Save.
+    val lastGenre = remember { FocusRequester() }
+    val likeField = remember { FocusRequester() }
+    val avoidField = remember { FocusRequester() }
+    val saveButton = remember { FocusRequester() }
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { first.requestFocus() } }
 
     fun save() {
@@ -100,24 +112,28 @@ fun TasteScreen(nav: Nav, profile: String) {
                     {
                         picks[id] = when (p) { Pick.NONE -> Pick.LIKE; Pick.LIKE -> Pick.AVOID; Pick.AVOID -> Pick.NONE }
                     },
-                    if (i == 0) Modifier.focusRequester(first) else Modifier,
+                    when (i) {
+                        0 -> Modifier.focusRequester(first)
+                        TASTE_GENRES.lastIndex -> Modifier.focusRequester(lastGenre)
+                        else -> Modifier
+                    },
                     primary = p == Pick.LIKE,
                 )
             }
         }
         Text("Topics you like (comma separated), for example: stand-up comedy, poker, mafia, navy seals", color = McdColors.White, fontSize = 16.sp)
-        TasteField(likeText, { likeText = it })
+        TasteField(likeText, { likeText = it }, likeField, up = lastGenre, down = avoidField)
         Text("Topics to skip (comma separated). Titles and live shows about these are left out of your suggestions.", color = McdColors.White, fontSize = 16.sp)
-        TasteField(avoidText, { avoidText = it })
+        TasteField(avoidText, { avoidText = it }, avoidField, up = likeField, down = saveButton)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("Save", { save() }, primary = true)
+            ActionButton("Save", { save() }, Modifier.focusRequester(saveButton).focusProperties { up = avoidField }, primary = true)
             ActionButton("Cancel", { nav.back() })
         }
     }
 }
 
 @Composable
-private fun TasteField(value: String, onChange: (String) -> Unit) {
+private fun TasteField(value: String, onChange: (String) -> Unit, self: FocusRequester, up: FocusRequester, down: FocusRequester) {
     BasicTextField(
         value = value,
         onValueChange = { onChange(it.take(300)) },
@@ -126,7 +142,22 @@ private fun TasteField(value: String, onChange: (String) -> Unit) {
         cursorBrush = SolidColor(McdColors.Accent),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, showKeyboardOnFocus = false),
         keyboardActions = KeyboardActions(onDone = { }),
-        modifier = Modifier.fillMaxWidth().background(McdColors.Card, HudShape)
+        modifier = Modifier.fillMaxWidth()
+            .focusRequester(self)
+            .onPreviewKeyEvent { e ->
+                val to = when (e.key) {
+                    Key.DirectionDown -> down
+                    Key.DirectionUp -> up
+                    else -> null
+                }
+                if (to != null) {
+                    if (e.type == KeyEventType.KeyDown) runCatching { to.requestFocus() }
+                    true
+                } else {
+                    false
+                }
+            }
+            .background(McdColors.Card, HudShape)
             .border(1.dp, McdColors.Accent.copy(alpha = 0.7f), HudShape).padding(12.dp),
     )
 }
