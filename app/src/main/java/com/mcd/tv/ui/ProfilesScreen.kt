@@ -60,7 +60,8 @@ fun ProfilePickerScreen(onPicked: () -> Unit) {
         Spacer(Modifier.height(22.dp))
         Text("WHO'S WATCHING?", style = broadcastStyle(30.sp))
         Spacer(Modifier.height(6.dp))
-        Text("Each profile keeps its own history, My List and Live TV favorites.", color = McdColors.Muted, fontSize = 14.sp)
+        // Version on the first screen, so it's clear at a glance whether this TV has the latest update.
+        Text("Jarvis v${com.mcd.tv.BuildConfig.VERSION_NAME}", color = McdColors.Muted, fontSize = 14.sp)
         val syncLine = remember { ProfileSync.statusLine() }
         if (syncLine.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))

@@ -604,7 +604,10 @@ private fun SearchPane(
     }
 }
 
-/** Four channel cards per row. Lazy, keyed by stream URL. */
+/**
+ * Channels as a guide list: one row per channel with its logo and name, what's on now (with its times
+ * and a progress bar) and what's on next. Lazy, keyed by stream URL.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ChannelGrid(
@@ -626,11 +629,11 @@ private fun ChannelGrid(
     // True while the first card is composed (a FocusRequester must be attached before focus is sent to it).
     var firstShown by remember { mutableStateOf(false) }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
+        columns = GridCells.Fixed(1),
         state = gridState,
         contentPadding = PaddingValues(start = 6.dp, end = 32.dp, top = 8.dp, bottom = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         // Coming in from the rail (now taller with the Games block) lands on the first card while the grid is at
         // the top, not on whichever row happens to line up with the rail entry.
         modifier = Modifier
@@ -648,7 +651,7 @@ private fun ChannelGrid(
                     onDispose { firstShown = false }
                 }
             }
-            LiveChannelCard(
+            LiveChannelListRow(
                 ch = ch,
                 name = name,
                 favorite = ch.url in favSet,
@@ -672,6 +675,96 @@ private fun ChannelGrid(
 }
 
 private val LiveCardShape = HudShape
+
+/**
+ * One channel in a section list: logo, name (gold star on favorites), then NOW: title, "8:00 PM to 9:00 PM"
+ * and a progress bar, then NEXT: time and title. Without guide data it says so. Menu (☰) toggles the favorite.
+ */
+@Composable
+private fun LiveChannelListRow(
+    ch: Channel,
+    name: String,
+    favorite: Boolean,
+    guide: Map<String, List<Programme>>,
+    now: Long,
+    onClick: () -> Unit,
+    onMenu: () -> Unit,
+    onFocused: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val (cur, next) = remember(guide, ch.url, now / 60_000L) { Epg.nowNext(Epg.keyOf(ch), guide, now) }
+    HudCard(
+        onClick = onClick,
+        onLongClick = onMenu,
+        focusedScale = 1.02f,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(76.dp)
+            .onFocusChanged { onFocused(it.isFocused) }
+            .onPreviewKeyEvent { e ->
+                if (e.key == Key.Menu) {
+                    if (e.type == KeyEventType.KeyUp) onMenu()
+                    true
+                } else {
+                    false
+                }
+            },
+    ) { focused ->
+        Row(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Logo (or the name on a tile when there is none).
+            Box(
+                Modifier.width(96.dp).fillMaxHeight().clip(HudShapeSmall).background(McdColors.Ink.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (ch.logo != null) {
+                    AsyncImage(
+                        model = ch.logo, contentDescription = null, contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 5.dp),
+                    )
+                } else {
+                    Text(name, style = broadcastStyle(11.sp), textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(4.dp))
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            // Channel name.
+            Column(Modifier.width(170.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        name, color = if (focused) McdColors.AccentBright else McdColors.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (favorite) Text("  ★", color = StarGold, fontSize = 13.sp)
+                }
+                if (cur != null) LiveBadge(Modifier.padding(top = 4.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            // On now: title, start to end, progress.
+            Column(Modifier.weight(1f)) {
+                if (cur != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("NOW", color = McdColors.Accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(6.dp))
+                        Text(cur.title, color = McdColors.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Text("${guideTime(cur.start)} to ${guideTime(cur.end)}", color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
+                    Box(Modifier.padding(top = 4.dp).fillMaxWidth(0.9f).height(3.dp).background(McdColors.Line.copy(alpha = 0.5f))) {
+                        Box(Modifier.fillMaxWidth(programmeProgress(cur, now)).height(3.dp).background(McdColors.Accent))
+                    }
+                } else {
+                    Text(if (guide.isEmpty()) "Guide loading…" else "No guide info for this channel", color = McdColors.Muted, fontSize = 13.sp, maxLines = 1)
+                }
+            }
+            // Up next.
+            if (next != null) {
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.width(190.dp)) {
+                    Text("NEXT  ${guideTime(next.start)}", color = McdColors.Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(next.title, color = McdColors.Muted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
 
 /**
  * Channel card: logo centered on a dark tile, clean name and what's on now underneath, a thin progress bar
