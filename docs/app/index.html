@@ -425,7 +425,7 @@ footer{color:var(--muted)}
 .ask-row{display:flex;gap:10px}
 .ask-row input{flex:1 1 auto;min-width:0}
 .askex{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.askex .chip{white-space:normal;text-align:left;text-transform:none;letter-spacing:0}
+.askex .chip{flex:0 1 auto;max-width:100%;white-space:normal;text-align:left;text-transform:none;letter-spacing:0}
 .ask-line{margin:14px 0 6px;font-size:16px}.ask-line b{color:var(--accent);font-family:var(--font);letter-spacing:1.5px;font-size:13px;margin-right:4px}
 .ask-think{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:16px 0}
 .ask-think .spinner{margin:0}
@@ -922,7 +922,14 @@ function askHandoff() {
   });
   document.body.appendChild(box);
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { setTimeout(askHandoff, 600); RC.refresh(); syncHouse(); } });
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+  setTimeout(askHandoff, 600); RC.refresh(); syncHouse();
+  // iOS freezes a Home Screen app in the background and its live connection to the relay dies quietly:
+  // reconnect after 30 s away (or a closed stream), else just ask the TV again.
+  if (S.link) { if (!S.es || S.es.readyState === 2 || Date.now() - hiddenAt > 30000) connect(); else askInit(); }
+});
 window.addEventListener("pageshow", () => setTimeout(askHandoff, 800));
 
 // ---------- relay ----------
@@ -945,7 +952,7 @@ const newReq = () => Math.random().toString(36).slice(2, 10);
 async function onRelay(raw, live) {
   const m = await decrypt(raw, S.key);
   if (!m || typeof m !== "object") return;
-  if (live) { setStatus("online"); clearTimeout(S.initTimer); }
+  if (live) { S.lastLive = Date.now(); setStatus("online"); clearTimeout(S.initTimer); }
   if (m.type === "web_init") applyInit(m);
   else if (m.type === "addons") applyAddons(m);
   else if (m.type === "web_list") applyWebList(m);
@@ -1086,7 +1093,9 @@ async function askInit() {
   if (!S.link) return;
   S.lastInitAsk = Date.now();
   clearTimeout(S.initTimer);
-  S.initTimer = setTimeout(() => { if (S.status !== "online") setStatus("offline"); }, 8000);
+  // Offline unless the TV answered this ask (a session that saw the TV earlier must not stay "online").
+  const asked = S.lastInitAsk;
+  S.initTimer = setTimeout(() => { if (!(S.lastLive >= asked)) setStatus("offline"); }, 8000);
   const cmd = { cmd: "web_init", req: newReq(), ts: Date.now() };
   if (S.profile) cmd.profile = S.profile; // that profile's lists; the TV's own profile is not changed
   try { await relaySend(cmd); } catch { setStatus("offline"); }
@@ -3500,19 +3509,20 @@ const LV = (() => {
     }
     return { games: out, week: j.week && j.week.number };
   }
-  async function loadLeague(L) {
+  async function loadLeague(L, quick) {
     const c = SCHED[L.id];
     const busy = c && c.games.some((g) => g.state === "in");
-    if (c && Date.now() - c.at < (busy ? 60000 : 600000)) return c;
+    // A counts-only copy (quick) is not enough once the league is opened: then load the full week.
+    if (c && (quick || !c.quick) && Date.now() - c.at < (busy ? 60000 : 600000)) return c;
     const urls = [];
     if (L.weekly) urls.push(`${ESPN}${L.path}/scoreboard?limit=300${L.extra}`);
-    for (let k = L.weekly ? 0 : -1; k <= (L.weekly ? 1 : 3); k++) { const d = new Date(); d.setDate(d.getDate() + k); urls.push(`${ESPN}${L.path}/scoreboard?limit=300&dates=${ymd(d)}${L.extra || ""}`); }
+    for (let k = L.weekly ? 0 : -1; !(quick && L.weekly) && k <= (quick ? 0 : L.weekly ? 1 : 3); k++) { if (quick && k < 0) continue; const d = new Date(); d.setDate(d.getDate() + k); urls.push(`${ESPN}${L.path}/scoreboard?limit=300&dates=${ymd(d)}${L.extra || ""}`); }
     const res = await Promise.all(urls.map((u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
     const byId = new Map(); let week = null;
     for (const j of res) { if (!j) continue; const p = parseGames(j, L); week = week || p.week; for (const g of p.games) byId.set(g.id, g); }
     const today0 = new Date(); today0.setHours(0, 0, 0, 0);
     const games = [...byId.values()].filter((g) => !(g.state === "post" && g.start < today0.getTime() - (L.weekly ? 4 * 864e5 : 0))).sort((a, b) => a.start - b.start);
-    return (SCHED[L.id] = { at: Date.now(), games, week, ok: res.some(Boolean) });
+    return (SCHED[L.id] = { at: Date.now(), games, week, ok: res.some(Boolean), quick: !!quick });
   }
   const words = (t) => String(t || "").toLowerCase().replace(/&/g, " and ").split(/[^a-z0-9+]+/).filter(Boolean);
   const PQ = new Map();
@@ -3590,7 +3600,7 @@ const LV = (() => {
   }
   async function loadGameCounts() {
     for (const L of LEAGUES.filter(inSeason)) {
-      loadLeague(L).then((sc) => {
+      loadLeague(L, true).then((sc) => {
         const b = $(`#lvChips .chip[data-sec="game:${L.id}"] span+span`);
         if (b) b.textContent = sc.ok ? String(sc.games.filter((x) => x.state !== "post").length) : "";
         const chip = b && b.closest(".chip"); if (chip && sc.ok && !sc.games.length) chip.remove();
@@ -4155,7 +4165,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.27";
+const BUILD = "2026-10-11.1";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
