@@ -327,9 +327,14 @@ object Taste {
 
     private fun words(s: String): List<String> = WORD.findAll(s.lowercase(Locale.ROOT)).map { it.value }.toList()
 
+    /** Phrases split into words once (the same few hundred are checked against every channel). */
+    private val phraseWords = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+
+    private fun phraseOf(p: String): List<String> = phraseWords.getOrPut(p) { words(p) }
+
     /** True when the phrase (one or more words) appears as whole words in [w]. */
     private fun hasPhrase(w: List<String>, phrase: String): Boolean {
-        val p = words(phrase)
+        val p = phraseOf(phrase)
         if (p.isEmpty() || p.size > w.size) return false
         for (i in 0..w.size - p.size) {
             var ok = true
@@ -448,7 +453,7 @@ object Taste {
             val onNow = matcher.score(c.nowText)
             // Coming up in the next few hours (a poker final at 9, a WWII documentary at 10) counts a little less.
             val soon = max(0.0, matcher.score(c.soonText))
-            val major = if (MAJOR.any { hasPhrase(nameWords, it) && nameWords.size <= words(it).size + 2 }) 0.25 else 0.0
+            val major = if (MAJOR.any { hasPhrase(nameWords, it) && nameWords.size <= phraseOf(it).size + 2 }) 0.25 else 0.0
             val score = 3.0 * habit + (if (c.favorite) 1.2 else 0.0) + 1.2 * kind + 1.0 * onNow + 0.5 * soon + major
             if (score <= 0.15) continue
             val reason = when {
