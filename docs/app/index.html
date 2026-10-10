@@ -3406,28 +3406,57 @@ function setupLink() {
 // with the profile they will watch as. Opening it in Safari sets that browser up; the Home Screen app then
 // takes it with one tap (Paste invite), since iPhone keeps the app's storage apart from Safari's.
 const INVITE_KEY = "mcdtv_web_invite", WELCOME_KEY = "mcdtv_web_welcome";
-function inviteLink(pid, withToken) {
+async function inviteLink(pid, withToken) {
   const o = {};
   // The Real-Debrid API token goes along only when ticked (then the invite is as good as your password).
   for (const k of SETUP_KEYS()) { if (k === RDC_KEY || (k === RDT_KEY && !withToken)) continue; const v = LS.get(k); if (v != null && v !== "") o[k] = v; }
   o[PROFILE_KEY] = pid;
-  return location.origin + location.pathname + "#invite." + b64u.enc(new TextEncoder().encode(JSON.stringify(o)));
+  return (await shortInvite(o)) || location.origin + location.pathname + "#invite." + b64u.enc(new TextEncoder().encode(JSON.stringify(o)));
 }
-const isInvite = (t) => /#(setup|invite)\.[A-Za-z0-9_-]{20,}/.test(String(t || ""));
-function importSetup(text) {
-  const m = /#(?:setup|invite)\.([A-Za-z0-9_-]+)/.exec(String(text || ""));
-  if (!m) return false;
-  let o;
-  try { o = JSON.parse(new TextDecoder().decode(b64u.dec(m[1]))); } catch { return false; }
+// Short invite: "#j.<id>.<key>". The setup is encrypted with <key> and kept on the Jarvis relay for 7 days
+// (rd-proxy/netlify/functions/invite.mts), so the link is short enough to text. Long links still work.
+const INVITE_RELAY = "https://jarvis-rd.netlify.app/invite";
+const SHORT_INV = /#j\.([A-Za-z0-9_-]{16,40})\.([A-Za-z0-9_-]{40,})/;
+const isInvite = (t) => /#(setup|invite)\.[A-Za-z0-9_-]{20,}/.test(String(t || "")) || SHORT_INV.test(String(t || ""));
+function applySetup(o) {
   if (!o || typeof o !== "object") return false;
   const allowed = new Set(SETUP_KEYS());
   for (const [k, v] of Object.entries(o)) if (allowed.has(k) && typeof v === "string") LS.set(k, v);
   return true;
 }
+function importSetup(text) {
+  const m = /#(?:setup|invite)\.([A-Za-z0-9_-]+)/.exec(String(text || ""));
+  if (!m) return false;
+  let o;
+  try { o = JSON.parse(new TextDecoder().decode(b64u.dec(m[1]))); } catch { return false; }
+  return applySetup(o);
+}
+/** Long or short invite. A short one is fetched from the relay and decrypted here. */
+async function importAny(text) {
+  const m = SHORT_INV.exec(String(text || ""));
+  if (!m) return importSetup(text);
+  try {
+    const r = await fetch(INVITE_RELAY + "?id=" + encodeURIComponent(m[1]), { cache: "no-store" });
+    if (!r.ok) return false;
+    const j = await r.json();
+    return applySetup(await decrypt(j.v, await importKey(m[2])));
+  } catch { return false; }
+}
+/** Stores [o] encrypted on the relay and returns the short link, or "" when the relay can't be reached. */
+async function shortInvite(o) {
+  try {
+    const kb = crypto.getRandomValues(new Uint8Array(32)), k64 = b64u.enc(kb);
+    const id = b64u.enc(crypto.getRandomValues(new Uint8Array(16)));
+    const v = await encrypt(o, await importKey(k64));
+    const r = await fetch(INVITE_RELAY, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify({ id, v }) });
+    if (!r.ok) return "";
+    return location.origin + location.pathname + "#j." + id + "." + k64;
+  } catch { return ""; }
+}
 async function doPaste() {
   const inp = $("#pasteLink");
   if (inp && isInvite(inp.value)) {
-    if (importSetup(inp.value)) { LS.set(WELCOME_KEY, "1"); toast("Setup copied to this app", "ok"); setTimeout(() => { location.hash = "#/welcome"; location.reload(); }, 600); }
+    if (await importAny(inp.value)) { LS.set(WELCOME_KEY, "1"); toast("Setup copied to this app", "ok"); setTimeout(() => { location.hash = "#/welcome"; location.reload(); }, 600); }
     else toast("That setup link is damaged. Copy it again.", "warn");
     return;
   }
@@ -3549,9 +3578,10 @@ document.addEventListener("click", async (e) => {
     }
     case "invite": {
       const tk = $("#invTok");
-      const url = inviteLink(d.pid, !!(tk && tk.checked));
+      const url = await inviteLink(d.pid, !!(tk && tk.checked));
       try {
-        if (navigator.share) await navigator.share({ title: "Jarvis", text: "Tap to set up Jarvis on your phone", url });
+        // The link goes in the text itself: Messages keeps it there (a separate "url" was sometimes dropped).
+        if (navigator.share) await navigator.share({ text: "Tap to set up Jarvis on your phone: " + url });
         else { await navigator.clipboard.writeText(url); toast("Invite copied. Send it by text or email.", "ok"); }
       } catch (err) {
         if (err && err.name === "AbortError") break; // closed the share sheet
@@ -3568,7 +3598,7 @@ document.addEventListener("click", async (e) => {
       let t = "";
       try { t = await navigator.clipboard.readText(); } catch {}
       if (!isInvite(t)) t = prompt("Paste your Jarvis invite here:") || "";
-      if (isInvite(t) && importSetup(t)) { LS.set(WELCOME_KEY, "1"); toast("Jarvis is set up", "ok"); setTimeout(() => { location.hash = "#/welcome"; location.reload(); }, 500); }
+      if (isInvite(t) && await importAny(t)) { LS.set(WELCOME_KEY, "1"); toast("Jarvis is set up", "ok"); setTimeout(() => { location.hash = "#/welcome"; location.reload(); }, 500); }
       else if (t) toast("That isn't a Jarvis invite. Open the invite in Safari and tap Copy invite.", "warn");
       break;
     }
@@ -3640,7 +3670,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.10";
+const BUILD = "2026-10-10.11";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
@@ -3677,7 +3707,7 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
   if (isInvite(location.hash)) {
     // Opened from an invite: set this browser up, keep the invite for the Home Screen app, show the next steps.
     const h = location.hash;
-    if (importSetup(h)) { LS.set(INVITE_KEY, location.origin + location.pathname + h); LS.set(WELCOME_KEY, "1"); S.profile = LS.get(PROFILE_KEY) || S.profile; S.init = readJSON(INIT_KEY); S.plists = readJSON(PLISTS_KEY) || {}; }
+    if (await importAny(h)) { LS.set(INVITE_KEY, location.origin + location.pathname + h); LS.set(WELCOME_KEY, "1"); S.profile = LS.get(PROFILE_KEY) || S.profile; S.init = readJSON(INIT_KEY); S.plists = readJSON(PLISTS_KEY) || {}; }
     history.replaceState(null, "", location.pathname + location.search + "#/welcome");
   }
   updateProfileUI();
