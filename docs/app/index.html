@@ -1057,6 +1057,7 @@ async function route() {
   LV.closePlayer();
   document.body.classList.toggle("playmode", name === "play");
   setActive(name);
+  if (name === "welcome") { renderWelcome(v); setActive("settings"); return; }
   const needsKey = !["settings", "pair", "profiles", "live", "websites"].includes(name);
   if (!S.link && !keys().tmdb && !["settings", "pair"].includes(name)) { renderPair(v); setActive("settings"); return; }
   window.scrollTo(0, 0);
@@ -3028,6 +3029,9 @@ function renderSettings(v) {
         : "Off: Ask Jarvis goes through your TV, which needs to be on. No key is kept on this device."}</p>
       ${jarvisKey() ? `<div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rmjarvis">Remove key from this device</button></div>` : ""}
     </div>
+    <div class="panel"><h2>Set up another phone</h2>
+      <p class="muted">Sends an invite with your TV link, sources, playlist and keys. They tap it, add Jarvis to their Home Screen and sign in to Real-Debrid. Only send it to people you'd hand your TV remote.</p>
+      <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small" data-act="invite" data-pid="${p.id}">Invite as ${esc(p.name)}</button>`).join("")}</div></div>
     <div class="panel"><h2>Install as an app</h2>
       <p class="muted">${isStandalone() ? "Jarvis is installed on this device. iPhone keeps the app's settings apart from Safari's. To bring your setup over: open Jarvis in Safari, go to Settings and tap Copy setup for the app, then paste it under Your TV here and tap Link." : "iPhone and iPad: in Safari, tap Share, then Add to Home Screen. Then tap Copy setup for the app below and paste it in the app's Settings, under Your TV. (iPhone keeps the app's settings apart from Safari's.) Android and computers: use the browser menu and choose Install app."}</p>
       ${isStandalone() ? "" : `<div class="rowf" style="margin-top:10px"><button class="btn small primary" data-act="copysetup">Copy setup for the app</button></div>`}
@@ -3069,8 +3073,19 @@ function setupLink() {
   for (const k of SETUP_KEYS()) { const v = LS.get(k); if (v != null && v !== "") o[k] = v; }
   return location.origin + location.pathname + "#setup." + b64u.enc(new TextEncoder().encode(JSON.stringify(o)));
 }
+// An invite is a setup link for someone else's phone: everything except this device's Real-Debrid sign-in,
+// with the profile they will watch as. Opening it in Safari sets that browser up; the Home Screen app then
+// takes it with one tap (Paste invite), since iPhone keeps the app's storage apart from Safari's.
+const INVITE_KEY = "mcdtv_web_invite", WELCOME_KEY = "mcdtv_web_welcome";
+function inviteLink(pid) {
+  const o = {};
+  for (const k of SETUP_KEYS()) { if (k === RDC_KEY || k === RDT_KEY) continue; const v = LS.get(k); if (v != null && v !== "") o[k] = v; }
+  o[PROFILE_KEY] = pid;
+  return location.origin + location.pathname + "#invite." + b64u.enc(new TextEncoder().encode(JSON.stringify(o)));
+}
+const isInvite = (t) => /#(setup|invite)\.[A-Za-z0-9_-]{20,}/.test(String(t || ""));
 function importSetup(text) {
-  const m = /#setup\.([A-Za-z0-9_-]+)/.exec(String(text || ""));
+  const m = /#(?:setup|invite)\.([A-Za-z0-9_-]+)/.exec(String(text || ""));
   if (!m) return false;
   let o;
   try { o = JSON.parse(new TextDecoder().decode(b64u.dec(m[1]))); } catch { return false; }
@@ -3081,8 +3096,8 @@ function importSetup(text) {
 }
 async function doPaste() {
   const inp = $("#pasteLink");
-  if (inp && /#setup\./.test(inp.value)) {
-    if (importSetup(inp.value)) { toast("Setup copied to this app", "ok"); setTimeout(() => { location.hash = "#/"; location.reload(); }, 600); }
+  if (inp && isInvite(inp.value)) {
+    if (importSetup(inp.value)) { LS.set(WELCOME_KEY, "1"); toast("Setup copied to this app", "ok"); setTimeout(() => { location.hash = "#/welcome"; location.reload(); }, 600); }
     else toast("That setup link is damaged. Copy it again.", "warn");
     return;
   }
@@ -3092,9 +3107,38 @@ async function doPaste() {
   route();
 }
 
+// ---------- Welcome (after an invite) ----------
+const VLC_STORE = "https://apps.apple.com/app/vlc-media-player/id650377962";
+function renderWelcome(v) {
+  const who = S.profile ? profileName(S.profile) : "";
+  if (!isStandalone()) {
+    v.innerHTML = `<div class="page"><h1>Almost done${who ? ", " + esc(who) : ""}</h1>
+      <div class="panel"><h2>Put Jarvis on your Home Screen</h2>
+        <ol class="steps">
+          <li>Tap <b>Copy invite</b> below.</li>
+          <li>Tap the <b>Share</b> button at the bottom of Safari, then <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+          <li>Open <b>Jarvis</b> from your Home Screen and tap <b>Paste invite</b>.</li>
+        </ol>
+        <div class="rowf" style="margin-top:12px"><button class="btn primary" data-act="copyinvite">Copy invite</button></div>
+      </div></div>`;
+    return;
+  }
+  const tv = !!S.link, addons = addonUrls().length;
+  const row = (ok, title, body) => `<div class="panel"><h2>${ok ? "&#10003; " : ""}${title}</h2>${body}</div>`;
+  v.innerHTML = `<div class="page"><h1>Welcome${who ? ", " + esc(who) : ""}</h1>
+    <p class="muted">Two quick things and Jarvis is ready on this phone.</p>
+    ${row(tv && addons, "Your TV and sources", `<p class="muted">${tv ? "Linked to your TV" : "Not linked to a TV"}${addons ? ` with ${addons} source${addons === 1 ? "" : "s"}` : ""}.</p>`)}
+    ${row(rdHere(), "1. Real-Debrid on this phone", `<div id="rdPanel">${rdPanelHTML()}</div>`)}
+    ${row(false, "2. Get VLC (free)", `<p class="muted">Most movies and all live channels play in VLC. Install it once.</p>
+      <div class="rowf" style="margin-top:10px"><a class="btn small primary" href="${VLC_STORE}" target="_blank" rel="noopener">Get VLC on the App Store</a></div>`)}
+    <div class="actions"><button class="btn primary" data-act="welcomedone">Start watching</button></div></div>`;
+}
+
 // ---------- Pairing screen ----------
 function renderPair(v) {
-  v.innerHTML = `<div class="page"><h1>Link your TV</h1>
+  const inviteBox = `<div class="panel"><h2>Got an invite?</h2><p class="muted">If someone sent you a Jarvis invite and you opened it in Safari, tap below. Jarvis sets itself up.</p>
+      <div class="rowf" style="margin-top:10px"><button class="btn primary" data-act="pasteinvite">Paste invite</button></div></div>`;
+  v.innerHTML = `<div class="page"><h1>${isStandalone() ? "Welcome to Jarvis" : "Link your TV"}</h1>${inviteBox}
     <div class="panel"><h2>Three steps</h2>
       <ol class="steps">
         <li>On the TV, open Jarvis and go to <b>Settings &gt; Phone &amp; Computer Setup</b>.</li>
@@ -3155,6 +3199,31 @@ document.addEventListener("click", async (e) => {
       try { await navigator.clipboard.writeText(m3u); toast("Playlist link copied", "ok"); } catch { prompt("Copy your playlist link:", m3u); }
       break;
     }
+    case "invite": {
+      const url = inviteLink(d.pid);
+      try {
+        if (navigator.share) await navigator.share({ title: "Jarvis", text: "Tap to set up Jarvis on your phone", url });
+        else { await navigator.clipboard.writeText(url); toast("Invite copied. Send it by text or email.", "ok"); }
+      } catch (err) {
+        if (err && err.name === "AbortError") break; // closed the share sheet
+        try { await navigator.clipboard.writeText(url); toast("Invite copied. Send it by text or email.", "ok"); } catch { prompt("Copy this invite:", url); }
+      }
+      break;
+    }
+    case "copyinvite": {
+      const url = LS.get(INVITE_KEY) || setupLink();
+      try { await navigator.clipboard.writeText(url); toast("Invite copied. Now add Jarvis to your Home Screen.", "ok"); } catch { prompt("Copy this invite:", url); }
+      break;
+    }
+    case "pasteinvite": {
+      let t = "";
+      try { t = await navigator.clipboard.readText(); } catch {}
+      if (!isInvite(t)) t = prompt("Paste your Jarvis invite here:") || "";
+      if (isInvite(t) && importSetup(t)) { LS.set(WELCOME_KEY, "1"); toast("Jarvis is set up", "ok"); setTimeout(() => { location.hash = "#/welcome"; location.reload(); }, 500); }
+      else if (t) toast("That isn't a Jarvis invite. Open the invite in Safari and tap Copy invite.", "warn");
+      break;
+    }
+    case "welcomedone": LS.del(WELCOME_KEY); location.hash = "#/"; break;
     case "copysetup": {
       const url = setupLink();
       try { await navigator.clipboard.writeText(url); toast("Setup copied. Open the Jarvis app, Settings, paste under Your TV, tap Link.", "ok"); }
@@ -3222,7 +3291,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-09.8";
+const BUILD = "2026-10-09.9";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
@@ -3256,6 +3325,12 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
 
 // ---------- start ----------
 (async function start() {
+  if (isInvite(location.hash)) {
+    // Opened from an invite: set this browser up, keep the invite for the Home Screen app, show the next steps.
+    const h = location.hash;
+    if (importSetup(h)) { LS.set(INVITE_KEY, location.origin + location.pathname + h); LS.set(WELCOME_KEY, "1"); S.profile = LS.get(PROFILE_KEY) || S.profile; S.init = readJSON(INIT_KEY); S.plists = readJSON(PLISTS_KEY) || {}; }
+    history.replaceState(null, "", location.pathname + location.search + "#/welcome");
+  }
   updateProfileUI();
   const fromHash = parseLink(location.hash);
   const stored = parseLink(LS.get(LINK_KEY));
