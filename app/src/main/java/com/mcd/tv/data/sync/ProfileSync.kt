@@ -83,12 +83,14 @@ object ProfileSync {
         SyncSpec.HIDDEN to "lib_hidden",
         SyncSpec.NOISE to "lib_noise",
         SyncSpec.LIVE_FAVORITES to "live_favorites",
+        SyncSpec.LIKES to "lib_likes",
     )
     private val TITLE_LISTS = mapOf(
         "lib_watchlist" to SyncSpec.WATCHLIST,
         "lib_favorites" to SyncSpec.FAVORITES,
         "lib_hidden" to SyncSpec.HIDDEN,
         "lib_noise" to SyncSpec.NOISE,
+        "lib_likes" to SyncSpec.LIKES,
     )
 
     private val lock = Any()
@@ -249,6 +251,9 @@ object ProfileSync {
 
     fun onProfileName(profile: String, name: String) = recordLocal(profile, SyncSpec.META, "name", name)
 
+    /** Settings > Taste: the profile's liked and avoided genres and topics (JSON, see Prefs.tasteJson). */
+    fun onTaste(profile: String, json: String) = recordLocal(profile, SyncSpec.META, "taste", json.ifBlank { null })
+
     private fun recordLocal(p: String, c: String, key: String, value: String?) {
         if (p !in Prefs.PROFILE_IDS || dir == null) return
         ensureLoaded()
@@ -388,6 +393,10 @@ object ProfileSync {
             if (name.isNotBlank()) {
                 if (s.collection(SyncSpec.META)!!.seed("name", name, SyncSpec.SEED_TS, me)) changed.add(pc(p, SyncSpec.META))
             }
+            val taste = Prefs.tasteJson(p)
+            if (taste.isNotBlank()) {
+                if (s.collection(SyncSpec.META)!!.seed("taste", taste, SyncSpec.SEED_TS, me)) changed.add(pc(p, SyncSpec.META))
+            }
         }
         return changed
     }
@@ -452,9 +461,18 @@ object ProfileSync {
     private fun materialize(p: String, c: String) {
         when (c) {
             SyncSpec.META -> {
-                val e = synchronized(lock) { stores[p]?.collection(SyncSpec.META)?.get("name") } ?: return
-                val name = if (e.deleted) "" else e.value.orEmpty()
-                if (Prefs.customProfileName(p) != name) Prefs.applySyncedProfileName(p, name)
+                val (e, t) = synchronized(lock) {
+                    val col = stores[p]?.collection(SyncSpec.META)
+                    col?.get("name") to col?.get("taste")
+                }
+                if (e != null) {
+                    val name = if (e.deleted) "" else e.value.orEmpty()
+                    if (Prefs.customProfileName(p) != name) Prefs.applySyncedProfileName(p, name)
+                }
+                if (t != null) {
+                    val taste = if (t.deleted) "" else t.value.orEmpty()
+                    if (Prefs.tasteJson(p) != taste) Prefs.applySyncedTaste(p, taste)
+                }
             }
             SyncSpec.LIVE_FAVORITES -> Prefs.withListLock { writeBlob(p, c) }
             else -> Library.withLock { writeBlob(p, c) }

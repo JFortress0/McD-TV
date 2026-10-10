@@ -95,9 +95,12 @@ object SyncSpec {
     const val HIDDEN = "hidden"
     const val NOISE = "noise"
     const val LIVE_FAVORITES = "live_favorites"
+    /** Titles marked "I like this" (taste). Older TVs ignore collections they don't know. */
+    const val LIKES = "likes"
+    /** Profile name ("name") and Settings > Taste choices ("taste"). */
     const val META = "meta"
 
-    val COLLECTIONS = listOf(HISTORY, EPISODES, WATCHLIST, FAVORITES, HIDDEN, NOISE, LIVE_FAVORITES, META)
+    val COLLECTIONS = listOf(HISTORY, EPISODES, WATCHLIST, FAVORITES, HIDDEN, NOISE, LIVE_FAVORITES, LIKES, META)
 
     private val LIST_POLICY = Policy(tombstoneKeep = 200, tombstoneTtlMs = TOMBSTONE_TTL_MS)
 
