@@ -694,6 +694,7 @@ function saveInit() { if (S.init) { LS.set(INIT_KEY, JSON.stringify(S.init)); if
 // Same format as the TV (app/src/main/java/com/mcd/tv/data/ResumeCloud.kt).
 const RC = (() => {
   const URL_R = "https://jarvis-rd.netlify.app/resume";
+  const URL_H = "https://jarvis-rd.netlify.app/house";
   const last = {}; // profile -> newest first [{type, id, name, poster, backdrop, season, episode, pos, dur, at}]
   const inflight = {};
   let K = null, kFor = "";
@@ -803,7 +804,17 @@ const RC = (() => {
         body: JSON.stringify({ k: await k.tag("list"), t: at, v: b64u(v) }), keepalive: true });
     } catch {}
   }
-  return { list, push, peekFor, mergeCont, refresh, favGet, favPut, b64u, ready: () => !!houseKey() };
+  /** The house's setup snapshot (settings and every profile's lists), kept current by every TV (HouseCloud.kt). */
+  async function houseGet() {
+    const k = await keys(); if (!k) return null;
+    try {
+      const r = await fetch(`${URL_H}?h=${k.house}&k=${await k.tag("setup")}`, { cache: "no-store" });
+      if (!r.ok) return null;
+      const j = await r.json(), all = unb64u(j.v);
+      return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, k.aes, all.slice(12))));
+    } catch { return null; }
+  }
+  return { list, push, peekFor, mergeCont, refresh, favGet, favPut, houseGet, b64u, ready: () => !!houseKey() };
 })();
 
 /**
@@ -891,7 +902,7 @@ function askHandoff() {
   });
   document.body.appendChild(box);
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { setTimeout(askHandoff, 600); RC.refresh(); } });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { setTimeout(askHandoff, 600); RC.refresh(); syncHouse(); } });
 window.addEventListener("pageshow", () => setTimeout(askHandoff, 800));
 
 // ---------- relay ----------
@@ -1008,6 +1019,49 @@ function applyAddons(m) {
   }
 }
 
+// ---------- the house (every TV), not one TV ----------
+// Every TV keeps the house's setup on the Jarvis relay (rd-proxy/netlify/functions/house.mts), so this app gets
+// settings, lists and Live TV favorites with any TV on, or none. It needs the house link once: from any TV that
+// answers, an invite, or a code from a TV (Settings > Profiles > Connect a phone).
+let houseSyncing = null;
+function syncHouse() {
+  if (houseSyncing || !RC.ready()) return houseSyncing;
+  houseSyncing = (async () => {
+    const o = await RC.houseGet(); if (!o || !o.ts) return false;
+    const pid = S.profile || "p1", lists = o.lists || {};
+    // Other profiles' lists: kept for when this phone switches profile.
+    for (const p of PIDS) {
+      const l = lists[p]; if (!l || p === pid) continue;
+      const old = S.plists[p];
+      if (old && (old.ts || 0) >= o.ts) continue;
+      S.plists[p] = { watchlist: l.watchlist || [], favorites: l.favorites || [], continue: l.continue || [], ts: o.ts,
+        live_favorites: old && (old.live_fav_at || 0) > o.ts ? old.live_favorites : l.live_favorites || [], live_fav_at: Math.max(o.ts, (old && old.live_fav_at) || 0) };
+    }
+    savePlists();
+    if ((S.init && S.init.ts || 0) >= o.ts) return false;
+    const mine = lists[pid] || {}, m = { ...o, type: "web_init", profile: pid, watchlist: mine.watchlist || [], favorites: mine.favorites || [], continue: mine.continue || [] };
+    delete m.lists;
+    const oldL = S.plists[pid];
+    if (!oldL || (oldL.live_fav_at || 0) < o.ts) m.live_favorites = mine.live_favorites || [];
+    applyInit(m);
+    if (Array.isArray(m.live_favorites)) { S.plists[pid].live_fav_at = o.ts; savePlists(); }
+    return true;
+  })().finally(() => { houseSyncing = null; });
+  return houseSyncing;
+}
+async function connectWithCode(code) {
+  const sha = async (t) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)));
+  const tagOf = async (w) => b64u.enc(await sha("jarvis-pair|" + w + "|" + code)).slice(0, 22);
+  const r = await fetch(`https://jarvis-rd.netlify.app/house?h=${await tagOf("h")}&k=${await tagOf("k")}`, { cache: "no-store" });
+  if (!r.ok) return false;
+  const j = await r.json();
+  const key = await crypto.subtle.importKey("raw", await sha("jarvis-pair-key|" + code), "AES-GCM", false, ["encrypt", "decrypt"]);
+  const m = await decrypt(j.v, key);
+  if (!m || m.type !== "house_link" || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{20,}$/.test(String(m.house || ""))) return false;
+  S.init = { ...(S.init || {}), house: m.house, ts: 0 }; saveInit();
+  await syncHouse();
+  return true;
+}
 async function askInit() {
   if (!S.link) return;
   S.lastInitAsk = Date.now();
@@ -3406,9 +3460,9 @@ const LV = (() => {
     }
     const c = counts();
     if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec))) { view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All"; view.auto = true; }
-    const stale = S.link && S.status === "offline" && !(RC.ready() && lists().live.length);
+    const stale = !RC.ready() && S.link && S.status === "offline";
     v.innerHTML = `<div class="page"><h1>Live TV</h1>
-      ${stale ? `<div class="panel" id="lvStale" style="margin-bottom:12px"><h2>Your TV isn't answering this phone</h2><p class="muted">Favorites come from the TV. Open Jarvis on the TV and come back here. Still nothing after a minute? Link again: on the TV go to Settings &gt; Phone &amp; Computer Setup and scan the code with this phone's camera.</p></div>` : ""}
+      ${stale ? `<div class="panel" id="lvStale" style="margin-bottom:12px"><h2>Connect this phone to your house</h2><p class="muted">So favorites and lists come from every TV, not just one: on any TV go to Settings &gt; Profiles &gt; Connect a phone, then type its code in this app's Settings &gt; Connect with a code.</p></div>` : ""}
       <div class="lv-wrap">
       <div class="chips" id="lvChips">${LIVE_SECTIONS.filter((s) => ["All", "Favorites", "Recent"].includes(s) || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
       <div><div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
@@ -3583,6 +3637,10 @@ function renderSettings(v) {
         : "Off: Ask Jarvis goes through your TV, which needs to be on. No key is kept on this device."}</p>
       ${jarvisKey() ? `<div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rmjarvis">Remove key from this device</button></div>` : ""}
     </div>
+    <div class="panel"><h2>Connect with a code</h2>
+      <p class="muted">${RC.ready() ? "This phone is connected to your house: it stays in sync with every TV, whichever ones are on." : "Keeps this phone in sync with every TV in the house, not just one."} On any TV: Settings &gt; Profiles &gt; Connect a phone. Type the code it shows here.</p>
+      <div class="rowf" style="margin-top:10px;gap:8px"><input id="pairCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px">
+        <button class="btn small primary" data-act="paircode">Connect</button></div></div>
     <div class="panel"><h2>Add a TV</h2>
       <p class="muted">A new Jarvis TV shows an 8-digit code (it asks the first time, or Settings > Profiles > Join my other TVs on the TV). Type it here: the TV gets your profiles, settings and Real-Debrid.</p>
       <div class="rowf" style="margin-top:10px;gap:8px"><input id="addTvCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px">
@@ -3727,7 +3785,10 @@ function renderWelcome(v) {
 
 // ---------- Pairing screen ----------
 function renderPair(v) {
-  const inviteBox = `<div class="panel"><h2>Got an invite?</h2><p class="muted">If someone sent you a Jarvis invite and you opened it in Safari, tap below. Jarvis sets itself up.</p>
+  const codeBox = `<div class="panel"><h2>Have a code from your TV?</h2><p class="muted">On any Jarvis TV: Settings &gt; Profiles &gt; Connect a phone. Type the code here.</p>
+      <div class="rowf" style="margin-top:10px;gap:8px"><input id="pairCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px">
+        <button class="btn small primary" data-act="paircode">Connect</button></div></div>`;
+  const inviteBox = codeBox + `<div class="panel"><h2>Got an invite?</h2><p class="muted">If someone sent you a Jarvis invite and you opened it in Safari, tap below. Jarvis sets itself up.</p>
       <div class="rowf" style="margin-top:10px"><button class="btn primary" data-act="pasteinvite">Paste invite</button></div></div>`;
   v.innerHTML = `<div class="page"><h1>${isStandalone() ? "Welcome to Jarvis" : "Link your TV"}</h1>${inviteBox}
     <div class="panel"><h2>Three steps</h2>
@@ -3788,6 +3849,16 @@ document.addEventListener("click", async (e) => {
       const m3u = String((S.init && S.init.m3u_url) || "").trim();
       if (!m3u) break;
       try { await navigator.clipboard.writeText(m3u); toast("Playlist link copied", "ok"); } catch { prompt("Copy your playlist link:", m3u); }
+      break;
+    }
+    case "paircode": {
+      const inp = $("#pairCode");
+      const code = String((inp && inp.value) || "").replace(/\D/g, "");
+      if (code.length !== 8) { toast("Type the 8 digits shown on the TV.", "warn"); break; }
+      try {
+        if (await connectWithCode(code)) { if (inp) inp.value = ""; toast("Connected to your house", "ok"); route(); }
+        else toast("That code didn't work. Codes work once, for 15 minutes. Get a new one on the TV.", "warn");
+      } catch { toast("Couldn't reach the Jarvis relay. Check your internet and try again.", "warn"); }
       break;
     }
     case "addtv": {
@@ -3904,7 +3975,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.16";
+const BUILD = "2026-10-10.17";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
@@ -3951,6 +4022,8 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
   else if (stored) await pair(stored);
   else setStatus("none");
   route();
+  // The house's copy: settings and lists even when no TV answers.
+  syncHouse();
   setTimeout(iosInstallHint, 2500);
 })();
 </script>
