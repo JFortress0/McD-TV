@@ -155,12 +155,37 @@ object Library {
 
     private fun HistoryEntry.toJson() = JSONObject().put("meta", meta.toJson()).put("pos", positionMs).put("dur", durationMs).put("at", updatedAt)
 
-    fun record(meta: PlayMeta, positionMs: Long, durationMs: Long, profile: String? = null): Unit = synchronized(lock) {
+    /**
+     * Saves a resume position. Also goes to the other TVs (ProfileSync) and to the cloud for phones and TVs
+     * that are off (ResumeCloud): every 2 minutes while playing, at once when [urgent] (player stopped).
+     */
+    fun record(meta: PlayMeta, positionMs: Long, durationMs: Long, profile: String? = null, urgent: Boolean = false) {
+        val (pid, entry) = synchronized(lock) {
+            val pid = resolve(profile)
+            if (meta.type == "tv" && meta.season > 0 && durationMs > 0) recordEpisode(meta, positionMs.toFloat() / durationMs, pid)
+            val rest = history(pid).filterNot { it.meta.historyKey == meta.historyKey }
+            val entry = HistoryEntry(meta, positionMs, durationMs, System.currentTimeMillis())
+            val list = listOf(entry) + rest
+            Prefs.putJson(
+                keyFor("lib_history", pid),
+                JSONArray().apply { list.take(200).forEach { put(it.toJson()) } }.toString(),
+            )
+            ProfileSync.onHistory(pid, meta.historyKey, entry.toJson().toString())
+            pid to entry
+        }
+        ResumeCloud.onLocal(pid, entry, urgent)
+    }
+
+    /**
+     * A newer position from another device (ResumeCloud), saved with its own time. Shared with the other
+     * TVs like a local save, but not sent back to the cloud.
+     */
+    fun applyCloud(profile: String, meta: PlayMeta, positionMs: Long, durationMs: Long, at: Long): Unit = synchronized(lock) {
         val pid = resolve(profile)
         if (meta.type == "tv" && meta.season > 0 && durationMs > 0) recordEpisode(meta, positionMs.toFloat() / durationMs, pid)
         val rest = history(pid).filterNot { it.meta.historyKey == meta.historyKey }
-        val entry = HistoryEntry(meta, positionMs, durationMs, System.currentTimeMillis())
-        val list = listOf(entry) + rest
+        val entry = HistoryEntry(meta, positionMs, durationMs, at)
+        val list = (listOf(entry) + rest).sortedByDescending { it.updatedAt }
         Prefs.putJson(
             keyFor("lib_history", pid),
             JSONArray().apply { list.take(200).forEach { put(it.toJson()) } }.toString(),

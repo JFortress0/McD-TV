@@ -355,6 +355,8 @@ object Relay {
                 .put("max_movie_gb", Prefs.maxMovieGb)
                 .put("max_episode_gb", Prefs.maxEpisodeGb)
                 .put("rd_connected", RealDebrid.connected)
+                // House link: the web app encrypts resume positions with it (ResumeCloud, shared with all the TVs).
+                .put("house", HouseSync.houseLink())
                 .put("addons_separate", !withAddons)
                 .apply { if (withAddons) put("addon_urls", JSONArray(addons)) }
                 .put("websites_separate", !withSites)
