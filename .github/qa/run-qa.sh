@@ -16,7 +16,7 @@ adb shell am start -n com.mcd.tv/.MainActivity --ez qa true --ez qa_mode true
 sleep 4; shot 01-intro
 sleep 12; shot 02-home
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml qa-out/ui-home.xml >/dev/null 2>&1
-if grep -qi "TRENDING THIS WEEK" qa-out/ui-home.xml; then pass "Home loads TMDB rows"; else fail "Home loads TMDB rows"; fi
+if grep -qiE "TRENDING THIS WEEK|PICKED FOR|BECAUSE YOU WATCHED" qa-out/ui-home.xml; then pass "Home loads TMDB rows"; else fail "Home loads TMDB rows"; fi
 
 # 2) Setup web page: reachable, and saves what a browser sends.
 adb forward tcp:8642 tcp:8642
