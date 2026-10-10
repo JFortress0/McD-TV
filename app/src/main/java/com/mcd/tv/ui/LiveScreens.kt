@@ -85,6 +85,7 @@ import com.mcd.tv.data.Game
 import com.mcd.tv.data.Games
 import com.mcd.tv.data.League
 import com.mcd.tv.data.LiveCatalog
+import com.mcd.tv.data.LiveFill
 import com.mcd.tv.data.LiveIndex
 import com.mcd.tv.data.LiveItem
 import com.mcd.tv.data.LiveOrganizer
@@ -706,7 +707,7 @@ private fun LiveChannelListRow(
     onFocused: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val (cur, next) = remember(guide, ch.url, now / 60_000L) { Epg.nowNext(Epg.keyOf(ch), guide, now) }
+    val (cur, next) = remember(guide, ch.url, now / 60_000L) { LiveFill.nowNext(ch, guide, now) }
     HudCard(
         onClick = onClick,
         onLongClick = onMenu,
@@ -760,12 +761,19 @@ private fun LiveChannelListRow(
                         Spacer(Modifier.width(6.dp))
                         Text(cur.title, color = McdColors.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Text("${guideTime(cur.start)} to ${guideTime(cur.end)}", color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
-                    Box(Modifier.padding(top = 4.dp).fillMaxWidth(0.9f).height(3.dp).background(McdColors.Line.copy(alpha = 0.5f))) {
-                        Box(Modifier.fillMaxWidth(programmeProgress(cur, now)).height(3.dp).background(McdColors.Accent))
+                    Text(if (cur.untimed) "Live event" else "${guideTime(cur.start)} to ${guideTime(cur.end)}", color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
+                    if (!cur.untimed) {
+                        Box(Modifier.padding(top = 4.dp).fillMaxWidth(0.9f).height(3.dp).background(McdColors.Line.copy(alpha = 0.5f))) {
+                            Box(Modifier.fillMaxWidth(programmeProgress(cur, now)).height(3.dp).background(McdColors.Accent))
+                        }
                     }
                 } else {
-                    Text(if (guide.isEmpty()) "Guide loading…" else "No guide info for this channel", color = McdColors.Muted, fontSize = 13.sp, maxLines = 1)
+                    val msg = when {
+                        next != null -> "Starts ${guideTime(next.start)}"
+                        guide.isEmpty() -> "Guide loading…"
+                        else -> "No guide info for this channel"
+                    }
+                    Text(msg, color = McdColors.Muted, fontSize = 13.sp, maxLines = 1)
                 }
             }
             // Up next.
@@ -796,7 +804,7 @@ private fun LiveChannelCard(
     onFocused: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cur = remember(guide, ch.url, now) { Epg.nowNext(Epg.keyOf(ch), guide, now).first }
+    val cur = remember(guide, ch.url, now) { LiveFill.nowNext(ch, guide, now).first }
     Column(modifier) {
         HudCard(
             onClick = onClick,
@@ -933,7 +941,7 @@ fun LiveChannelsRow(label: String, channels: List<Channel>, nav: Nav) {
 private fun LiveWideCard(ch: Channel, guide: Map<String, List<Programme>>, onClick: () -> Unit) {
     val name = remember(ch.name) { LiveOrganizer.cleanName(ch.name) }
     val now = System.currentTimeMillis()
-    val cur = remember(guide, ch.url, now / 60_000L) { Epg.nowNext(Epg.keyOf(ch), guide, now).first }
+    val cur = remember(guide, ch.url, now / 60_000L) { LiveFill.nowNext(ch, guide, now).first }
     Column(Modifier.width(220.dp)) {
         HudCard(
             onClick = onClick,

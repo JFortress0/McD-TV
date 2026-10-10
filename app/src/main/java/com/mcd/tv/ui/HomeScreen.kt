@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.onFocusChanged
@@ -105,13 +106,18 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
     val history = remember(cloud) { Library.history().sortedByDescending { it.updatedAt } }
     val continueWatching = remember(cloud) { Library.continueWatching().sortedByDescending { it.updatedAt } }
     val firstFocus = remember { FocusRequester() }
+    val heroFocus = remember { FocusRequester() }
+    // Which row and tile had focus. Saved with this back-stack entry, so Back from a title puts focus
+    // back on the tile it was opened from instead of the top of the page.
+    val focus = rememberSaveable(saver = FocusMemory.Saver) { FocusMemory() }
+    val restoring = remember { focus.pending }
     val favorites = remember { Library.favorites() }
     // Picked for <name>: learned from this profile's history, favorites, likes, "Not for me" and Settings > Taste.
     val suggestions by rememberLoad(Prefs.activeProfile) { com.mcd.tv.data.Recommender.forYou() }
     // Because You Watched: More Like This for the latest title this profile finished.
     val because by rememberLoad(Prefs.activeProfile) { com.mcd.tv.data.Recommender.becauseYouWatched() }
     LaunchedEffect(Unit) {
-        if (continueWatching.isNotEmpty()) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
+        if (continueWatching.isNotEmpty() && !restoring) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
     }
     // Live TV row: favorite channels (or recent ones) from the playlist. Loads in the background (playlist
     // cached 6 h) and only appears once ready, so Home never waits on a big playlist.
@@ -148,6 +154,37 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
     // the menu and the top of the hero, so focus there always shows the page from its very top.
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    focus.indexOfRow = { k -> listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == k }?.index }
+    /** Records focus on a row that does not report its tiles (top bar, hero, Live TV row). */
+    fun rowFocus(key: String) = Modifier.onFocusChanged { if (it.hasFocus && focus.row != key) focus.focused(key, -1) }
+
+    // Back to Home: once the catalog rows are back, bring the remembered row on screen. The row then
+    // focuses its tile itself. If it can't (row gone, or a row without tiles), use the normal first focus.
+    val dataReady = data !is Load.Loading
+    LaunchedEffect(dataReady) {
+        if (!dataReady || !focus.pending) return@LaunchedEffect
+        withFrameNanos { }
+        val key = focus.row
+        val onScreen = listState.layoutInfo.visibleItemsInfo.any { it.key == key }
+        if (!onScreen && focus.rowIndex >= 0) {
+            val last = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+            listState.scrollToItem(focus.rowIndex.coerceAtMost(last))
+        }
+        if (focus.tile >= 0) kotlinx.coroutines.delay(1_500) // the row restores its tile in this time
+        if (!focus.pending) return@LaunchedEffect
+        focus.pending = false
+        if (key == "hero" && !heroOnTop && heroes.isNotEmpty()) {
+            withFrameNanos { }
+            if (runCatching { heroFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+        }
+        listState.scrollToItem(0)
+        withFrameNanos { }
+        when {
+            continueWatching.isNotEmpty() -> runCatching { firstFocus.requestFocus() }
+            heroOnTop && heroes.isNotEmpty() -> runCatching { heroFocus.requestFocus() }
+            else -> Unit
+        }
+    }
     val pinTop = Modifier.onFocusChanged { f ->
         if (f.hasFocus) {
             scope.launch {
@@ -162,24 +199,24 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
         contentPadding = PaddingValues(bottom = 48.dp),
     ) {
         item(key = "top") {
-            Box(Modifier.fillMaxWidth().then(pinTop)) {
-                if (heroOnTop && heroes.isNotEmpty()) Hero(heroes, nav, takeFocus = true, underNav = true)
+            Box(Modifier.fillMaxWidth().then(pinTop).then(rowFocus("top"))) {
+                if (heroOnTop && heroes.isNotEmpty()) Hero(heroes, nav, heroFocus, takeFocus = !restoring, underNav = true)
                 TopNav(NavTab.Home, nav.tab, profileName = Prefs.activeProfileName, onProfile = { nav.push(Screen.Profiles) })
             }
         }
 
         if (continueWatching.isNotEmpty()) item(key = "continue") {
-            Box(pinTop) { HistoryRow("Continue Watching", continueWatching, nav, firstFocus) }
+            Box(pinTop) { HistoryRow("Continue Watching", continueWatching, nav, firstFocus, focus) }
         }
-        liveRow?.let { (label, channels) -> item(key = "live") { LiveChannelsRow(label, channels, nav) } }
-        if (!heroOnTop && heroes.isNotEmpty()) item(key = "hero") { Hero(heroes, nav, takeFocus = false) }
+        liveRow?.let { (label, channels) -> item(key = "live") { Box(rowFocus("live")) { LiveChannelsRow(label, channels, nav) } } }
+        if (!heroOnTop && heroes.isNotEmpty()) item(key = "hero") { Box(rowFocus("hero")) { Hero(heroes, nav, heroFocus, takeFocus = false) } }
         item(key = "suggested") {
             val sg = suggestions
-            if (sg is Load.Ok && sg.value.isNotEmpty()) TitleRow("Picked for ${Prefs.activeProfileName}", sg.value.visible(), openTitle)
+            if (sg is Load.Ok && sg.value.isNotEmpty()) TitleRail("Picked for ${Prefs.activeProfileName}", sg.value.visible(), null, openTitle, focus, "suggested")
         }
         item(key = "because") {
             val b = (because as? Load.Ok)?.value
-            if (b != null) TitleRow("Because You Watched ${b.first}", b.second.visible(), openTitle)
+            if (b != null) TitleRail("Because You Watched ${b.first}", b.second.visible(), null, openTitle, focus, "because")
         }
 
         when (val d = data) {
@@ -196,48 +233,52 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
             is Load.Ok -> {
                 val v = d.value
                 if (kids) {
-                    item(key = "kids_family") { TitleRow("Family Movies", v.trending.visible(), openTitle) }
-                    item(key = "kids_animation") { TitleRow("Animated Movies", v.popular.visible(), openTitle) }
-                    item(key = "kids_shows") { TitleRow("Kids Shows", v.nowPlaying.visible(), openTitle) }
-                    if (!dropTopRated) item(key = "kids_best") { TitleRow("Best Rated Animation", v.topMovies.visible(), openTitle) }
+                    item(key = "kids_family") { TitleRail("Family Movies", v.trending.visible(), null, openTitle, focus, "kids_family") }
+                    item(key = "kids_animation") { TitleRail("Animated Movies", v.popular.visible(), null, openTitle, focus, "kids_animation") }
+                    item(key = "kids_shows") { TitleRail("Kids Shows", v.nowPlaying.visible(), null, openTitle, focus, "kids_shows") }
+                    if (!dropTopRated) item(key = "kids_best") { TitleRail("Best Rated Animation", v.topMovies.visible(), null, openTitle, focus, "kids_best") }
                 } else {
                 item(key = "trending") {
-                    TitleRail("Trending This Week", v.trending.visible(), { nav.push(Screen.BrowseGrid("trending")) }, openTitle)
+                    TitleRail("Trending This Week", v.trending.visible(), { nav.push(Screen.BrowseGrid("trending")) }, openTitle, focus, "trending")
                 }
                 item(key = "popular") {
                     if (v.popularFromService) {
-                        TitleRail("Popular on ${service.name} · Movies", v.popular.visible(), { nav.push(Screen.ServiceGrid(service)) }, openTitle)
+                        TitleRail("Popular on ${service.name} · Movies", v.popular.visible(), { nav.push(Screen.ServiceGrid(service)) }, openTitle, focus, "popular")
                     } else {
-                        TitleRail("Popular · Movies", v.popular.visible(), { nav.push(Screen.BrowseGrid("popular", "movie")) }, openTitle)
+                        TitleRail("Popular · Movies", v.popular.visible(), { nav.push(Screen.BrowseGrid("popular", "movie")) }, openTitle, focus, "popular")
                     }
                 }
                 if (!dropTopRated) item(key = "toprated") {
-                    TitleRail("Top Rated · Movies", v.topMovies.visible(), { nav.push(Screen.BrowseGrid("top", "movie")) }, openTitle)
+                    TitleRail("Top Rated · Movies", v.topMovies.visible(), { nav.push(Screen.BrowseGrid("top", "movie")) }, openTitle, focus, "toprated")
                 }
                 item(key = "new") {
-                    TitleRail("New Releases · In Theaters", v.nowPlaying.visible(), { nav.push(Screen.BrowseGrid("new")) }, openTitle)
+                    TitleRail("New Releases · In Theaters", v.nowPlaying.visible(), { nav.push(Screen.BrowseGrid("new")) }, openTitle, focus, "new")
                 }
                 }
             }
         }
-        item(key = "more") { MoreRow(nav) }
+        item(key = "more") { MoreRow(nav, focus) }
     }
 }
 
 /** Small last row: shortcuts to everything that moved off Home. */
 @Composable
-private fun MoreRow(nav: Nav) {
+private fun MoreRow(nav: Nav, focus: FocusMemory) {
+    val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val restoreAt = focus.restoreTarget("more", 5, rowState)
+    fun tile(i: Int) = focus.tileModifier("more", i, restoreAt)
     Column(Modifier.padding(top = 24.dp)) {
         RailHeader("More", Modifier.padding(start = 48.dp))
         LazyRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item { CompactTile("Browse", "Genres, years, languages, services", { nav.tab(NavTab.Browse) }) }
-            item { CompactTile("Live TV", "Your channels and favorites", { nav.tab(NavTab.Live) }) }
-            item { CompactTile("Games", "Every NFL game this week", { nav.push(Screen.Games(com.mcd.tv.data.League.NFL)) }) }
-            item { CompactTile("Websites", "Sites you added on the Control page", { nav.push(Screen.Sports) }) }
-            item { CompactTile("Background Noise", "Random episodes of your shows", { nav.push(Screen.Noise) }) }
+            item { CompactTile("Browse", "Genres, years, languages, services", { nav.tab(NavTab.Browse) }, tile(0)) }
+            item { CompactTile("Live TV", "Your channels and favorites", { nav.tab(NavTab.Live) }, tile(1)) }
+            item { CompactTile("Games", "Every NFL game this week", { nav.push(Screen.Games(com.mcd.tv.data.League.NFL)) }, tile(2)) }
+            item { CompactTile("Websites", "Sites you added on the Control page", { nav.push(Screen.Sports) }, tile(3)) }
+            item { CompactTile("Background Noise", "Random episodes of your shows", { nav.push(Screen.Noise) }, tile(4)) }
         }
     }
 }
@@ -251,11 +292,10 @@ private val HeroHeight = 350.dp
  * [underNav]: the hero is the first thing on the page and the transparent TopNav floats over its top.
  */
 @Composable
-private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true, underNav: Boolean = false) {
+private fun Hero(items: List<Title>, nav: Nav, playFocus: FocusRequester, takeFocus: Boolean = true, underNav: Boolean = false) {
     var index by remember { mutableIntStateOf(0) }
     var paused by remember { mutableStateOf(false) }
     val t = items[index % items.size]
-    val playFocus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         if (!takeFocus) return@LaunchedEffect
@@ -347,10 +387,20 @@ private fun Hero(items: List<Title>, nav: Nav, takeFocus: Boolean = true, underN
 
 /** A row of landscape cards from watch history (resume points or recently watched). */
 @Composable
-private fun HistoryRow(label: String, list: List<com.mcd.tv.data.HistoryEntry>, nav: Nav, focus: FocusRequester?) {
+private fun HistoryRow(
+    label: String,
+    list: List<com.mcd.tv.data.HistoryEntry>,
+    nav: Nav,
+    focus: FocusRequester?,
+    memory: FocusMemory? = null,
+    memoryKey: String = "continue",
+) {
+    val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val restoreAt = memory.restoreTarget(memoryKey, list.size, rowState)
     Column(Modifier.padding(top = 12.dp)) {
         RailHeader(label, Modifier.padding(start = 48.dp))
         LazyRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -365,7 +415,8 @@ private fun HistoryRow(label: String, list: List<com.mcd.tv.data.HistoryEntry>, 
                     image = Tmdb.img(h.meta.backdrop, "w780"),
                     progress = if (h.finished) null else h.progress,
                     onClick = { nav.push(Screen.Detail(h.meta.type, h.meta.tmdbId)) },
-                    modifier = if (i == 0 && focus != null) Modifier.focusRequester(focus) else Modifier,
+                    modifier = (if (i == 0 && focus != null) Modifier.focusRequester(focus) else Modifier)
+                        .then(memory.tileModifier(memoryKey, i, restoreAt)),
                 )
             }
         }

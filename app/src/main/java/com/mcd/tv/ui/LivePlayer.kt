@@ -33,6 +33,7 @@ import coil.compose.AsyncImage
 import com.mcd.tv.Nav
 import com.mcd.tv.data.Channel
 import com.mcd.tv.data.Epg
+import com.mcd.tv.data.LiveFill
 import com.mcd.tv.data.LiveOrganizer
 import com.mcd.tv.data.M3u
 import com.mcd.tv.data.Prefs
@@ -189,7 +190,7 @@ private fun ChannelOverlay(
     modifier: Modifier = Modifier,
 ) {
     val now = System.currentTimeMillis()
-    val (cur, next) = remember(guide, ch.url, now / 60_000L) { Epg.nowNext(Epg.keyOf(ch), guide, now) }
+    val (cur, next) = remember(guide, ch.url, now / 60_000L) { LiveFill.nowNext(ch, guide, now) }
     val name = remember(ch.name) { LiveOrganizer.cleanName(ch.name) }
     val group = remember(ch.group) { LiveOrganizer.cleanGroup(ch.group) }
     Column(
@@ -212,7 +213,7 @@ private fun ChannelOverlay(
         if (cur != null) {
             Spacer(Modifier.height(10.dp))
             Text(
-                "Now  ${guideTime(cur.start)} – ${guideTime(cur.end)}  ${cur.title}",
+                if (cur.untimed) "Now  Live event  ${cur.title}" else "Now  ${guideTime(cur.start)} – ${guideTime(cur.end)}  ${cur.title}",
                 color = McdColors.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))

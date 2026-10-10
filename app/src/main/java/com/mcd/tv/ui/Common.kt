@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -270,21 +272,113 @@ fun WideCard(
 @Composable
 fun TitleRow(label: String, items: List<Title>, onOpen: (Title) -> Unit) = TitleRail(label, items, null, onOpen)
 
-/** A titled horizontal row of posters; [onSeeAll] adds a "See all" tile at the end that opens the full grid. */
+/**
+ * A titled horizontal row of posters; [onSeeAll] adds a "See all" tile at the end that opens the full grid.
+ * [focus] (optional): the page's focus memory. The row reports its focused tile under [focusKey] and,
+ * when the page is returned to, scrolls to that tile and focuses it again.
+ */
 @Composable
-fun TitleRail(label: String, items: List<Title>, onSeeAll: (() -> Unit)?, onOpen: (Title) -> Unit) {
+fun TitleRail(
+    label: String,
+    items: List<Title>,
+    onSeeAll: (() -> Unit)?,
+    onOpen: (Title) -> Unit,
+    focus: FocusMemory? = null,
+    focusKey: String = label,
+) {
     if (items.isEmpty()) return
     val unique = remember(items) { items.distinctBy { "${it.type}-${it.id}" } }
+    val rowState = rememberLazyListState()
+    val tileCount = unique.size + (if (onSeeAll != null) 1 else 0)
+    val restoreAt = focus.restoreTarget(focusKey, tileCount, rowState)
     Column(Modifier.padding(top = 20.dp)) {
         RailHeader(label, Modifier.padding(start = 48.dp))
         LazyRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            items(unique, key = { "${it.type}-${it.id}" }) { t -> PosterCard(t, onClick = { onOpen(t) }) }
-            if (onSeeAll != null) item(key = "see-all") { SeeAllCard(onSeeAll) }
+            itemsIndexed(unique, key = { _, t -> "${t.type}-${t.id}" }) { i, t ->
+                PosterCard(t, onClick = { onOpen(t) }, modifier = focus.tileModifier(focusKey, i, restoreAt))
+            }
+            if (onSeeAll != null) item(key = "see-all") {
+                SeeAllCard(onSeeAll, modifier = focus.tileModifier(focusKey, unique.size, restoreAt))
+            }
         }
     }
+}
+
+/**
+ * Which row and tile of a page had focus, so Back can put focus there again (Home). Saved with the
+ * page's back-stack entry; after a restore, [pending] stays true until a tile takes focus again.
+ * Rows report focus with [tileModifier] and restore with [restoreTarget].
+ */
+@androidx.compose.runtime.Stable
+class FocusMemory {
+    /** Key of the row that last had focus ("" = none yet). */
+    var row by mutableStateOf("")
+    /** Tile index in that row (-1 = the row as a whole). */
+    var tile by mutableIntStateOf(-1)
+    /** Position of that row in the page's list, to scroll back to it when it is not on screen. */
+    var rowIndex by mutableIntStateOf(-1)
+    /** True while focus still has to go back to [row] / [tile]. */
+    var pending by mutableStateOf(false)
+    /** Set by the page: where a row sits in its list, from the row's key (null = not on screen). */
+    var indexOfRow: (String) -> Int? = { null }
+    /** One requester per row key, used by [restoreTarget] and [tileModifier]. */
+    private val requesters = HashMap<String, FocusRequester>()
+
+    fun requesterFor(key: String): FocusRequester = requesters.getOrPut(key) { FocusRequester() }
+
+    fun focused(key: String, tileIndex: Int) {
+        row = key
+        tile = tileIndex
+        indexOfRow(key)?.let { rowIndex = it }
+        pending = false
+    }
+
+    companion object {
+        val Saver: androidx.compose.runtime.saveable.Saver<FocusMemory, Any> = androidx.compose.runtime.saveable.listSaver<FocusMemory, Any>(
+            save = { listOf(it.row, it.tile, it.rowIndex) },
+            restore = { v ->
+                FocusMemory().apply {
+                    row = v.getOrNull(0) as? String ?: ""
+                    tile = v.getOrNull(1) as? Int ?: -1
+                    rowIndex = v.getOrNull(2) as? Int ?: -1
+                    pending = row.isNotEmpty()
+                }
+            },
+        )
+    }
+}
+
+/**
+ * For a row of [count] tiles: the tile to focus again after Back (clamped to the row), or -1.
+ * Scrolls the row to it and requests focus once the tile is laid out.
+ */
+@Composable
+fun FocusMemory?.restoreTarget(key: String, count: Int, rowState: androidx.compose.foundation.lazy.LazyListState): Int {
+    val m = this ?: return -1
+    if (!m.pending || m.row != key || m.tile < 0 || count <= 0) return -1
+    val target = m.tile.coerceIn(0, count - 1)
+    val requester = m.requesterFor(key)
+    LaunchedEffect(key, target) {
+        rowState.scrollToItem(target)
+        // A few frames' grace for the tile to attach; stops as soon as a tile has focus (pending clears).
+        repeat(3) {
+            withFrameNanos { }
+            if (!m.pending) return@LaunchedEffect
+            runCatching { requester.requestFocus() }
+        }
+    }
+    return target
+}
+
+/** Reports focus on tile [index] of row [key]; tile [restoreAt] also gets the restore requester. */
+fun FocusMemory?.tileModifier(key: String, index: Int, restoreAt: Int): Modifier {
+    val m = this ?: return Modifier
+    val base = Modifier.onFocusChanged { if (it.hasFocus) m.focused(key, index) }
+    return if (index == restoreAt) base.focusRequester(m.requesterFor(key)) else base
 }
 
 /**

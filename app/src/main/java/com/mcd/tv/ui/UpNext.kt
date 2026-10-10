@@ -51,10 +51,15 @@ fun UpNextPlayer(
     onNext: () -> Unit,
     onCancel: () -> Unit,
     onSleep: (() -> Unit)? = null,
+    /** "Try next source" when the stream fails (null: just the error). */
+    nextSource: com.mcd.tv.player.NextSource? = null,
 ) {
     var ended by remember { mutableStateOf(false) }
     if (!ended) {
-        PlayerScreen(url = url, title = title, meta = meta, onEnded = { ended = true }, headers = headers, onSleep = onSleep)
+        PlayerScreen(
+            url = url, title = title, meta = meta, onEnded = { ended = true }, headers = headers, onSleep = onSleep,
+            nextSource = nextSource, onBack = onCancel,
+        )
     } else {
         UpNextCard(meta, onNext, onCancel)
     }

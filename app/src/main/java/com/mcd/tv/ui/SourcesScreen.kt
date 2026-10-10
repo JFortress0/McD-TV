@@ -46,7 +46,12 @@ import com.mcd.tv.data.Resolver
 import com.mcd.tv.data.ArrangedStreams
 import com.mcd.tv.data.RankedStream
 import com.mcd.tv.data.StreamInfo
+import com.mcd.tv.data.SourceQueue
 import com.mcd.tv.data.StreamSource
+import com.mcd.tv.player.NextSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 /**
@@ -63,13 +68,17 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
     val scope = rememberCoroutineScope()
     val firstFocus = remember { FocusRequester() }
 
-    fun start(s: StreamSource) {
+    /** [order] is the list on screen, so "Try next source" in the player goes down the same list. */
+    fun start(s: StreamSource, order: List<StreamSource>, index: Int) {
         if (busy) return
         busy = true
         status = "Getting stream from ${s.addon}…"
         scope.launch {
             runCatching { Resolver.resolve(s) }
-                .onSuccess { url -> nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = s.headers)) }
+                .onSuccess { url ->
+                    val queue = SourceQueue.put(order)
+                    nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = s.headers, queue = queue, queuePos = index))
+                }
                 .onFailure { status = it.message ?: "Could not open this source"; busy = false }
         }
     }
@@ -93,7 +102,12 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
                 busy = true
                 status = "Finding the best source…"
                 runCatching { Resolver.best(l.value, meta) }
-                    .onSuccess { (src, url) -> nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = src.headers)) }
+                    .onSuccess { (src, url) ->
+                        // Same order Resolver.best tried, so "Try next source" picks up after the one that worked.
+                        val order = StreamInfo.playOrder(l.value, episode = meta.type == "tv" || l.value.any { it.episode != null })
+                        val queue = SourceQueue.put(order)
+                        nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = src.headers, queue = queue, queuePos = order.indexOf(src)))
+                    }
                     .onFailure {
                         status = "${it.message} Pick one below."
                         busy = false
@@ -131,10 +145,11 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
             ) {
                 val a = arranged ?: ArrangedStreams(emptyList(), emptyList())
                 val rows = if (showHidden) a.visible + a.hidden else a.visible
+                val order = rows.map { it.source }
                 itemsIndexed(rows, key = { _, r -> r.info.dedupeKey }) { i, r ->
                     val m = (if (i == 0) Modifier.focusRequester(firstFocus) else Modifier)
                         .then(if (showHidden && i == a.visible.size) Modifier.focusRequester(hiddenFocus) else Modifier)
-                    SourceRow(r, onClick = { start(r.source) }, modifier = m)
+                    SourceRow(r, onClick = { start(r.source, order, i) }, modifier = m)
                 }
                 if (a.hidden.isNotEmpty() && !showHidden) item(key = "show-hidden") {
                     ShowHiddenRow(
@@ -218,5 +233,47 @@ private fun ShowHiddenRow(count: Int, onClick: () -> Unit, modifier: Modifier = 
             color = McdColors.Muted, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
         )
+    }
+}
+
+/**
+ * "Try next source" for a player started from a source list ([Screen.Player.queue]), or null when the
+ * video did not come from one (Live TV, websites, Background Noise).
+ */
+@Composable
+fun rememberNextSource(nav: Nav, screen: Screen.Player): NextSource? =
+    remember(screen) { SourceQueue.get(screen.queue)?.let { QueueNextSource(nav, screen, it) } }
+
+private class QueueNextSource(
+    private val nav: Nav,
+    private val from: Screen.Player,
+    private val list: List<StreamSource>,
+) : NextSource {
+    /** Last source tried. Sources that fail to open are skipped on the next press. */
+    private var cursor = from.queuePos
+
+    override fun hasMore(): Boolean = SourceQueue.next(list, cursor) != null
+
+    override suspend fun tryNext(): String? {
+        var lastError: String? = null
+        // A few per press: an uncached torrent can take 15 s to fail on Real-Debrid.
+        repeat(3) {
+            val i = SourceQueue.next(list, cursor) ?: return if (lastError != null) "$lastError No more sources." else "No more sources."
+            cursor = i
+            val src = list[i]
+            try {
+                val url = Resolver.resolve(src, from.meta)
+                currentCoroutineContext().ensureActive() // left the player meanwhile: open nothing
+                nav.replace(from.copy(url = url, headers = src.headers, queuePos = i))
+                return null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e.message ?: "Could not open that source."
+                // Real-Debrid needs reconnecting: the other torrents would fail the same way.
+                if (e is IllegalStateException && e.message?.startsWith("Real-Debrid needs reconnecting") == true) return lastError
+            }
+        }
+        return lastError
     }
 }
