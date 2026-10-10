@@ -480,7 +480,7 @@ private fun NotSetUp() {
         Text("JARVIS WALL", style = broadcastStyle(26.sp))
         Spacer(Modifier.height(10.dp))
         Text(
-            "Not set up yet. On your phone, open the Control page and fill in the Wall section: the wall address and the wall key.",
+            "Not set up yet. On your phone, open the Control page and paste the wall key in the Wall section.",
             color = McdColors.Muted, fontSize = 18.sp,
         )
     }

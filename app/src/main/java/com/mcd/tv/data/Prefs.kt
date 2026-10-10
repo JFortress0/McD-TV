@@ -139,9 +139,9 @@ object Prefs {
         set(v) = put("jarvis_model", v)
 
     // ---- Jarvis Wall (calendar and photo frame) ----
-    /** Address of the jarvis-wall Netlify site. Shared with linked TVs. */
+    /** Address of the jarvis-wall Netlify site (default: the family's site). Shared with linked TVs. */
     var wallUrl: String
-        get() = str("wall_url")
+        get() = str("wall_url").ifBlank { "https://jarvis-wall.netlify.app" }
         set(v) = put("wall_url", v)
 
     /** Read-only wall key (WALL_KEY on Netlify). Shared with linked TVs. */
