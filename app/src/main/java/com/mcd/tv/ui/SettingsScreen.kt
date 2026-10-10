@@ -106,15 +106,6 @@ fun SettingsScreen(nav: Nav) {
             }
 
             HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Account")
-                Text(
-                    if (com.mcd.tv.data.Account.signedIn) "Signed in as ${Prefs.accountName}" else "Not signed in. Optional: sign in to sync across TVs.",
-                    color = McdColors.White, fontSize = 16.sp,
-                )
-                ActionButton("Account", { nav.push(Screen.AccountPage) })
-            }
-
-            HudPanel(Modifier.fillMaxWidth()) {
                 RailHeader("Real-Debrid")
                 Text(
                     when (val r = rd) { is Load.Ok -> r.value; is Load.Err -> "Error: ${r.message}"; else -> "Checking…" },
