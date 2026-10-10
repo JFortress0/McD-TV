@@ -54,7 +54,7 @@ object ResumeCloud {
 
     // ---------------------------------------------------------------- crypto
 
-    private fun houseKey(): ByteArray? = runCatching {
+    internal fun houseKey(): ByteArray? = runCatching {
         Base64.decode(Prefs.houseKey, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     }.getOrNull()?.takeIf { it.size >= 16 }
 
@@ -63,23 +63,23 @@ object ResumeCloud {
 
     private fun b64(b: ByteArray): String = Base64.encodeToString(b, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
-    private fun tag(key: ByteArray, label: String): String = b64(hmac(key, "jarvis-resume|$label")).take(22)
+    internal fun tag(key: ByteArray, label: String): String = b64(hmac(key, "jarvis-resume|$label")).take(22)
 
-    private fun seal(key: ByteArray, json: String): String {
+    internal fun seal(key: ByteArray, json: String): String {
         val iv = ByteArray(12).also { rng.nextBytes(it) }
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.ENCRYPT_MODE, SecretKeySpec(hmac(key, "jarvis-resume|enc"), "AES"), GCMParameterSpec(128, iv))
         return b64(iv + c.doFinal(json.toByteArray(Charsets.UTF_8)))
     }
 
-    private fun open(key: ByteArray, v: String): String? = runCatching {
+    internal fun open(key: ByteArray, v: String): String? = runCatching {
         val all = Base64.decode(v, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.DECRYPT_MODE, SecretKeySpec(hmac(key, "jarvis-resume|enc"), "AES"), GCMParameterSpec(128, all, 0, 12))
         String(c.doFinal(all, 12, all.size - 12), Charsets.UTF_8)
     }.getOrNull()
 
-    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+    internal fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     // ---------------------------------------------------------------- saving
 
@@ -159,7 +159,7 @@ object ResumeCloud {
     private fun pushLiveFavs(profile: String) {
         val key = houseKey() ?: return
         val ids = liveFavIds(profile)
-        val sig = "v1:" + ids.joinToString(",")
+        val sig = "v1:" + ids.sorted().joinToString(",")
         if (Prefs.json("livefav_sent@$profile") == sig) return // already there
         val now = System.currentTimeMillis()
         val payload = JSONObject()
@@ -232,8 +232,10 @@ object ResumeCloud {
             if (!force && now - (lastPull[profile] ?: 0L) < PULL_EVERY_MS) return
             lastPull[profile] = now
         }
-        // Favorites that changed while the app was closed, or arrived from another TV: send them (only when they differ).
+        // Favorites a phone changed: apply them here. Then send this TV's (only when they differ) and the house snapshot.
+        runCatching { HouseCloud.pullLiveFavorites(profile) }
         for (p in Prefs.PROFILE_IDS) onLiveFavorites(p)
+        runCatching { HouseCloud.pushSnapshot() }
         val remote = withContext(Dispatchers.IO) { runCatching { fetch(profile) }.getOrDefault(emptyList()) }
         if (remote.isEmpty()) return
         val local = Library.history(profile).associateBy { it.meta.historyKey }
