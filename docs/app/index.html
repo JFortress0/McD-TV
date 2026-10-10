@@ -3352,7 +3352,10 @@ function renderSettings(v) {
       ${jarvisKey() ? `<div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rmjarvis">Remove key from this device</button></div>` : ""}
     </div>
     <div class="panel"><h2>Set up another phone</h2>
-      <p class="muted">Sends an invite with your TV link, sources, playlist and keys. They tap it, add Jarvis to their Home Screen and sign in to Real-Debrid. Only send it to people you'd hand your TV remote.</p>
+      <p class="muted">Sends an invite with everything set up the way it is here: your TV link, sources, playlist, keys and player choice. They tap it and add Jarvis to their Home Screen. Only send it to people you'd hand your TV remote.</p>
+      ${rdToken() ? `<label class="rowf" style="margin-top:10px;gap:8px;align-items:flex-start"><input type="checkbox" id="invTok" checked style="margin-top:4px">
+        <span>Include my Real-Debrid API token, so movies and shows play inside Jarvis on their phone with no sign-in. <span class="muted">The invite then works like a password: send it only by text to someone in the house.</span></span></label>`
+        : `<p class="muted" style="margin-top:8px">Tip: save your Real-Debrid API token above first, and the invite can carry it, so movies play inside Jarvis on their phone with no sign-in.</p>`}
       <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small" data-act="invite" data-pid="${p.id}">Invite as ${esc(p.name)}</button>`).join("")}</div></div>
     <div class="panel"><h2>Install as an app</h2>
       <p class="muted">${isStandalone() ? "Jarvis is installed on this device. iPhone keeps the app's settings apart from Safari's. To bring your setup over: open Jarvis in Safari, go to Settings and tap Copy setup for the app, then paste it under Your TV here and tap Link." : "iPhone and iPad: in Safari, tap Share, then Add to Home Screen. Then tap Copy setup for the app below and paste it in the app's Settings, under Your TV. (iPhone keeps the app's settings apart from Safari's.) Android and computers: use the browser menu and choose Install app."}</p>
@@ -3399,9 +3402,10 @@ function setupLink() {
 // with the profile they will watch as. Opening it in Safari sets that browser up; the Home Screen app then
 // takes it with one tap (Paste invite), since iPhone keeps the app's storage apart from Safari's.
 const INVITE_KEY = "mcdtv_web_invite", WELCOME_KEY = "mcdtv_web_welcome";
-function inviteLink(pid) {
+function inviteLink(pid, withToken) {
   const o = {};
-  for (const k of SETUP_KEYS()) { if (k === RDC_KEY || k === RDT_KEY) continue; const v = LS.get(k); if (v != null && v !== "") o[k] = v; }
+  // The Real-Debrid API token goes along only when ticked (then the invite is as good as your password).
+  for (const k of SETUP_KEYS()) { if (k === RDC_KEY || (k === RDT_KEY && !withToken)) continue; const v = LS.get(k); if (v != null && v !== "") o[k] = v; }
   o[PROFILE_KEY] = pid;
   return location.origin + location.pathname + "#invite." + b64u.enc(new TextEncoder().encode(JSON.stringify(o)));
 }
@@ -3522,7 +3526,8 @@ document.addEventListener("click", async (e) => {
       break;
     }
     case "invite": {
-      const url = inviteLink(d.pid);
+      const tk = $("#invTok");
+      const url = inviteLink(d.pid, !!(tk && tk.checked));
       try {
         if (navigator.share) await navigator.share({ title: "Jarvis", text: "Tap to set up Jarvis on your phone", url });
         else { await navigator.clipboard.writeText(url); toast("Invite copied. Send it by text or email.", "ok"); }
@@ -3613,7 +3618,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
 // to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-10.8";
+const BUILD = "2026-10-10.9";
 let lastUpdateCheck = 0;
 async function checkForUpdate() {
   if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
