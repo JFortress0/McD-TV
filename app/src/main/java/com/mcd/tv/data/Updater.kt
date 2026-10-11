@@ -3,6 +3,8 @@ package com.mcd.tv.data
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
+import android.app.PendingIntent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -20,7 +22,11 @@ import java.net.URL
 /**
  * In-app updates, so new versions don't need Downloader.
  * Checks the latest GitHub release (tag "v0.2.N", where N is the CI run number and the app's versionCode),
- * downloads Jarvis.apk into the app's cache and opens the system installer. You press Install once.
+ * downloads Jarvis.apk into the app's cache and installs it.
+ *  - Android 12+ (Google TV): a session install that asks for no confirmation when Jarvis updates itself
+ *    (USER_ACTION_NOT_REQUIRED + UPDATE_PACKAGES_WITHOUT_USER_ACTION). The TV may still ask once, the first
+ *    time after a Downloader install; [UpdateReceiver] opens that screen.
+ *  - Older Android (Fire TV): the system installer opens and you press Install.
  * Android 8+ asks one time to let Jarvis install apps (Fire TV: Settings > My Fire TV > Developer options
  * > Install unknown apps > Jarvis).
  */
@@ -101,7 +107,43 @@ object Updater {
         false
     }
 
-    /** Downloads [r] (progress in [status]) and opens the system installer. */
+    /** Called by [UpdateReceiver] with what the system installer said. */
+    fun installResult(ok: Boolean, text: String) {
+        status = text
+        if (!ok) busy = false
+    }
+
+    /**
+     * Android 12+: hands [apk] to PackageInstaller and asks for no confirmation (a self-update). The answer comes
+     * to [UpdateReceiver]. Throws if the session can't be made; the caller then opens the old installer screen.
+     */
+    @androidx.annotation.RequiresApi(31)
+    private suspend fun sessionInstall(ctx: Context, apk: File) = withContext(Dispatchers.IO) {
+        val installer = ctx.packageManager.packageInstaller
+        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+            setAppPackageName(ctx.packageName)
+            setSize(apk.length())
+            setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        }
+        val id = installer.createSession(params)
+        try {
+            installer.openSession(id).use { session ->
+                session.openWrite("Jarvis.apk", 0, apk.length()).use { out ->
+                    apk.inputStream().use { it.copyTo(out, 64 * 1024) }
+                    session.fsync(out)
+                }
+                val done = Intent(ctx, UpdateReceiver::class.java).setPackage(ctx.packageName)
+                // MUTABLE: the system adds the result (EXTRA_STATUS) to this intent.
+                val pending = PendingIntent.getBroadcast(ctx, id, done, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
+                session.commit(pending.intentSender)
+            }
+        } catch (e: Exception) {
+            runCatching { installer.abandonSession(id) }
+            throw e
+        }
+    }
+
+    /** Downloads [r] (progress in [status]) and installs it (see the class notes). */
     suspend fun downloadAndInstall(ctx: Context, r: Release) {
         if (busy) return
         busy = true
@@ -137,6 +179,20 @@ object Updater {
                     }
                 } finally {
                     c.disconnect()
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 31) {
+                val handedOver = try {
+                    sessionInstall(ctx, apk)
+                    true
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    false // fall back to the installer screen below
+                }
+                if (handedOver) {
+                    status = "Installing. Jarvis closes and opens again by itself."
+                    return
                 }
             }
             status = "Opening the installer. Press Install."
