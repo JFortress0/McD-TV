@@ -126,6 +126,8 @@ fun PlayerScreen(
     var keepScreenOn by remember { mutableStateOf(true) }
     // Live: buffering right now (the stall watchdog below), and a short "Reconnecting" note.
     var buffering by remember { mutableStateOf(false) }
+    // Live: how this channel plays, for Settings > Live TV health.
+    val stats = remember { if (live) com.mcd.tv.data.LiveStats.Recorder(title) else null }
     var liveNote by remember { mutableStateOf<String?>(null) }
 
     val player = remember {
@@ -168,6 +170,7 @@ fun PlayerScreen(
 
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
+                stats?.onState(state)
                 if (state == Player.STATE_READY) {
                     networkRetries = 0 // playing again: reset the retry budget
                     liveNote = null
@@ -223,7 +226,45 @@ fun PlayerScreen(
             }
         }
         player.addListener(listener)
+        val analytics = stats?.let { st ->
+            object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                    st.dropped += droppedFrames
+                }
+
+                override fun onVideoInputFormatChanged(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    format: androidx.media3.common.Format,
+                    decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+                ) {
+                    val fps = if (format.frameRate > 0) " ${"%.0f".format(format.frameRate)} fps" else ""
+                    val codec = format.sampleMimeType?.substringAfter('/').orEmpty()
+                    st.video = "${format.width}x${format.height}$fps $codec".trim()
+                }
+
+                override fun onVideoDecoderInitialized(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long,
+                ) {
+                    st.decoder = decoderName
+                }
+
+                override fun onBandwidthEstimate(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    totalLoadTimeMs: Int,
+                    totalBytesLoaded: Long,
+                    bitrateEstimate: Long,
+                ) {
+                    st.kbps = (bitrateEstimate / 1000).toInt()
+                }
+            }
+        }
+        analytics?.let { player.addAnalyticsListener(it) }
         onDispose {
+            stats?.finish()
+            analytics?.let { player.removeAnalyticsListener(it) }
             retryJob?.cancel()
             progress.save(player, force = true)
             player.removeListener(listener)
@@ -259,6 +300,7 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
         recoveries++
+        stats?.let { it.reconnects++ }
         liveNote = "Reconnecting…"
         player.seekToDefaultPosition()
         player.prepare()
