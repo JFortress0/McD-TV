@@ -108,18 +108,26 @@ object RealDebrid {
 
     /**
      * Runs one authorized API call. If RD answers 401 (token revoked or expired early),
-     * refreshes the token once and retries.
+     * refreshes the token once and retries. Other refusals become a plain message (RdErrors).
      */
     internal suspend fun <T> authed(call: suspend (Map<String, String>) -> T): T {
         val t = token()
         return try {
             call(mapOf("Authorization" to "Bearer $t"))
         } catch (e: HttpException) {
-            if (e.code != 401) throw e
+            if (e.code != 401) throw refused(e)
             refresh(stale = t, force = true)
-            call(mapOf("Authorization" to "Bearer ${Prefs.rdAccessToken}"))
+            try {
+                call(mapOf("Authorization" to "Bearer ${Prefs.rdAccessToken}"))
+            } catch (e2: HttpException) {
+                throw refused(e2)
+            }
         }
     }
+
+    /** "HTTP 403 {"error":"ip_not_allowed",...}" to "Real-Debrid blocks the network this TV is on...". */
+    private fun refused(e: HttpException): IllegalStateException =
+        IllegalStateException(RdErrors.api(e.code, e.message.orEmpty()), e)
 
     internal suspend fun apiGet(path: String): String = authed { Http.get("$API$path", it) }
     internal suspend fun apiPost(path: String, fields: Map<String, String>): String = authed { Http.postForm("$API$path", fields, it) }
