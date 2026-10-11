@@ -101,6 +101,16 @@ class LiveOrganizerTest {
     }
 
     @Test
+    fun huntsvilleStationsAreLocalEvenWithNewsInTheName() {
+        assertEquals(LOCAL, LiveOrganizer.section("USA", "WHNT News 19"))
+        assertEquals(LOCAL, LiveOrganizer.section("US| NEWS", "WAAY 31 News"))
+        assertEquals(LOCAL, LiveOrganizer.section("US| LOCALS", "WAFF 48 NBC"))
+        assertEquals(LOCAL, LiveOrganizer.section("", "WZDX-TV FOX 54"))
+        assertEquals(NEWS, LiveOrganizer.section("US| NEWS", "WHNTX News")) // not a call sign
+        assertEquals(NEWS, LiveOrganizer.section("US| NEWS", "CNN"))
+    }
+
+    @Test
     fun sportChips() {
         assertEquals("Football", LiveOrganizer.sport("US| SPORTS", "NFL 03: Packers @ Bears 1:00 PM"))
         assertEquals("Football", LiveOrganizer.sport("US| SPORTS", "SEC Network"))

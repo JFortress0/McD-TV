@@ -190,6 +190,20 @@ class LiveFillTest {
     }
 
     @Test
+    fun programmesForGridsUseTheSameFallbacks() {
+        val espn = Channel("US| ESPN HD", null, "US| SPORTS", "http://host/espn.ts")
+        val real = listOf(Programme("SportsCenter", now - 600_000L, now + 600_000L, ""), Programme("NFL Live", now + 600_000L, now + 4_200_000L, ""))
+        assertEquals(listOf("SportsCenter", "NFL Live"), LiveFill.programmes(espn, mapOf(espn.url to real), now) { games }.map { it.title })
+        // Only finished shows in the guide: the fallback, like nowNext.
+        val over = listOf(Programme("Old", now - 7_200_000L, now - 3_600_000L, ""))
+        assertEquals(listOf("Ole Miss at LSU"), LiveFill.programmes(espn, mapOf(espn.url to over), now) { games }.map { it.title })
+        assertEquals(listOf("Auburn at Georgia"), LiveFill.programmes(Channel("SEC Network", null, "US| SPORTS", "http://host/sec.ts"), emptyMap(), now) { games }.map { it.title })
+        val ev = Channel("NCAAF 05: Alabama vs Tennessee 3:30PM ET", null, "NCAAF", "http://host/ev.ts")
+        assertEquals(listOf("Alabama vs Tennessee"), LiveFill.programmes(ev, emptyMap(), now) { games }.map { it.title })
+        assertTrue(LiveFill.programmes(Channel("US| HISTORY", null, "US| ENTERTAINMENT", "http://host/h.ts"), emptyMap(), now) { games }.isEmpty())
+    }
+
+    @Test
     fun huntsvilleStationRanksFirstForItsNetworkGame() {
         var n = 0
         fun ch(name: String, group: String) = Channel(name, null, group, "http://host/${n++}.ts")
