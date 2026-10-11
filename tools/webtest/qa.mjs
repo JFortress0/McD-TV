@@ -10,12 +10,15 @@ const sb={week:{number:6},events:[
  {id:'1',date:new Date(now-3600e3).toISOString(),status:{type:{state:'in',shortDetail:'Q3 5:12'}},competitions:[{competitors:[team('Dallas','Cowboys','DAL','home','17'),team('New York','Giants','NYG','away','10')],broadcasts:[{names:['ESPN']}]}]},
  {id:'2',date:new Date(now+86400e3).toISOString(),status:{type:{state:'pre',shortDetail:''}},competitions:[{competitors:[team('Kansas City','Chiefs','KC','home','0'),team('Buffalo','Bills','BUF','away','0')],broadcasts:[{names:['FS1']}]}]}]};
 const fails=[]; const log=(...a)=>console.log(...a);
-async function mk(vp){
-  const ctx=await b.newContext({viewport:vp}); const p=await ctx.newPage();
+async function mk(vp,opts){
+  const ctx=await b.newContext({viewport:vp,...(opts||{})}); const p=await ctx.newPage();
   const errs=[], blocked=new Set(), espn=[];
   p.on('pageerror',e=>errs.push(String(e).slice(0,300)));
   await ctx.route('**/*',r=>{const u=new URL(r.request().url());
     if(u.hostname==='127.0.0.1') return r.continue();
+    // Settings > Check network: TMDB and the TV link (ntfy.sh) answer 200, so the "OK" path is tested.
+    if(u.hostname==='api.themoviedb.org'&&u.pathname==='/3/configuration') return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'},body:'{"images":{}}'});
+    if(u.hostname==='ntfy.sh'&&u.pathname==='/v1/health') return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'},body:'{"healthy":true}'});
     if(u.hostname==='site.api.espn.com'){espn.push(u.pathname);return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'},body:JSON.stringify(u.pathname.includes('/nfl/')?sb:{events:[]})});}
     blocked.add(u.hostname); return r.fulfill({status:404,headers:{'Access-Control-Allow-Origin':'*'},body:''});});
   return {ctx,p,errs,blocked,espn};
@@ -72,9 +75,72 @@ for (const w of [390,1280]) {
     if(net.length<3) fails.push(`${w} network check listed ${net.length} rows`);
     if(net.some(x=>x.includes('Checking'))) fails.push(`${w} network check left a row pending`);
     if(net.some(x=>/api_key|password|username=/.test(x))) fails.push(`${w} network check shows a key or login`);
+    for (const name of ['TMDB','TV link']) { const row=net.find(x=>x.includes(name)); if(!row||!/^OK\b/.test(row)) fails.push(`${w} network check: ${name} not OK: "${row||'missing'}"`); }
   }
+  // Recent errors: an uncaught error is logged without its query string, shown in Settings, and cleared
+  await p.evaluate(()=>{ try{logErr('qa boom https://example.com/x?api_key=SECRET123','qa.js:1');}catch{} });
+  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(800);
+  const el=await p.$eval('#errList',e=>e.innerText).catch(()=>'missing');
+  log(w,'recent errors',el.replace(/\s+/g,' ').slice(0,120));
+  if(!el.includes('qa boom')) fails.push(`${w} recent errors list missing the logged error`);
+  if(/SECRET|api_key/.test(el)) fails.push(`${w} recent errors list shows a key`);
+  await p.click('#errClear').catch(()=>fails.push(`${w} recent errors Clear missing`)); await p.waitForTimeout(200);
+  if(!/No errors recorded/.test(await p.$eval('#errList',e=>e.innerText).catch(()=>''))) fails.push(`${w} recent errors not cleared`);
+  // Service worker: shell cache named after BUILD
+  const sw=await p.evaluate(async()=>{ try{ await navigator.serviceWorker.ready; await new Promise(r=>setTimeout(r,500)); return {keys:await caches.keys(),build:BUILD}; }catch(e){ return {err:String(e)}; } });
+  log(w,'sw caches',JSON.stringify(sw));
+  if(!sw.keys||!sw.keys.includes('jarvis-shell-'+sw.build)) fails.push(`${w} service worker cache not tied to BUILD: ${JSON.stringify(sw)}`);
+  // Watchlist edits while the TV is off: queued, shown in the list, kept until the TV confirms
+  const wq=await p.evaluate(async()=>{ const link=S.link, key=S.key; S.link=null; S.key=null; localStorage.removeItem('mcdtv_web_wlq');
+    await WLQ.send({cmd:'watchlist',type:'movie',id:603,on:true,name:'QA'},'p1'); await WLQ.send({cmd:'watchlist',type:'movie',id:604,on:true},'p1'); await WLQ.send({cmd:'watchlist',type:'movie',id:604,on:false},'p1');
+    const L={watchlist:[{type:'movie',id:604}]}; WLQ.overlay('p1',L); const n=WLQ.size(); localStorage.removeItem('mcdtv_web_wlq'); S.link=link; S.key=key;
+    return {n,wl:L.watchlist.map(r=>r.id).join(',')}; });
+  log(w,'watchlist queue',JSON.stringify(wq));
+  if(wq.n!==2||wq.wl!=='603') fails.push(`${w} watchlist queue ${JSON.stringify(wq)}`);
   log(w,'pageerrors',errs.length?errs.join(' | '):'none','blocked hosts',[...blocked].join(','),'espn calls',espn.length);
   if(errs.length) fails.push(...errs.map(e=>`${w} pageerror ${e}`));
+  await ctx.close();
+}
+// Live TV extras: Huntsville call signs in Local, guide cache kept across launches, Tap to play when autoplay is blocked.
+{
+  const {ctx,p,errs}=await mk({width:390,height:844});
+  await ctx.addInitScript(()=>{ HTMLMediaElement.prototype.play=function(){ return Promise.reject(new DOMException('blocked','NotAllowedError')); };
+    const cpt=HTMLMediaElement.prototype.canPlayType; HTMLMediaElement.prototype.canPlayType=function(t){ return /mpegurl/i.test(t)?'maybe':cpt.call(this,t); }; });
+  await p.goto(B); await p.evaluate(()=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_profile','p1'); localStorage.setItem('mcdtv_web_init', JSON.stringify({m3u_url:'http://127.0.0.1:8781/get.php?username=u&password=p&type=m3u_plus', tmdb_key:'x'})); });
+  const secs=await p.evaluate(()=>[['USA','WHNT News 19'],['US| NEWS','WAAY 31 News'],['US| NEWS','CNN'],['US| NEWS','WHNTX News']].map(([g,n])=>LO.section(g,n)));
+  log('LO huntsville',secs.join(',')); if(secs.join()!=='Local,Local,News,News') fails.push(`LO Huntsville sections ${secs}`);
+  await p.goto(B+'#/live'); await p.reload(); await p.waitForTimeout(6000);
+  const saved=await p.evaluate(()=>localStorage.getItem('mcdtv_web_epg')||'');
+  let rows=0; try{ rows=Object.keys(JSON.parse(saved).rows).length; }catch{}
+  log('epg cache rows',rows,'bytes',saved.length); if(!rows) fails.push('guide cache not saved'); if(/password|username/.test(saved)) fails.push('guide cache holds the playlist login');
+  await p.reload(); await p.waitForTimeout(1500);
+  const loading=await p.$$eval('.lv-row',r=>r.filter(x=>/Loading guide/.test(x.innerText)).length);
+  log('rows still loading after relaunch',loading);
+  await ctx.route('**/live/**',()=>{}); // the stream never answers, so only the blocked play() is tested
+  await p.click('.lv-row b'); await p.waitForTimeout(1500);
+  const tap=await p.$eval('#lvTap',e=>!e.classList.contains('hidden')).catch(()=>false);
+  const msgShown=await p.$eval('#lvMsg',e=>!e.classList.contains('hidden')).catch(()=>false);
+  log('live tap to play shown',tap,'error shown',msgShown,await p.$eval('#lvMsgText',e=>e.innerText).catch(()=>'')); if(!tap||msgShown) fails.push(`live Tap to play: tap ${tap} msg ${msgShown}`);
+  if(errs.length) fails.push(...errs.map(e=>`extras pageerror ${e}`));
+  await ctx.close();
+}
+// Safe updates: a new version reloads right away when idle, and waits with "Update ready" during a source lookup.
+{
+  const {ctx,p,errs}=await mk({width:390,height:844},{serviceWorkers:'block'});
+  await ctx.route(/127\.0\.0\.1:\d+\/index\.html\?u=/,r=>r.fulfill({status:200,headers:{'Content-Type':'text/html'},body:'<script>const BUILD = "qa-next";</script>'}));
+  await p.goto(B); await p.evaluate(()=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_profile','p1'); localStorage.setItem('mcdtv_web_init', JSON.stringify({tmdb_key:'x'})); });
+  await p.goto(B+'#/sources/movie/603'); await p.reload(); await p.evaluate(()=>{ window.__qaMark=1; });
+  const chip=await p.waitForSelector('#updChip',{timeout:8000}).catch(()=>null);
+  const kept=await p.evaluate(()=>window.__qaMark===1).catch(()=>false);
+  log('update during source lookup: chip',chip?await chip.innerText():'none','page kept',kept);
+  if(!chip) fails.push('update prompt did not show during a source lookup'); if(!kept) fails.push('update reloaded during a source lookup');
+  if(chip){ const nav=p.waitForEvent('load',{timeout:8000}).then(()=>true).catch(()=>false); await chip.click(); if(!await nav) fails.push('tapping Update ready did not reload'); }
+  await p.goto(B+'#/settings'); await p.waitForTimeout(500); await p.evaluate(()=>{ window.__qaMark=1; });
+  await p.waitForTimeout(4500);
+  const idle=await p.evaluate(()=>window.__qaMark===1).catch(()=>false);
+  log('update when idle: reloaded',!idle);
+  if(idle) fails.push('update did not apply when idle');
+  if(errs.length) fails.push(...errs.map(e=>`update test pageerror ${e}`));
   await ctx.close();
 }
 log('FAILS', fails.length); fails.forEach(f=>log(' -',f));
