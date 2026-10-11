@@ -52,6 +52,7 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.PlayMeta
+import com.mcd.tv.data.RdErrors
 import com.mcd.tv.ui.ActionButton
 import com.mcd.tv.ui.McdColors
 import kotlinx.coroutines.Job
@@ -179,8 +180,10 @@ fun PlayerScreen(
                     player.prepare()
                     return
                 }
+                // HTTP status of a refused stream (403 and friends): retrying won't help, so say why at once.
+                val http = (e.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
                 // Network hiccup (IO error codes 2000..2999): retry a few times before giving up.
-                if (e.errorCode in 2000..2999 && networkRetries < 3) {
+                if (e.errorCode in 2000..2999 && (http == null || http !in 400..499) && networkRetries < 3) {
                     networkRetries++
                     retryJob?.cancel()
                     retryJob = scope.launch {
@@ -189,7 +192,7 @@ fun PlayerScreen(
                     }
                     return
                 }
-                error = "${e.errorCodeName}\n${e.cause?.message ?: e.message ?: ""}"
+                error = RdErrors.stream(http) ?: "${e.errorCodeName}\n${e.cause?.message ?: e.message ?: ""}"
             }
         }
         player.addListener(listener)
