@@ -80,7 +80,7 @@ object RealDebrid {
     /**
      * Refreshes the access token. [stale] is the token the caller saw; if another caller already
      * replaced it while we waited for the lock, its new token is used instead of refreshing again.
-     * A refused refresh (400/401) means the grant is gone: tokens are cleared and the user must reconnect.
+     * A refused refresh (400/401/403) means the grant is gone: the user must reconnect on this TV.
      */
     private suspend fun refresh(stale: String, force: Boolean) {
         refreshLock.withLock {
@@ -96,10 +96,10 @@ object RealDebrid {
                     ),
                 )
             } catch (e: HttpException) {
-                if (e.code == 400 || e.code == 401) {
-                    Prefs.clearRealDebrid()
-                    throw IllegalStateException(RECONNECT)
-                }
+                // RD refuses a dead grant with 400, 401 or 403 ("permission_denied", "{code} is invalid").
+                // The tokens are NOT cleared here: HouseSync would copy the empty sign-in to every linked TV.
+                // Reconnecting on this TV replaces them, and the new sign-in then reaches the other TVs.
+                if (e.code == 400 || e.code == 401 || e.code == 403) throw IllegalStateException(RECONNECT)
                 throw e
             }
             saveToken(JSONObject(reply))
