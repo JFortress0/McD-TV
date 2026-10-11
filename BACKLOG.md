@@ -2,6 +2,14 @@
 
 Ranked upgrades from the October 2026 review by the four focus agents (.claude/agents). Effort: S small, M medium, L large. "Relay" marks items that need a Netlify deploy (15 credits each; batch them, see CLAUDE.md). Everything else is free to ship.
 
+## Done in the October 12 overnight run
+
+- Live TV: Huntsville call signs go to Local even with "News" in the name (TV and web); a failed guide fetch retries after 90 s (the TV kept an empty guide for 6 hours); the web guide cache survives app launches (15 minutes, per playlist, no login stored); My Guide and For You use the event and game fallbacks; "Tap to play" in the web Live TV player.
+- Web app: updates wait during playback, source lookups, sign-in and the hand-off question ("Update ready. Tap to update."); service worker cache tied to BUILD with a 3 s shell timeout; Settings > Recent errors; watchlist edits queue while the TV is off; the dead Websites route is gone; shared b64u and sha helpers.
+- TV app: "Still watching?" after 3 automatic episodes; the Home hero holds still while focused; LEFT/RIGHT presses add up into one seek; HouseSync compares settings when they change (60 s fallback, 10 s after a failure) instead of every 4 s; the screen may sleep after 10 minutes paused; the update screen says leaving stops the download; one app-wide image loader (RGB565 JPEGs, bounded caches).
+- Real-Debrid: plain messages for refusals; a refused token refresh asks to reconnect and no longer clears the sign-in on every linked TV.
+- Web QA: TMDB and ntfy mocked as 200; checks for the update prompt, error log, watchlist queue, guide cache and Live TV tap to play.
+
 ## Done in the October 10 agent run (commits 269f649 to e1634b4)
 
 - Live TV: West feeds keep their own guide (`gkey` / `LiveFill.guideKey`); event channels show their game as the current program; ESPN, FOX, CBS, SECN, ACCN and BTN rows with no guide show the live or next game from loaded schedules; Huntsville stations first in Local and Games. TV and web.
@@ -20,30 +28,23 @@ Ranked upgrades from the October 2026 review by the four focus agents (.claude/a
 ## Live TV (agent: live-tv)
 
 1. Games matching parity with the TV: abbreviation pairs, one team plus "vs", guide titles near kickoff. M
-2. Keep the web guide cache across app launches (15-minute TTL). S
-3. TV guide: use the playlist's accepted user agent, keep a trimmed guide on disk for cold starts; give LiveGuide.kt and LiveForYou the LiveFill fallbacks. M
-4. "On now" strip on Favorites and Sports, plus a Comedy shortcut. S/M
-5. Call-sign-only stations ("WHNT News 19") go to Local, not News, on TV and web. S
-- Bug: a failed guide fetch is cached as empty for 15 minutes; retry after 1 to 2 minutes instead. S
+2. TV guide: use the playlist's accepted user agent, keep a trimmed guide on disk for cold starts. M
+3. "On now" strip on Favorites and Sports, plus a Comedy shortcut. S/M
+4. Check My Guide and For You speed on a Fire stick now that they use the LiveFill fallbacks. S
 - Relay (next batched deploy): block IPv6 private addresses and redirects to internal hosts in iptv.mts.
 
 ## Web and phone app (agent: web-app)
 
-1. Safe updates: don't reload for a new version during Live TV, a source lookup, sign-in or the hand-off dialog; show "tap to update". S
-2. Watchlist edits survive the TV being off (queue and resend). M
-3. Service worker: 3-second timeout on the shell fetch; tie the cache name to BUILD. S
-4. A global unhandled-error log so silent failures are visible. S
-5. "Tap to play" in the Live TV player too (same autoplay pattern as the old movie player). S
-- Cleanup: `#/websites` is unreachable (remove or wire up); "Events & PPV" never occurs; duplicate helpers (b64u, sha, two visibilitychange listeners).
+1. Apply a waiting update by itself when a busy state ends without a page change (closing the Live TV player). S
+2. Recent errors: skip known harmless rejections (a TMDB 404 nobody waits for) so the list stays useful. S
 
 ## TV app (agent: tv-app)
 
-1. "Still watching?" after 3 automatic next episodes with no key press. S
-2. Pause the Home hero carousel while it has focus. S
-3. Smooth seeking: add up held LEFT/RIGHT presses and seek once. S
-4. Memory: app-wide image loader with RGB565 and a bounded cache; buffer settings for 1 GB sticks. S/M
-5. Move watch history out of SharedPreferences into files (it is rewritten every 15 s on the main thread). M
-- Risks: HouseSync wakes every 4 s forever to compare settings; every launch sends a house sync request that every other TV answers; "TV started" goes to ntfy on every launch; keepScreenOn stays on while paused; leaving the update screen cancels the download silently.
+1. Move watch history out of SharedPreferences into files (it is rewritten every 15 s on the main thread). M
+2. Buffer settings for 1 GB sticks (Media3 LoadControl). S
+3. Jarvis Wall photos now decode as RGB565 (app-wide image loader): if gradients band, add `allowRgb565(false)` to the Wall's image request. S
+4. Start Jarvis by itself when the stick boots, for the Wall TV (may need an extra Fire OS permission). M
+- Risks: every launch sends a house sync request that every other TV answers; "TV started" goes to ntfy on every launch.
 
 ## QA
 
