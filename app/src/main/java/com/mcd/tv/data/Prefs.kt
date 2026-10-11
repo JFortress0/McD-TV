@@ -154,6 +154,11 @@ object Prefs {
         get() = str("wall_due")
         set(v) = put("wall_due", v)
 
+    /** Baby's first name for the Wall countdown ("" = "BABY"). Kept out of the repo. Shared with linked TVs. */
+    var wallBaby: String
+        get() = str("wall_baby")
+        set(v) = put("wall_baby", v)
+
     /** This TV opens straight into the Wall (no intro, no profile picker). This TV only, never synced. */
     var wallStart: Boolean
         get() = sp.getBoolean("wall_start", false)

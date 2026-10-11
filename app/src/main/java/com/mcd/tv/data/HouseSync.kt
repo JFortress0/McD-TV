@@ -48,7 +48,7 @@ object HouseSync {
     private val SHARED = listOf(
         "addon_urls", "websites",
         "m3u_url", "custom_stream_url",
-        "tmdb_key", "mdblist_key", "jarvis_key", "jarvis_model", "wall_url", "wall_key", "wall_due",
+        "tmdb_key", "mdblist_key", "jarvis_key", "jarvis_model", "wall_url", "wall_key", "wall_due", "wall_baby",
         "origin_filter", "us_only", "slow_connection", "play_intro", "max_movie_gb", "max_episode_gb",
         "rd_client_id", "rd_client_secret", "rd_access", "rd_refresh", "rd_expires",
     )

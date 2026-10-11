@@ -28,6 +28,19 @@ object BabyCountdown {
                 else -> "${-daysLeft} days past the due date"
             }
 
+        /** The big line with the baby's name: "137 days until Sam", "Sam is due today". Blank name: [headline]. */
+        fun headlineFor(name: String): String {
+            val n = name.trim()
+            if (n.isEmpty()) return headline
+            return when {
+                daysLeft > 1 -> "$daysLeft days until $n"
+                daysLeft == 1 -> "1 day until $n"
+                daysLeft == 0 -> "$n is due today"
+                daysLeft == -1 -> "$n is 1 day past due"
+                else -> "$n is ${-daysLeft} days past due"
+            }
+        }
+
         /** The small line: "Week 20, day 4. Due Feb 24." */
         val detail: String
             get() = (if (day == 0) "Week $week. " else "Week $week, day $day. ") + "Due ${shortDate(due)}."
