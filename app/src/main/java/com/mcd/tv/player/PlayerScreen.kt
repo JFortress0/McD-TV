@@ -117,6 +117,11 @@ fun PlayerScreen(
     var sleepStep by remember { mutableIntStateOf(0) }
     var sleepToast by remember { mutableStateOf<String?>(null) }
     var sleepToastTick by remember { mutableIntStateOf(0) }
+    // Target time while LEFT / RIGHT presses add up (TvPlayerView seeks once they stop).
+    var seekLabel by remember { mutableStateOf<String?>(null) }
+    // Paused (playWhenReady off): after SCREEN_ON_WHILE_PAUSED_MS the screen may sleep (screensaver).
+    var paused by remember { mutableStateOf(false) }
+    var keepScreenOn by remember { mutableStateOf(true) }
 
     val player = remember {
         // Follow http->https redirects (common with debrid and CDN links).
@@ -148,6 +153,10 @@ fun PlayerScreen(
         var networkRetries = 0
         var retryJob: Job? = null
         val listener = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                paused = !playWhenReady
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) networkRetries = 0 // playing again: reset the retry budget
                 if (state == Player.STATE_ENDED) {
@@ -214,6 +223,16 @@ fun PlayerScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Keep the screen on while playing. Paused for 10 minutes: let it go, so the screensaver can run.
+    LaunchedEffect(paused) {
+        if (paused) {
+            delay(SCREEN_ON_WHILE_PAUSED_MS)
+            keepScreenOn = false
+        } else {
+            keepScreenOn = true
+        }
     }
 
     // Save the position every 15 seconds so Continue Watching survives a crash or power-off.
@@ -291,13 +310,17 @@ fun PlayerScreen(
                             if (v != View.VISIBLE) keepFocus() // the hidden buttons can't take remote keys
                         },
                     )
-                    keepScreenOn = true
+                    this.keepScreenOn = true
+                    seekPreview = { label -> seekLabel = label }
                     isFocusable = true
                     isFocusableInTouchMode = true
                     post { requestFocus() } // remote key presses go to the player
                 }
             },
-            update = { view -> view.keyInterceptor = keyHandler },
+            update = { view ->
+                view.keyInterceptor = keyHandler
+                view.keepScreenOn = keepScreenOn
+            },
         )
 
         // Title strip, shown with the controls (Media3's control bar has no title).
@@ -322,6 +345,19 @@ fun PlayerScreen(
                     .padding(bottom = 96.dp)
                     .background(McdColors.Card.copy(alpha = 0.9f))
                     .padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+
+        if (error == null) seekLabel?.let { label ->
+            Text(
+                text = label,
+                color = McdColors.White,
+                fontSize = 26.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 48.dp)
+                    .background(McdColors.Card.copy(alpha = 0.9f))
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
             )
         }
 
@@ -366,6 +402,9 @@ fun PlayerScreen(
 /** Sleep timer steps in minutes; 0 = off, [SLEEP_END_OF_VIDEO] = stop when this video ends. */
 private const val SLEEP_END_OF_VIDEO = -1
 private val SLEEP_STEPS = intArrayOf(0, 30, 60, 90, SLEEP_END_OF_VIDEO)
+
+/** How long the screen stays on while the player is paused. */
+private const val SCREEN_ON_WHILE_PAUSED_MS = 10 * 60_000L
 
 /** Writes the resume position, skipping writes when the position moved 5 s or less since the last one. */
 private class ProgressSaver(private val meta: PlayMeta?) {
