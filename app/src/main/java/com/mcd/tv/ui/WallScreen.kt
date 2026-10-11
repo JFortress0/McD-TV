@@ -332,8 +332,9 @@ private fun BabyCard(feed: Wall.Feed?, now: Long) {
         Modifier.fillMaxWidth().padding(top = 10.dp).border(1.dp, BabyBlue.copy(alpha = 0.6f), HudShapeSmall)
             .background(BabyBlue.copy(alpha = 0.08f), HudShapeSmall).padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Text("BABY BOY", style = hudLabelStyle(10.sp, BabyBlue))
-        Text(s.headline, style = hudDisplayStyle(22.sp, McdColors.White, 0.5.sp), maxLines = 1)
+        val name = Prefs.wallBaby.trim()
+        Text(name.ifEmpty { "Baby" }.uppercase(), style = hudLabelStyle(10.sp, BabyBlue))
+        Text(s.headlineFor(name), style = hudDisplayStyle(22.sp, McdColors.White, 0.5.sp), maxLines = 1)
         Text(s.detail, color = McdColors.Muted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).background(McdColors.Line.copy(alpha = 0.5f))) {
             Box(Modifier.fillMaxWidth(s.progress).height(4.dp).background(BabyBlue))
