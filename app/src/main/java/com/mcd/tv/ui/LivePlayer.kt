@@ -164,6 +164,7 @@ fun LivePlayerScreen(nav: Nav, index: Int) {
                 onKeyEvent = onKey,
                 autoShowControls = false,
                 sleepTimerEnabled = false,
+                live = true,
             )
         }
         if (overlayVisible) {

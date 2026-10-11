@@ -808,7 +808,7 @@ private fun LiveChannelCard(
     onFocused: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cur = remember(guide, ch.url, now) { LiveFill.nowNext(ch, guide, now).first }
+    val cur = remember(guide, ch.url, now / 60_000L) { LiveFill.nowNext(ch, guide, now).first }
     Column(modifier) {
         HudCard(
             onClick = onClick,

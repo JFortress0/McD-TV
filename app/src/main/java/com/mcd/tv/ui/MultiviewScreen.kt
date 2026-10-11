@@ -696,6 +696,8 @@ private fun MultiTile(
         val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         ExoPlayer.Builder(context, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
+            // Lighter buffer per tile: four players on a 1 GB stick (see LiveTuning).
+            .setLoadControl(com.mcd.tv.player.LiveTuning.loadControl(tile = true))
             .build()
             .apply {
                 volume = 0f // the effect below turns the audio tile up
