@@ -315,7 +315,7 @@ private fun ColumnScope.AgendaPanel(feed: Wall.Feed?, now: Long, error: String?)
 
 // ---------------- Baby countdown ----------------
 
-private val BabyPink = Color(0xFFFF7AB6)
+private val BabyBlue = Color(0xFF6EC1FF)
 
 /**
  * Countdown to the baby's due date: the date set on the Control page, else an all-day calendar event called
@@ -329,14 +329,14 @@ private fun BabyCard(feed: Wall.Feed?, now: Long) {
         ?: return
     val s = remember(today, due) { BabyCountdown.state(today, due) } ?: return
     Column(
-        Modifier.fillMaxWidth().padding(top = 10.dp).border(1.dp, BabyPink.copy(alpha = 0.6f), HudShapeSmall)
-            .background(BabyPink.copy(alpha = 0.08f), HudShapeSmall).padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(top = 10.dp).border(1.dp, BabyBlue.copy(alpha = 0.6f), HudShapeSmall)
+            .background(BabyBlue.copy(alpha = 0.08f), HudShapeSmall).padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Text("BABY", style = hudLabelStyle(10.sp, BabyPink))
+        Text("BABY BOY", style = hudLabelStyle(10.sp, BabyBlue))
         Text(s.headline, style = hudDisplayStyle(22.sp, McdColors.White, 0.5.sp), maxLines = 1)
         Text(s.detail, color = McdColors.Muted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).background(McdColors.Line.copy(alpha = 0.5f))) {
-            Box(Modifier.fillMaxWidth(s.progress).height(4.dp).background(BabyPink))
+            Box(Modifier.fillMaxWidth(s.progress).height(4.dp).background(BabyBlue))
         }
     }
 }
