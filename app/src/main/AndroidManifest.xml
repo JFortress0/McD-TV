@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- In-app updates: Jarvis downloads its new version and opens the system installer (you press Install). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+: Jarvis may update itself without the "Install?" screen (Google TV). -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- TV devices have no touchscreen; marking these optional keeps the app installable everywhere. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -33,6 +35,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Results from the system installer for in-app updates (Updater, Android 12+). -->
+        <receiver android:name=".data.UpdateReceiver" android:exported="false" />
+        <!-- Opens Jarvis again after it updated itself. -->
+        <receiver android:name=".data.Relaunch" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"
