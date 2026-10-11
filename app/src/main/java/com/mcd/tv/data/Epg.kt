@@ -566,7 +566,39 @@ object LiveFill {
     }
 
     /** Games in the schedules already loaded (no network). */
-    fun loadedGames(): List<Game> = League.entries.flatMap { Games.cached(it)?.games.orEmpty() }
+    fun loadedGames(): List<Game> {
+        // Rebuilt only when a schedule changes: Live TV rows call this while scrolling.
+        var version = 0L
+        for (l in League.entries) version = version * 31 + (Games.cached(l)?.fetchedAt ?: 0L)
+        synchronized(gamesLock) {
+            if (version != gamesVersion || gamesList == null) {
+                gamesList = League.entries.flatMap { Games.cached(it)?.games.orEmpty() }
+                gamesVersion = version
+            }
+            return gamesList!!
+        }
+    }
+
+    private val gamesLock = Any()
+    private var gamesVersion = Long.MIN_VALUE
+    private var gamesList: List<Game>? = null
+
+    /**
+     * The fallback listing (event title, else the network's game) for a channel with no guide, remembered per
+     * channel and minute: rows scrolling into view reuse it instead of running the event regexes again.
+     */
+    private fun fallback(ch: Channel, now: Long, games: () -> List<Game>): Programme? {
+        val list = games()
+        val key = ch.url + '|' + ch.name + '|' + (now / 60_000L) + '|' + System.identityHashCode(list)
+        synchronized(fbCache) { if (fbCache.containsKey(key)) return fbCache[key] }
+        val fb = eventProgramme(ch.name, ch.group, now) ?: gameProgramme(networkOf(ch.name), list, now)
+        synchronized(fbCache) { fbCache[key] = fb }
+        return fb
+    }
+
+    private val fbCache = object : LinkedHashMap<String, Programme?>(512, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Programme?>?): Boolean = size > 4000
+    }
 
     /**
      * Now and next for a channel: the real guide first; with none, the event channel's own title, then the live
@@ -575,7 +607,7 @@ object LiveFill {
     fun nowNext(ch: Channel, guide: Map<String, List<Programme>>, now: Long, games: () -> List<Game> = ::loadedGames): Pair<Programme?, Programme?> {
         val real = Epg.nowNext(Epg.keyOf(ch), guide, now)
         if (real.first != null || real.second != null) return real
-        val fb = eventProgramme(ch.name, ch.group, now) ?: gameProgramme(networkOf(ch.name), games(), now) ?: return real
+        val fb = fallback(ch, now, games) ?: return real
         return if (fb.untimed || fb.start <= now) fb to null else null to fb
     }
 
@@ -587,7 +619,7 @@ object LiveFill {
     fun programmes(ch: Channel, guide: Map<String, List<Programme>>, now: Long, games: () -> List<Game> = ::loadedGames): List<Programme> {
         val real = guide[Epg.keyOf(ch)].orEmpty()
         if (real.any { it.end > now }) return real
-        val fb = eventProgramme(ch.name, ch.group, now) ?: gameProgramme(networkOf(ch.name), games(), now)
+        val fb = fallback(ch, now, games)
         return if (fb != null) listOf(fb) else real
     }
 }
