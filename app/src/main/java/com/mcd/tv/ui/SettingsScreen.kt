@@ -169,6 +169,22 @@ fun SettingsScreen(nav: Nav) {
             }
 
             HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("Live TV health")
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                var sessions by remember { mutableStateOf(com.mcd.tv.data.LiveStats.recent()) }
+                Text("This TV: ${com.mcd.tv.data.LiveStats.device(ctx)}", color = McdColors.White, fontSize = 16.sp)
+                if (sessions.isEmpty()) {
+                    Text("Watch a few live channels, then come back. Jarvis notes how each one played.", color = McdColors.Muted, fontSize = 15.sp)
+                } else {
+                    sessions.take(8).forEach { s ->
+                        Text("${s.channel}: ${s.summary()}", color = McdColors.Muted, fontSize = 14.sp)
+                        if (s.decoder.isNotBlank()) Text("Decoder: ${s.decoder}", color = McdColors.Muted, fontSize = 12.sp)
+                    }
+                    ActionButton("Clear", { com.mcd.tv.data.LiveStats.clear(); sessions = emptyList() })
+                }
+            }
+
+            HudPanel(Modifier.fillMaxWidth()) {
                 RailHeader("Player test")
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ActionButton("Play test stream", { nav.push(Screen.Player(PLAYER_TEST_URL, "Player test")) })
