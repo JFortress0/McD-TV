@@ -452,6 +452,9 @@ object Prefs {
         ProfileSync.onBulkImport()
     }
 
+    /** Calls [l] after any setting changes (on the main thread). Keep a strong reference: Android holds it weakly. */
+    fun addChangeListener(l: SharedPreferences.OnSharedPreferenceChangeListener) = sp.registerOnSharedPreferenceChangeListener(l)
+
     // ---- Raw JSON blobs used by Library ----
     fun json(key: String): String = sp.getString(key, "") ?: ""
     fun putJson(key: String, value: String) = sp.edit().putString(key, value).apply()

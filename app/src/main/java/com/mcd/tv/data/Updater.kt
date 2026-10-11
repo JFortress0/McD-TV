@@ -147,7 +147,11 @@ object Updater {
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (e is kotlinx.coroutines.CancellationException) {
+                // Leaving the update screen stops the download. Say so the next time it opens.
+                status = "The download stopped when you left this page. Press Update now to start again."
+                throw e
+            }
             status = "Update failed: ${e.message ?: "unknown error"}. Try again, or install with Downloader."
         } finally {
             busy = false

@@ -392,6 +392,7 @@ object LiveOrganizer {
         bits and S_247 != 0 -> H24
         bits and S_EVENTS != 0 -> EVENTS
         bits and S_SPORTS != 0 -> SPORTS
+        LiveFill.homeRank(name) >= 0 -> LOCAL // Huntsville stations: "WHNT News 19" is Local, not News.
         bits and S_NEWS != 0 -> NEWS
         bits and S_KIDS != 0 -> KIDS
         bits and S_MOVIES != 0 -> MOVIES

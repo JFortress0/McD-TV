@@ -37,13 +37,21 @@ object Epg {
     private const val MAX_KEPT = 60_000
     private const val MAX_DESC = 160
 
+    /** A failed or empty download is tried again after this, instead of being cached for [CACHE_MS]. */
+    private const val RETRY_MS = 90_000L
+
     private val lock = Mutex()
     private var cacheKey = ""
     private var cacheAt = 0L
+    private var failKey = ""
+    private var failAt = 0L
 
     /** The most recently loaded guide (empty until a load finishes). */
     @Volatile var current: Map<String, List<Programme>> = emptyMap()
         private set
+
+    /** The last good guide when it was for the same playlist, else nothing. */
+    private fun lastGood(key: String): Map<String, List<Programme>> = if (key == cacheKey) current else emptyMap()
 
     /** Key a channel is filed under in the guide map. */
     fun keyOf(ch: Channel): String = ch.url
@@ -54,10 +62,24 @@ object Epg {
         return try {
             lock.withLock {
                 if (key == cacheKey && System.currentTimeMillis() - cacheAt < CACHE_MS) return@withLock current
-                val guide = withContext(Dispatchers.IO) { download(url, channels) }
+                if (key == failKey && System.currentTimeMillis() - failAt < RETRY_MS) return@withLock lastGood(key)
+                val guide = try {
+                    withContext(Dispatchers.IO) { download(url, channels) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    emptyMap() // OutOfMemoryError included: a guide is never worth a crash
+                }
+                if (guide.isEmpty()) {
+                    // Failed, refused or empty: keep the last good guide and try again in [RETRY_MS].
+                    failKey = key
+                    failAt = System.currentTimeMillis()
+                    return@withLock lastGood(key)
+                }
                 current = guide
                 cacheKey = key
                 cacheAt = System.currentTimeMillis()
+                failKey = ""
                 guide
             }
         } catch (e: CancellationException) {
@@ -555,5 +577,17 @@ object LiveFill {
         if (real.first != null || real.second != null) return real
         val fb = eventProgramme(ch.name, ch.group, now) ?: gameProgramme(networkOf(ch.name), games(), now) ?: return real
         return if (fb.untimed || fb.start <= now) fb to null else null to fb
+    }
+
+    /**
+     * A channel's listings for grids and ranking (My Guide, For You): the real guide when it has anything not yet
+     * over; else the same fallback as [nowNext] (event title, then the network's game) as a one-row list.
+     * No network: [games] reads schedules already loaded.
+     */
+    fun programmes(ch: Channel, guide: Map<String, List<Programme>>, now: Long, games: () -> List<Game> = ::loadedGames): List<Programme> {
+        val real = guide[Epg.keyOf(ch)].orEmpty()
+        if (real.any { it.end > now }) return real
+        val fb = eventProgramme(ch.name, ch.group, now) ?: gameProgramme(networkOf(ch.name), games(), now)
+        return if (fb != null) listOf(fb) else real
     }
 }

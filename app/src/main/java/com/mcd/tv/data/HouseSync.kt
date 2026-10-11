@@ -1,5 +1,6 @@
 package com.mcd.tv.data
 
+import android.content.SharedPreferences
 import android.os.Build
 import android.util.Base64
 import com.mcd.tv.data.sync.Backoff
@@ -7,8 +8,10 @@ import com.mcd.tv.data.sync.ProfileSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -24,7 +27,7 @@ import java.security.SecureRandom
  * How it works:
  *  - Each TV listens on the ntfy topic "mcdtv-<house id>-house". Every message is encrypted with the
  *    house key (same format as [Relay]), so the relay only ever sees random bytes.
- *  - Every few seconds a TV checks whether its shared settings changed (from the Control page, the TV's
+ *  - When a shared setting is written (and once a minute as a fallback), a TV checks whether its shared settings changed (from the Control page, the TV's
  *    own Settings screen, a Real-Debrid token refresh...). If so, it sends them to the house ("sync"),
  *    stamped with the time of the change.
  *  - A TV takes a copy only when its stamp is newer than the one it has. A TV that just joined has stamp 0,
@@ -52,6 +55,23 @@ object HouseSync {
         "origin_filter", "us_only", "slow_connection", "play_intro", "max_movie_gb", "max_episode_gb",
         "rd_client_id", "rd_client_secret", "rd_access", "rd_refresh", "rd_expires",
     )
+
+    private val SHARED_SET = SHARED.toHashSet()
+
+    /** How often watch() compares settings when nothing woke it. */
+    private const val FALLBACK_CHECK_MS = 60_000L
+    /** After a failed send, during a backoff or while joining: check again this soon (ntfy: 10 s or slower). */
+    private const val RETRY_CHECK_MS = 10_000L
+    /** After a wake-up, wait this long so a burst of writes (the Control page's "set") goes out as one copy. */
+    private const val SETTLE_MS = 2_000L
+
+    /** Wakes watch() when a shared setting is written. CONFLATED: many writes, one wake-up. */
+    private val changed = Channel<Unit>(Channel.CONFLATED)
+
+    /** Held here: SharedPreferences keeps its listeners only weakly. A null key means "everything cleared". */
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == null || key in SHARED_SET) changed.trySend(Unit)
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val rng = SecureRandom()
@@ -170,6 +190,7 @@ object HouseSync {
         if (Prefs.deviceId.isBlank()) Prefs.deviceId = randomId()
         if (Prefs.houseId.isBlank() || Prefs.houseKey.isBlank()) newHouse()
         lastText = snapshot()
+        Prefs.addChangeListener(prefsListener)
         val gen = generation
         scope.launch { listen(gen) }
         scope.launch { watch() }
@@ -223,13 +244,23 @@ object HouseSync {
     }
 
     /**
-     * Sends this TV's settings to the house whenever they change. A failed send is retried after the
-     * backoff (the change is not lost). While joining, asks the house again every 5 minutes.
+     * Sends this TV's settings to the house whenever they change. Wakes when a shared setting is written,
+     * else once a minute (so a missed wake-up, a backoff that ended or a failed send is still handled).
+     * A failed send is retried after the backoff (the change is not lost). While joining, asks the house
+     * again every 5 minutes.
      */
     private suspend fun watch() {
+        var retrySoon = false
         while (true) {
-            delay(4000)
-            if (!canPublish()) continue
+            // A send that failed or could not go out yet (backoff, joining) is checked again sooner.
+            val wait = if (retrySoon || joining()) RETRY_CHECK_MS else FALLBACK_CHECK_MS
+            retrySoon = false
+            val woke = withTimeoutOrNull(wait) { changed.receive() } != null
+            if (woke) {
+                delay(SETTLE_MS)
+                changed.tryReceive() // writes during the wait are in this round's snapshot
+            }
+            if (!canPublish()) { retrySoon = true; continue }
             if (joining()) {
                 val t = System.currentTimeMillis()
                 if (t - lastRequestAt > 5 * 60_000L) runCatching { publishRequest() }
@@ -255,7 +286,10 @@ object HouseSync {
             if (stamp > 0L) {
                 val ok = runCatching { publishSync(stamp) }.getOrDefault(false)
                 // Not sent: mark it unsent again, so the next round (after the backoff) sends it.
-                if (!ok) synchronized(lock) { if (lastText == current) lastText = previous }
+                if (!ok) {
+                    synchronized(lock) { if (lastText == current) lastText = previous }
+                    retrySoon = true
+                }
             }
         }
     }

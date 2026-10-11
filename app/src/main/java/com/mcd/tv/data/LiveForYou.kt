@@ -53,12 +53,19 @@ object LiveForYou {
             for (t in Taste.channelTags(index.names[i])) tagMinutes[t] = (tagMinutes[t] ?: 0.0) + st.first
         }
 
+        // Games from schedules already loaded, read once; channels with no guide fall back to them (no network).
+        val games = LiveFill.loadedGames()
+        val gamesFn = { games }
         val inputs = ArrayList<Taste.ChannelInput>(n)
         for (i in 0 until n) {
             val ch = index.channels[i]
             val country = LiveOrganizer.country(ch.group, ch.name)
             val st = stats[ch.url]
-            val progs = if (guide.isEmpty()) null else guide[Epg.keyOf(ch)]
+            // Fallbacks only where they can apply (event and game channels), to keep a 16,000-channel build quick.
+            val sec = section[i]
+            val progs = if (sec == LiveOrganizer.SPORTS || sec == LiveOrganizer.EVENTS || sec == LiveOrganizer.LOCAL) {
+                LiveFill.programmes(ch, guide, now, gamesFn).takeIf { it.isNotEmpty() }
+            } else if (guide.isEmpty()) null else guide[Epg.keyOf(ch)]
             val cur = progs?.firstOrNull { it.start <= now && it.end > now }
             val soon = progs?.filter { it.start > now && it.start < now + WINDOW_MS }?.take(6)
                 ?.joinToString(" | ") { it.title + " " + it.desc.take(120) } ?: ""
