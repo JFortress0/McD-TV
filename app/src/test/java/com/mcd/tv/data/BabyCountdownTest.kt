@@ -39,6 +39,14 @@ class BabyCountdownTest {
     }
 
     @Test
+    fun usesTheNameWhenSet() {
+        assertEquals("137 days until Sam", BabyCountdown.state(20261010, due)!!.headlineFor(" Sam "))
+        assertEquals("Sam is due today", BabyCountdown.state(due, due)!!.headlineFor("Sam"))
+        assertEquals("Sam is 2 days past due", BabyCountdown.state(20270226, due)!!.headlineFor("Sam"))
+        assertEquals("137 days to go", BabyCountdown.state(20261010, due)!!.headlineFor(""))
+    }
+
+    @Test
     fun parsesOnlyRealDates() {
         assertEquals(due, BabyCountdown.parse("2027-02-24"))
         assertNull(BabyCountdown.parse(""))
