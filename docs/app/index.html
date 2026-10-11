@@ -478,8 +478,6 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
 .switch input:checked{background:rgba(0,229,255,.25);box-shadow:inset 0 0 0 1px var(--accent)}
 .switch input:checked::after{transform:translateX(20px);background:var(--accent)}
 
-/* ---------- websites ---------- */
-.site small{word-break:break-all}
 
 /* ---------- live tv ---------- */
 .lv-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
@@ -502,6 +500,8 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
 #lvChips .chip span+span{margin-left:8px;opacity:.75}
 .ho-ask{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;width:min(520px,calc(100% - 32px));background:var(--card);border:1px solid var(--accent);clip-path:var(--cut);padding:14px 16px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
 .ho-ask p{margin:6px 0 10px}
+.upd-chip{position:fixed;right:max(16px,env(safe-area-inset-right));top:calc(var(--hdr) + env(safe-area-inset-top) + 8px);z-index:110;max-width:calc(100% - 32px);
+  background:var(--card);color:var(--white);border:1px solid var(--accent);clip-path:var(--cut);padding:8px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.5)}
 .lv-list{display:flex;flex-direction:column;gap:8px;margin-top:6px}
 .lv-row{display:grid;grid-template-columns:88px minmax(0,170px) minmax(0,1fr) minmax(0,200px);gap:14px;align-items:center;width:100%;min-height:72px;padding:8px 12px;border:1px solid var(--line);background:var(--card);clip-path:var(--cut);cursor:pointer;color:var(--white);text-align:left;font:inherit;transition:border-color .15s,filter .15s}
 .lv-row:hover,.lv-row:focus-visible{border-color:var(--accent);filter:drop-shadow(0 0 8px rgba(0,229,255,.45));outline:none}
@@ -604,6 +604,35 @@ const LS = {
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 function readJSON(k) { try { return JSON.parse(LS.get(k) || "null"); } catch { return null; } }
+
+// ---------- recent errors (Settings > Recent errors) ----------
+// Uncaught errors and unhandled promise rejections, newest first, at most 30, so silent failures are visible.
+// Never stores secrets: query strings and fragments are cut from links, and long key-like strings are hidden.
+const ERR_KEY = "mcdtv_web_errors", ERR_MAX = 30;
+const scrubErr = (s) => String(s == null ? "" : s)
+  .replace(/\b((?:https?|wss?|blob):\/\/[^\s?#"'<>)]*)[?#][^\s"'<>)]*/gi, "$1")
+  .replace(/#[A-Za-z0-9_.-]{16,}/g, "#[hidden]")
+  .replace(/[A-Za-z0-9_+/=-]{32,}/g, "[hidden]")
+  .slice(0, 300);
+function errList() { const a = readJSON(ERR_KEY); return Array.isArray(a) ? a : []; }
+function logErr(msg, where) {
+  try {
+    const m = scrubErr(msg) || "Unknown error", w = scrubErr(where);
+    const a = errList(), top = a[0];
+    if (top && top.m === m && top.w === w) { top.n = (top.n || 1) + 1; top.t = Date.now(); }
+    else a.unshift({ t: Date.now(), m, w, h: scrubErr(String(location.hash).split("?")[0]).slice(0, 40) });
+    LS.set(ERR_KEY, JSON.stringify(a.slice(0, ERR_MAX)));
+    const ul = document.getElementById("errList"); if (ul && typeof drawErrs === "function") drawErrs();
+  } catch {}
+}
+window.addEventListener("error", (e) => {
+  if (!e || (!e.message && !e.error)) return; // a failed image or script load: not a code error
+  logErr(e.message || (e.error && e.error.message) || "Error", (e.filename ? e.filename.split("/").pop() : "") + (e.lineno ? ":" + e.lineno : ""));
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const r = e && e.reason;
+  logErr("Unhandled: " + (r && r.message ? (r.name && r.name !== "Error" ? r.name + ": " : "") + r.message : String(r)), "");
+});
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LINK_KEY = "mcdtv_link"; // shared with the Control page (same origin)
@@ -633,6 +662,8 @@ const b64u = {
   },
   dec: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)),
 };
+/** SHA-256 of a text, as bytes. */
+const sha = async (t) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)));
 async function pipe(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
 async function importKey(k64) { return crypto.subtle.importKey("raw", b64u.dec(k64), "AES-GCM", false, ["encrypt", "decrypt"]); }
 async function encrypt(obj, key) {
@@ -724,8 +755,7 @@ const RC = (() => {
   const last = {}; // profile -> newest first [{type, id, name, poster, backdrop, season, episode, pos, dur, at}]
   const inflight = {};
   let K = null, kFor = "";
-  const b64u = (u8) => { let s = ""; for (const b of u8) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
-  const unb64u = (s) => { s = String(s).replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); };
+  const enc64 = b64u.enc, unb64u = (s) => b64u.dec(String(s)); // the shared base64url helpers
   const houseKey = () => { const h = S.init && S.init.house; return h ? String(h).split(".")[1] || "" : ""; };
   async function keys() {
     const hk = houseKey();
@@ -734,7 +764,7 @@ const RC = (() => {
     const mac = await crypto.subtle.importKey("raw", unb64u(hk), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     const sign = async (label) => new Uint8Array(await crypto.subtle.sign("HMAC", mac, new TextEncoder().encode("jarvis-resume|" + label)));
     const aes = await crypto.subtle.importKey("raw", await sign("enc"), "AES-GCM", false, ["encrypt", "decrypt"]);
-    const tag = async (label) => b64u(await sign(label)).slice(0, 22);
+    const tag = async (label) => enc64(await sign(label)).slice(0, 22);
     K = { tag, aes, house: await tag("house") }; kFor = hk;
     return K;
   }
@@ -781,7 +811,7 @@ const RC = (() => {
     last[profile] = [o, ...L];
     try {
       await fetch(`${URL_R}?h=${k.house}&p=${ptag}`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" },
-        body: JSON.stringify({ k: tk, t: at, v: b64u(v), ...(opts.nh ? { nh: opts.nh } : {}) }), keepalive: true });
+        body: JSON.stringify({ k: tk, t: at, v: enc64(v), ...(opts.nh ? { nh: opts.nh } : {}) }), keepalive: true });
     } catch {}
     return { house: k.house, ptag, tk };
   }
@@ -827,7 +857,7 @@ const RC = (() => {
     const v = new Uint8Array(12 + ct.length); v.set(iv); v.set(ct, 12);
     try {
       await fetch(`${URL_R}?h=${k.house}&p=${await k.tag("livefav|" + profile)}`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" },
-        body: JSON.stringify({ k: await k.tag("list"), t: at, v: b64u(v) }), keepalive: true });
+        body: JSON.stringify({ k: await k.tag("list"), t: at, v: enc64(v) }), keepalive: true });
     } catch {}
   }
   /** The house's setup snapshot (settings and every profile's lists), kept current by every TV (HouseCloud.kt). */
@@ -840,7 +870,7 @@ const RC = (() => {
       return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, k.aes, all.slice(12))));
     } catch { return null; }
   }
-  return { list, push, peekFor, mergeCont, refresh, favGet, favPut, houseGet, b64u, ready: () => !!houseKey() };
+  return { list, push, peekFor, mergeCont, refresh, favGet, favPut, houseGet, ready: () => !!houseKey() };
 })();
 
 /**
@@ -871,7 +901,7 @@ async function infuseLink(m, direct, startMs, durMs) {
   if (startMs > 30000) link += "&position=" + Math.floor(startMs / 1000);
   try {
     if (!RC.ready()) return link;
-    const n = RC.b64u(crypto.getRandomValues(new Uint8Array(18)));
+    const n = b64u.enc(crypto.getRandomValues(new Uint8Array(18)));
     const nh = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(n)))].map((b) => b.toString(16).padStart(2, "0")).join("");
     const r = await RC.push(m, startMs, durMs, { nh });
     if (!r) return link;
@@ -947,7 +977,9 @@ window.addEventListener("pageshow", () => setTimeout(askHandoff, 800));
 
 // ---------- relay ----------
 function setStatus(s) {
+  const was = S.status;
   S.status = s;
+  if (s === "online" && was !== "online") setTimeout(() => WLQ.flush(), 1500); // the TV is back: resend watchlist edits it missed
   const dot = $("#tvdot"), lbl = $("#tvlbl");
   dot.className = "dot " + s;
   lbl.textContent = { none: "Not linked", connecting: "Connecting", online: "TV online", offline: "TV offline" }[s] || s;
@@ -1001,6 +1033,7 @@ async function onRelay(raw, live) {
   else if (m.type === "ack" && live) {
     const t = pending.get(m.req);
     if (t) { clearTimeout(t); pending.delete(m.req); toast(m.note || "Done on the TV", "ok"); }
+    WLQ.acked(m.req);
   }
 }
 
@@ -1019,6 +1052,7 @@ function applyInit(m) {
     const L = { watchlist: m.watchlist || [], favorites: m.favorites || [], continue: m.continue || [],
       live_favorites: Array.isArray(m.live_favorites) ? m.live_favorites : (old && old.live_favorites) || [], ts: m.ts || 0,
       live_fav_at: Array.isArray(m.live_favorites) ? Date.now() : (old && old.live_fav_at) || 0 };
+    WLQ.overlay(pid, L); // edits the TV hasn't confirmed yet stay as made here
     const sigL = (o) => JSON.stringify(o ? [o.watchlist, o.favorites, o.continue, o.live_favorites] : null);
     listsChanged = pid === (S.profile || "p1") && sigL(old) !== sigL(L);
     S.plists[pid] = L; savePlists();
@@ -1038,7 +1072,7 @@ function applyInit(m) {
   if (m3uChanged) LV.reset();
   if (!hadKey && keys().tmdb) { route(); return; }
   if (listsChanged || filtersChanged) onListsChanged();
-  else { const n = parseRoute().path[0]; if (n === "websites" || n === "profiles" || (n === "live" && m3uChanged)) route(); }
+  else { const n = parseRoute().path[0]; if (n === "profiles" || (n === "live" && m3uChanged)) route(); }
 }
 /** "web_list" follow-up messages ({req, profile, field, part, parts, items}): lists that didn't fit in web_init. */
 function applyWebList(m) {
@@ -1055,8 +1089,7 @@ function applyWebList(m) {
   const all = [].concat(...P.parts);
   if (m.field === "websites") {
     if (!S.init) S.init = {};
-    S.init.websites = all; saveInit();
-    if (parseRoute().path[0] === "websites") route();
+    S.init.websites = all; saveInit(); // kept for the setup copy; the app has no Websites page
   } else {
     const L = S.plists[pid] || (S.plists[pid] = { watchlist: [], favorites: [], continue: [], ts: 0 });
     L.live_favorites = all; L.live_fav_at = Date.now(); savePlists();
@@ -1097,6 +1130,7 @@ function syncHouse() {
       if (old && (old.ts || 0) >= o.ts) continue;
       S.plists[p] = { watchlist: l.watchlist || [], favorites: l.favorites || [], continue: l.continue || [], ts: o.ts,
         live_favorites: old && (old.live_fav_at || 0) > o.ts ? old.live_favorites : l.live_favorites || [], live_fav_at: Math.max(o.ts, (old && old.live_fav_at) || 0) };
+      WLQ.overlay(p, S.plists[p]);
     }
     savePlists();
     if ((S.init && S.init.ts || 0) >= o.ts) return false;
@@ -1111,7 +1145,6 @@ function syncHouse() {
   return houseSyncing;
 }
 async function connectWithCode(code) {
-  const sha = async (t) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)));
   const tagOf = async (w) => b64u.enc(await sha("jarvis-pair|" + w + "|" + code)).slice(0, 22);
   const r = await fetch(`https://jarvis-rd.netlify.app/house?h=${await tagOf("h")}&k=${await tagOf("k")}`, { cache: "no-store" });
   if (!r.ok) return false;
@@ -1421,7 +1454,7 @@ async function route() {
   document.body.classList.toggle("playmode", name === "play");
   setActive(name);
   if (name === "welcome") { renderWelcome(v); setActive("settings"); return; }
-  const needsKey = !["settings", "pair", "profiles", "live", "websites"].includes(name);
+  const needsKey = !["settings", "pair", "profiles", "live"].includes(name);
   if (!S.link && !keys().tmdb && !["settings", "pair"].includes(name)) { renderPair(v); setActive("settings"); return; }
   window.scrollTo(0, 0);
   // "Who's watching?" on first open (and from the profile button in the header).
@@ -1652,6 +1685,56 @@ function syncWL() {
     b.innerHTML = on ? "&#10003; In Watchlist" : "+ Watchlist";
   });
 }
+
+// ---------- watchlist edits while the TV is off ----------
+// Each edit is kept here until the TV confirms it ("ack"). A TV that is off or doesn't answer gets the edit again
+// when it is back online (setStatus "online"; no polling of our own). The newest edit per title wins; at most 100.
+const WLQ = (() => {
+  const KEY = "mcdtv_web_wlq", MAX = 100, TIMEOUT = 8000;
+  let lastFlush = 0;
+  const load = () => { const a = readJSON(KEY); return Array.isArray(a) ? a.filter((x) => x && x.cmd && x.pid && Date.now() - (+x.at || 0) < 7 * 86400000) : []; }; // a week at most
+  const save = (a) => { if (a.length) LS.set(KEY, JSON.stringify(a.slice(-MAX))); else LS.del(KEY); };
+  const same = (x, pid, type, id) => x.pid === pid && x.cmd.type === type && +x.cmd.id === +id;
+  async function post(item) {
+    const req = newReq();
+    item.reqs = [...(item.reqs || []).slice(-4), req];
+    const a = load().filter((x) => !same(x, item.pid, item.cmd.type, item.cmd.id)); a.push(item); save(a);
+    await relaySend({ ...item.cmd, req, ts: Date.now() });
+    return req;
+  }
+  /** A watchlist edit from this page: sent now, and kept until the TV answers. */
+  async function send(cmd, pid) {
+    const item = { pid, cmd, at: Date.now(), reqs: [] };
+    const later = () => toast("Saved here. Your TV gets it when it is back on.", "ok");
+    if (!S.link || !S.key) { save([...load().filter((x) => !same(x, pid, cmd.type, cmd.id)), item]); later(); return; }
+    let req;
+    try { req = await post(item); } catch { later(); return; }
+    pending.set(req, setTimeout(() => { pending.delete(req); if (load().some((x) => (x.reqs || []).includes(req))) later(); }, S.status === "offline" ? 5000 : TIMEOUT));
+  }
+  function acked(req) {
+    if (!req) return;
+    const a = load(), b = a.filter((x) => !(x.reqs || []).includes(req));
+    if (b.length !== a.length) save(b);
+  }
+  async function flush() {
+    if (!S.link || !S.key || S.status !== "online" || Date.now() - lastFlush < 30000) return;
+    const a = load(); if (!a.length) return;
+    lastFlush = Date.now();
+    for (const item of a) { try { await post(item); } catch { return; } await sleep(300); }
+  }
+  /** Applies edits the TV hasn't confirmed to a profile's lists [L] (from the TV or the house copy). */
+  function overlay(pid, L) {
+    if (!L) return;
+    for (const x of load()) {
+      if (x.pid !== pid) continue;
+      const t = x.cmd.type, id = +x.cmd.id;
+      const wl = (L.watchlist || []).filter((r) => !(r.type === t && +r.id === id));
+      if (x.cmd.on) wl.unshift({ type: t, id });
+      L.watchlist = wl;
+    }
+  }
+  return { send, acked, flush, overlay, size: () => load().length };
+})();
 
 // ---------- Browse ----------
 const KINDS = {
@@ -3197,11 +3280,14 @@ const LO = (() => {
   }
   const CALL_SIGN = /(?:^|[^A-Z0-9])(?:[KW][A-Z]{2,3}(?:-(?:TV|DT|CD|LD)\d?|\s?\d{1,2})(?![A-Z0-9])|\([KW][A-Z]{2,3}\))/;
   const domestic = (c) => c === "US" || c === "";
+  // Huntsville stations (same call signs as LV's HOME_RE): "WHNT News 19" is Local, not News.
+  const HOME_SIGN = /(?:^|[^a-z0-9])(?:whnt|waay|waff|wzdx|whdf)(?:-?(?:tv|dt|cd|ld)?\d{0,2})?(?![a-z0-9])/;
   function section(group, name) {
     const c = country(group, name);
     const bits = keywordBits(group + " " + name);
     if (bits & H24) return "24/7";
     if (bits & (EVENTS | SPORTS)) return "Sports";
+    if (HOME_SIGN.test(String(name || "").toLowerCase())) return "Local";
     if (bits & NEWS) return "News";
     if (bits & KIDS) return "Kids";
     if (bits & MOVIES) return "Movies";
@@ -3483,7 +3569,7 @@ const LV = (() => {
       }
       if (!list.length) throw new Error("The playlist loaded but had no live channels in it.");
       if (!viaRelay && list.every((c) => mixedBlocked(c.url))) throw new Error(LIVE_NO);
-      if (st.key === url) st = { status: "ok", list, msg: "", key: url, ext: viaRelay, ua: st.ua || "", xt, epgGet: viaRelay ? getViaRelay : getText };
+      if (st.key === url) { st = { status: "ok", list, msg: "", key: url, ext: viaRelay, ua: st.ua || "", xt, epgGet: viaRelay ? getViaRelay : getText }; epgRestore(url); }
     } catch (e) {
       if (st.key === url) st = { status: "error", list: null, msg: (e && e.message) || LIVE_NO, key: url };
     }
@@ -3582,9 +3668,41 @@ const LV = (() => {
     return `<button class="lv-ch" type="button" data-act="live" data-idx="${i}" title="${esc(ch.name)}">${f.has(ch.url) ? `<span class="fav" aria-label="Favorite">&#9733;</span>` : ""}<span class="lv-logo">${logo}</span><b>${esc(ch.name)}</b></button>`;
   }
   // ---------- program guide: what's on now and next, per channel (the provider's app API, a few at a time) ----------
-  const EPG = new Map(); // stream id -> { at, list: [{ title, start, end }] }
+  const EPG = new Map(); // stream id -> { at, list: [{ title, start, end }], failed }
   const pending = new Set(), queue = [];
   let busy = 0, io = null;
+  const EPG_TTL = 15 * 60000, EPG_RETRY = 90000; // a failed fetch is tried again after 90 s, not 15 minutes
+  // Guide rows already fetched survive app launches (15-minute TTL), per playlist. Only the scope hash is
+  // stored, never the playlist address. At most EPG_MAX channels, newest first.
+  const EPG_KEY = "mcdtv_web_epg", EPG_MAX = 300;
+  let epgScope = "", epgSaveT = 0;
+  function scopeOf(url) { let h = 5381; for (let i = 0; i < url.length; i++) h = ((h * 33) ^ url.charCodeAt(i)) >>> 0; return h.toString(36) + "." + url.length; }
+  function epgRestore(url) {
+    const scope = scopeOf(String(url || ""));
+    if (scope === epgScope) return;
+    epgScope = scope; EPG.clear();
+    try {
+      const j = JSON.parse(localStorage.getItem(EPG_KEY) || "null");
+      if (!j || j.scope !== scope || !j.rows) return;
+      const now = Date.now();
+      for (const [sid, r] of Object.entries(j.rows)) {
+        if (!r || !(now - r.at < EPG_TTL) || !Array.isArray(r.list)) continue;
+        EPG.set(sid, { at: r.at, list: r.list.filter((p) => p && p.title && p.end > now) });
+      }
+    } catch {}
+  }
+  function epgSave() {
+    clearTimeout(epgSaveT);
+    epgSaveT = setTimeout(() => {
+      if (!epgScope) return;
+      const now = Date.now();
+      const rows = [...EPG.entries()].filter(([, c]) => !c.failed && now - c.at < EPG_TTL).sort((a, b) => b[1].at - a[1].at).slice(0, EPG_MAX);
+      const out = {};
+      for (const [sid, c] of rows) out[sid] = { at: c.at, list: c.list.filter((p) => p.end > now).slice(0, 8) };
+      try { localStorage.setItem(EPG_KEY, JSON.stringify({ scope: epgScope, rows: out })); }
+      catch { try { localStorage.removeItem(EPG_KEY); } catch {} }
+    }, 2000);
+  }
   const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   function b64(s) { try { return new TextDecoder().decode(Uint8Array.from(atob(String(s || "")), (c) => c.charCodeAt(0))); } catch { return String(s || ""); } }
   async function fetchEpg(sid) {
@@ -3593,14 +3711,15 @@ const LV = (() => {
     // trimmed to the next six hours; read directly, it is trimmed here.
     const api = `${x.base}/player_api.php?username=${encodeURIComponent(x.user)}&password=${encodeURIComponent(x.pass)}&action=get_simple_data_table&stream_id=${encodeURIComponent(sid)}`;
     const get = st.epgGet === getViaRelay ? (u, ms) => getViaRelay(u, ms, "&window=1") : (st.epgGet || getText);
-    let list = [];
+    let list = [], failed = false;
     try {
       const j = JSON.parse(await get(api, 25000));
       const now = Date.now();
       list = ((j && j.epg_listings) || []).map((e) => ({ title: b64(e.title).trim(), start: (+e.start_timestamp || 0) * 1000, end: (+e.stop_timestamp || 0) * 1000 }))
         .filter((p) => p.title && p.start && p.end > p.start && p.end > now && p.start < now + 6 * 3600000).sort((a, b) => a.start - b.start);
-    } catch {}
-    EPG.set(sid, { at: Date.now(), list });
+    } catch { failed = true; }
+    EPG.set(sid, { at: Date.now(), list, failed });
+    if (!failed) epgSave();
   }
   function pump() {
     while (busy < 4 && queue.length) {
@@ -3612,7 +3731,7 @@ const LV = (() => {
   function want(sid) {
     if (!sid || !st.xt || pending.has(sid)) return;
     const c = EPG.get(sid);
-    if (c && Date.now() - c.at < 15 * 60000) return;
+    if (c && Date.now() - c.at < (c.failed ? EPG_RETRY : EPG_TTL)) return;
     pending.add(sid); queue.push(sid); pump();
   }
   /** All games in the schedules already loaded (no new requests). */
@@ -3920,13 +4039,14 @@ const LV = (() => {
     box.innerHTML = `<div class="pl-top"><button class="pl-back" type="button" id="lvBack">&#8249; Back</button>
       <div class="pl-title"><b>${esc(ch.name)}</b><span class="muted">Live TV</span></div></div>
       <div class="pl-stage"><video id="lvVid" controls playsinline webkit-playsinline autoplay></video>
+      <button class="pl-tap hidden" id="lvTap" type="button" aria-label="Play"><i aria-hidden="true">&#9654;</i>Tap to play</button>
       <div class="pl-msg hidden" id="lvMsg"><p id="lvMsgText"></p><button class="btn small primary" type="button" id="lvClose">Back to channels</button></div></div>`;
     document.body.appendChild(box);
     document.body.style.overflow = "hidden";
-    const vid = $("#lvVid", box), msg = $("#lvMsg", box);
-    let hls = null, done = false, timer = 0;
+    const vid = $("#lvVid", box), msg = $("#lvMsg", box), tapBtn = $("#lvTap", box);
+    let hls = null, done = false, timer = 0, started = false;
     const fail = (text) => {
-      if (done) return; done = true; clearTimeout(timer);
+      if (done) return; done = true; clearTimeout(timer); tapBtn.classList.add("hidden");
       try { if (hls) hls.destroy(); } catch {} hls = null;
       try { vid.pause(); vid.removeAttribute("src"); vid.load(); } catch {}
       $("#lvMsgText", box).textContent = text || LIVE_NO; msg.classList.remove("hidden");
@@ -3934,13 +4054,27 @@ const LV = (() => {
     PLAYER.stop = () => { done = true; clearTimeout(timer); try { if (hls) hls.destroy(); } catch {} try { vid.pause(); vid.removeAttribute("src"); vid.load(); } catch {} };
     $("#lvBack", box).addEventListener("click", closePlayer);
     $("#lvClose", box).addEventListener("click", closePlayer);
-    vid.addEventListener("playing", () => clearTimeout(timer));
-    timer = setTimeout(() => { if (vid.readyState < 2) fail(LIVE_NO); }, 25000);
+    vid.addEventListener("playing", () => { started = true; clearTimeout(timer); tapBtn.classList.add("hidden"); });
+    // The 25 s stall timer runs only while the video is really trying to play, not while it waits for a tap.
+    const arm = () => { clearTimeout(timer); timer = setTimeout(() => { if (!started && vid.readyState < 2) fail(LIVE_NO); }, 25000); };
+    // iPhone blocks autoplay until a tap: show the big Play button and hold the timer until it is tapped.
+    const needTap = () => { if (done || started) return; clearTimeout(timer); tapBtn.classList.remove("hidden"); };
+    tapBtn.addEventListener("click", () => { tapBtn.classList.add("hidden"); arm(); start(); });
+    // Started another way (the video's own controls): the timer starts now too.
+    vid.addEventListener("play", () => { if (!tapBtn.classList.contains("hidden")) { tapBtn.classList.add("hidden"); arm(); } });
+    arm();
     let url = ch.url;
     // Xtream style .ts links usually have an HLS copy at the same address.
     if (/\/live\/[^/]+\/[^/]+\/[^/]+\.ts(\?.*)?$/i.test(url)) url = url.replace(/\.ts(\?.*)?$/i, ".m3u8$1");
     if (mixedBlocked(url) || /\.ts(\?.*)?$/i.test(url)) { fail(LIVE_NO); return; }
-    const start = () => { const p = vid.play(); if (p && p.catch) p.catch(() => {}); };
+    function start() {
+      if (done) return;
+      let p;
+      try { p = vid.play(); } catch (e) { p = Promise.reject(e); }
+      if (p && p.then) p.then(() => tapBtn.classList.add("hidden"), (e) => { if (e && e.name === "NotAllowedError") needTap(); });
+      // Older browsers return nothing: if it is still paused a moment later, ask for a tap.
+      else setTimeout(() => { if (vid.paused && !started && !vid.error) needTap(); }, 1500);
+    }
     if (nativeHls()) {
       vid.addEventListener("error", () => fail(LIVE_NO));
       vid.src = url; start();
@@ -3989,20 +4123,6 @@ function renderProfiles(v, next) {
   if (first && matchMedia("(min-width:900px)").matches) first.focus({ preventScroll: true });
 }
 
-// ---------- Websites ----------
-function renderWebsites(v) {
-  const raw = (S.init && Array.isArray(S.init.websites)) ? S.init.websites : [];
-  const sites = raw.map((x) => (Array.isArray(x) ? { name: String(x[0] || ""), url: String(x[1] || "").trim() } : null))
-    .filter((x) => x && /^https?:\/\//i.test(x.url));
-  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
-  v.innerHTML = `<div class="page"><h1>Websites</h1>
-    ${sites.length ? `<div class="tiles">${sites.map((s) => `<a class="tile site" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.name || host(s.url))}<small>${esc(host(s.url))}</small></a>`).join("")}</div>
-      <p class="muted" style="margin-top:14px">Sites open in a new tab. Add or change them on the TV or the Control page.</p>`
-    : `<p class="muted">${S.link || S.init ? "No websites yet. Add them on the TV or the Control page, then tap Refresh from TV." : "Link your TV to see the websites you saved on it."}</p>
-      ${S.link ? `<div class="actions"><button class="btn small" data-act="retry">Refresh from TV</button></div>` : `<div class="actions"><a class="btn small" href="#/pair">Link your TV</a></div>`}`}
-  </div>`;
-}
-
 // ---------- Settings ----------
 function statusHTML() {
   if (!S.link) return `<span class="pill no">Not linked</span>`;
@@ -4034,6 +4154,10 @@ function renderSettings(v) {
       <p class="muted">Tests what Jarvis needs from this phone: TMDB, your addons, the Jarvis relay, the TV link and your TV. Use it when sources or posters don't load.</p>
       <div class="rowf" style="margin-top:10px"><button class="btn small primary" data-act="netcheck" id="netBtn">Check network</button></div>
       <ul class="netlist" id="netList" aria-live="polite"></ul></div>
+    <div class="panel"><h2>Recent errors</h2>
+      <p class="muted">Problems Jarvis hit on this device, newest first. Links and keys are left out.</p>
+      <ul class="netlist" id="errList"></ul>
+      <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="clearerrs" id="errClear">Clear</button></div></div>
     <div class="panel"><h2>Ask Jarvis</h2>
       <label class="switch"><input type="checkbox" id="jvLocal" ${jarvisLocalOn() ? "checked" : ""}> Use Jarvis on this device without the TV</label>
       <p>${jarvisKey() ? `<span class="pill ok">Key saved on this device</span>` : `<span class="pill no">No key on this device</span>`}</p>
@@ -4086,6 +4210,16 @@ function renderSettings(v) {
   });
   $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
   $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
+  drawErrs();
+}
+function drawErrs() {
+  const ul = $("#errList"), btn = $("#errClear"); if (!ul) return;
+  const a = errList();
+  if (btn) btn.classList.toggle("hidden", !a.length);
+  const when = (t) => { const d = new Date(+t || 0); return isNaN(d) ? "" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); };
+  ul.innerHTML = a.length ? a.map((x) => `<li><span class="pill no">${x.n > 1 ? x.n + "x" : "Error"}</span>
+    <div><b>${esc(x.m)}</b><span class="muted">${esc([when(x.t), x.h, x.w].filter(Boolean).join(" · "))}</span></div></li>`).join("")
+    : `<li><span class="pill ok">OK</span><div><span class="muted">No errors recorded.</span></div></li>`;
 }
 // ---------- Settings > Check network ----------
 // One request per service, each with a short time limit, all at once. Results name hosts only: addon links and
@@ -4313,10 +4447,12 @@ document.addEventListener("click", async (e) => {
       L.watchlist = wl; savePlists(); syncWL(); // optimistic
       const cmd = { cmd: "watchlist", type, id, on, name: d.name || "", poster: d.poster || "", backdrop: d.backdrop || "", year: d.year || "" };
       if (S.profile) cmd.profile = S.profile; // this profile's watchlist on the TV
-      remote(cmd);
+      WLQ.send(cmd, pid);
       break;
     }
     case "trailer": playTrailer(); break;
+    case "clearerrs": LS.del(ERR_KEY); drawErrs(); toast("Cleared"); break;
+    case "applyupdate": applyUpdate(true); break;
     case "retry": askInit(); toast("Asking your TV…"); setStatus(S.link ? "connecting" : "none"); setTimeout(() => { if (!keys().tmdb) route(); }, 8500); break;
     case "reload": route(); break;
     case "paste": doPaste(); break;
@@ -4345,7 +4481,6 @@ document.addEventListener("click", async (e) => {
       if (!house) { toast("Open Jarvis once while one of your TVs is on (it sends its house link), then try again.", "warn"); break; }
       try {
         // Same as the TV (app/.../data/HouseJoin.kt): topic and key come from the code.
-        const sha = async (t) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)));
         const topic = "mcdtv-join-" + [...await sha("jarvis-join|" + code)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 24);
         const key = await crypto.subtle.importKey("raw", await sha("jarvis-join-key|" + code), "AES-GCM", false, ["encrypt", "decrypt"]);
         const r = await fetch(RELAY + topic, { method: "POST", body: await encrypt({ type: "house_invite", house, ts: Date.now() }, key) });
@@ -4448,20 +4583,46 @@ document.addEventListener("click", async (e) => {
 });
 // ---------- updates ----------
 // iPhone keeps a Home Screen app frozen in memory, so it can run an old version for days. When the app comes back
-// to the screen, compare BUILD with the published page and reload if it changed (not during playback).
-const BUILD = "2026-10-11.2";
-let lastUpdateCheck = 0;
+// to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
+// on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
+// ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
+const BUILD = "2026-10-12.1";
+let lastUpdateCheck = 0, updateReady = "";
+function updateBusy() {
+  const h = location.hash;
+  if (/^#\/(play|sources)\//.test(h)) return "player"; // the in-app player, or a source lookup on the Sources page
+  if ($("#lvPlayer")) return "live"; // Live TV playing in the app
+  if ($("#hoAsk")) return "handoff"; // "Where did you stop?" is open
+  if (RDL.code && Date.now() < RDL.until) return "rdlogin"; // waiting for Real-Debrid sign-in
+  if ($$("video").some((x) => !x.paused && !x.ended)) return "video"; // a trailer or any other video
+  return "";
+}
+function applyUpdate(force) {
+  if (!updateReady) return false;
+  if (!force && updateBusy()) { showUpdateChip(); return false; }
+  if (S.bgSave) { try { S.bgSave(); } catch {} } // keep the play position
+  location.reload();
+  return true;
+}
+function showUpdateChip() {
+  if ($("#updChip")) return;
+  const b = document.createElement("button");
+  b.type = "button"; b.id = "updChip"; b.className = "upd-chip"; b.dataset.act = "applyupdate";
+  b.textContent = "Update ready. Tap to update.";
+  document.body.appendChild(b);
+}
 async function checkForUpdate() {
-  if (Date.now() - lastUpdateCheck < 60000 || /^#\/play\//.test(location.hash)) return;
+  if (updateReady) { applyUpdate(false); return; }
+  if (Date.now() - lastUpdateCheck < 60000) return;
   lastUpdateCheck = Date.now();
   try {
     const t = await (await fetch("./index.html?u=" + Date.now(), { cache: "no-store" })).text();
     const m = /const BUILD = "([^"]+)"/.exec(t);
-    if (m && m[1] !== BUILD) location.reload();
+    if (m && m[1] !== BUILD) { updateReady = m[1]; applyUpdate(false); }
   } catch {}
 }
 setTimeout(checkForUpdate, 3000);
-window.addEventListener("hashchange", () => { document.title = "Jarvis"; route(); });
+window.addEventListener("hashchange", () => { document.title = "Jarvis"; route(); if (updateReady) setTimeout(() => applyUpdate(false), 300); });
 
 // ---------- install (PWA) ----------
 const isStandalone = () => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch { return false; } };
@@ -4478,7 +4639,9 @@ function iosInstallHint() {
   setTimeout(() => { if (d.isConnected) d.remove(); }, 20000);
 }
 if ("serviceWorker" in navigator && window.isSecureContext) {
-  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+  // The version in the worker's address: a new BUILD installs a new worker with its own shell cache, and the old
+  // cache is deleted when it takes over. updateViaCache "none": the browser never uses a stale copy of sw.js.
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js?v=" + encodeURIComponent(BUILD), { updateViaCache: "none" }).catch((e) => logErr("Service worker: " + ((e && e.message) || e), "sw.js")); });
 }
 
 // ---------- start ----------
