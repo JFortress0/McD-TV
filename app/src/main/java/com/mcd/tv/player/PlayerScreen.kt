@@ -102,6 +102,8 @@ fun PlayerScreen(
     nextSource: NextSource? = null,
     /** The panel's Back button (BACK on the remote works either way). */
     onBack: (() -> Unit)? = null,
+    /** A live channel: live-edge, buffer and stall-recovery settings for IPTV (see [LiveTuning]). */
+    live: Boolean = false,
 ) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
@@ -122,6 +124,9 @@ fun PlayerScreen(
     // Paused (playWhenReady off): after SCREEN_ON_WHILE_PAUSED_MS the screen may sleep (screensaver).
     var paused by remember { mutableStateOf(false) }
     var keepScreenOn by remember { mutableStateOf(true) }
+    // Live: buffering right now (the stall watchdog below), and a short "Reconnecting" note.
+    var buffering by remember { mutableStateOf(false) }
+    var liveNote by remember { mutableStateOf<String?>(null) }
 
     val player = remember {
         // Follow http->https redirects (common with debrid and CDN links).
@@ -129,6 +134,9 @@ fun PlayerScreen(
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent(headers["User-Agent"] ?: "McDTV/0.1 (Android TV)")
             .setDefaultRequestProperties(headers.filterKeys { it != "User-Agent" })
+            // IPTV servers are often slow to send the first byte of a segment; 8 s (the default) cut them off.
+            .setConnectTimeoutMs(12_000)
+            .setReadTimeoutMs(20_000)
         val dataSource = DefaultDataSource.Factory(context, http)
 
         // Decoder fallback: if the Fire Stick's main decoder refuses a stream,
@@ -137,11 +145,12 @@ fun PlayerScreen(
 
         ExoPlayer.Builder(context, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
+            .apply { if (live) setLoadControl(LiveTuning.loadControl()) }
             .setSeekBackIncrementMs(SEEK_MS)
             .setSeekForwardIncrementMs(SEEK_MS)
             .build()
             .apply {
-                setMediaItem(mediaItemFor(url))
+                if (live) setMediaSource(LiveTuning.mediaSource(dataSource, url)) else setMediaItem(mediaItemFor(url))
                 // Resume where you left off (Continue Watching).
                 meta?.let { m -> Library.resumePosition(m).takeIf { it > 0 }?.let { seekTo(it) } }
                 prepare()
@@ -158,7 +167,11 @@ fun PlayerScreen(
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) networkRetries = 0 // playing again: reset the retry budget
+                buffering = state == Player.STATE_BUFFERING
+                if (state == Player.STATE_READY) {
+                    networkRetries = 0 // playing again: reset the retry budget
+                    liveNote = null
+                }
                 if (state == Player.STATE_ENDED) {
                     progress.save(player, force = true)
                     if (SLEEP_STEPS[sleepStep] == SLEEP_END_OF_VIDEO) {
@@ -192,11 +205,16 @@ fun PlayerScreen(
                 // HTTP status of a refused stream (403 and friends): retrying won't help, so say why at once.
                 val http = (e.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
                 // Network hiccup (IO error codes 2000..2999): retry a few times before giving up.
-                if (e.errorCode in 2000..2999 && (http == null || http !in 400..499) && networkRetries < 3) {
+                // Live channels get more tries, further apart (2, 4, 8, 10 s...), and rejoin at the live edge.
+                val maxRetries = if (live) 8 else 3
+                if (e.errorCode in 2000..2999 && (http == null || http !in 400..499) && networkRetries < maxRetries) {
                     networkRetries++
+                    val wait = if (live) minOf(10_000L, 1_000L shl networkRetries) else 2_000L
+                    if (live) liveNote = "Reconnecting…"
                     retryJob?.cancel()
                     retryJob = scope.launch {
-                        delay(2_000)
+                        delay(wait)
+                        if (live) player.seekToDefaultPosition()
                         player.prepare() // keeps the current position
                     }
                     return
@@ -223,6 +241,27 @@ fun PlayerScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Live: a channel stuck buffering for STALL_MS is reconnected at the live edge (a frozen picture often never
+    // recovers by itself). After MAX_RECOVERIES in a row with no picture, say so instead of spinning forever.
+    var recoveries by remember { mutableIntStateOf(0) }
+    LaunchedEffect(buffering, live) {
+        if (!live) return@LaunchedEffect
+        if (!buffering) {
+            if (player.playbackState == Player.STATE_READY) recoveries = 0
+            return@LaunchedEffect
+        }
+        delay(LiveTuning.STALL_MS)
+        if (!player.playWhenReady || player.playbackState != Player.STATE_BUFFERING || error != null) return@LaunchedEffect
+        if (recoveries >= LiveTuning.MAX_RECOVERIES) {
+            error = "This channel keeps freezing. The provider may be busy. Try another channel or come back in a minute."
+            return@LaunchedEffect
+        }
+        recoveries++
+        liveNote = "Reconnecting…"
+        player.seekToDefaultPosition()
+        player.prepare()
     }
 
     // Keep the screen on while playing. Paused for 10 minutes: let it go, so the screensaver can run.
@@ -345,6 +384,19 @@ fun PlayerScreen(
                     .padding(bottom = 96.dp)
                     .background(McdColors.Card.copy(alpha = 0.9f))
                     .padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+
+        if (error == null && live) liveNote?.let { note ->
+            Text(
+                text = note,
+                color = McdColors.White,
+                fontSize = 16.sp,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 28.dp, start = 40.dp)
+                    .background(McdColors.Card.copy(alpha = 0.9f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
 
