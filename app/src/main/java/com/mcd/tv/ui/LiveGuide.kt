@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.mcd.tv.data.Channel
-import com.mcd.tv.data.Epg
+import com.mcd.tv.data.LiveFill
 import com.mcd.tv.data.LiveForYou
 import com.mcd.tv.data.LiveIndex
 import com.mcd.tv.data.Programme
@@ -94,18 +94,25 @@ internal fun MyGuidePane(
     var onlyMine by rememberSaveable { mutableStateOf(false) }
     var focused by remember { mutableStateOf<FocusedShow?>(null) }
 
-    // Blocks per channel, scored once per guide / minute.
-    val rows = remember(items, guide, start, matcher) {
-        items.map { i -> i to blocksFor(index.channels[i], guide, start, end, matcher) }
+    // Listings per channel: the real guide, else the event title or the network's game (schedules already
+    // loaded, no network). Refreshed every 5 minutes so a game going live shows up.
+    val tick = now / 300_000L
+    val listings = remember(items, guide, tick) {
+        val games = LiveFill.loadedGames()
+        items.associateWith { i -> LiveFill.programmes(index.channels[i], guide, now) { games } }
+    }
+    // Blocks per channel, scored once per guide / half hour.
+    val rows = remember(listings, start, matcher) {
+        items.map { i -> i to blocksFor(listings[i].orEmpty(), start, end, matcher) }
     }
     val shown = remember(rows, onlyMine) {
         if (!onlyMine) rows else rows.filter { (_, b) -> b.any { it.match >= 0.5 } }
     }
     val shownItems = remember(shown) { shown.map { it.first }.toIntArray() }
     // Starting in the next 30 minutes on these channels: shows that fit your taste first, then by start time.
-    val soon = remember(shown, guide, now / 60_000) {
+    val soon = remember(shown, listings, now / 60_000) {
         shown.mapIndexedNotNull { pos, (i, _) ->
-            val p = guide[Epg.keyOf(index.channels[i])].orEmpty().firstOrNull { it.start > now && it.start - now <= SOON_MS }
+            val p = listings[i].orEmpty().firstOrNull { it.start > now && it.start - now <= SOON_MS }
                 ?: return@mapIndexedNotNull null
             SoonShow(pos, index.names[i], p, matcher?.score(p.title + " " + p.desc) ?: 0.0)
         }.sortedWith(compareByDescending<SoonShow> { if (it.match >= 0.5) 1 else 0 }.thenBy { it.p.start }).take(16)
@@ -161,7 +168,7 @@ internal fun MyGuidePane(
                                 onMenu = { onMenu(ch) },
                                 onFocus = { b ->
                                     if (b != null) {
-                                        val next = b.p?.let { cur -> guide[Epg.keyOf(ch)].orEmpty().firstOrNull { it.start >= cur.end - 60_000L && it.start > cur.start } }
+                                        val next = b.p?.let { cur -> listings[i].orEmpty().firstOrNull { it.start >= cur.end - 60_000L && it.start > cur.start } }
                                         focused = FocusedShow(ch, name, b.p, b.match, next)
                                         onFocusChannel(ch, name)
                                     } else {
@@ -177,8 +184,8 @@ internal fun MyGuidePane(
     }
 }
 
-private fun blocksFor(ch: Channel, guide: Map<String, List<Programme>>, start: Long, end: Long, matcher: Taste.ProgrammeMatcher?): List<GuideBlock> {
-    val list = guide[Epg.keyOf(ch)].orEmpty().filter { it.end > start && it.start < end }
+private fun blocksFor(programmes: List<Programme>, start: Long, end: Long, matcher: Taste.ProgrammeMatcher?): List<GuideBlock> {
+    val list = programmes.filter { it.end > start && it.start < end }
     if (list.isEmpty()) return listOf(GuideBlock(null, start, end, 0.0, playable = true))
     val out = ArrayList<GuideBlock>()
     var t = start

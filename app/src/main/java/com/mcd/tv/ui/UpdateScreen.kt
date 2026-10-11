@@ -72,6 +72,7 @@ fun UpdateScreen(nav: Nav) {
             Text("Press Update now, then Install when the TV asks. Your settings and profiles stay.", fontSize = 18.sp, color = McdColors.White)
         }
         if (Updater.status.isNotBlank()) Text(Updater.status, fontSize = 18.sp, color = McdColors.Muted)
+        if (Updater.busy) Text("Stay on this page until it finishes. Leaving stops the download.", fontSize = 16.sp, color = McdColors.Muted)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!canInstall && !noSwitchScreen) {
                 ActionButton("Allow", { if (!Updater.openInstallPermission(ctx)) noSwitchScreen = true }, Modifier.focusRequester(first), primary = true)

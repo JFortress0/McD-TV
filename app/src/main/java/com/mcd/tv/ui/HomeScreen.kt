@@ -295,6 +295,8 @@ private val HeroHeight = 350.dp
 private fun Hero(items: List<Title>, nav: Nav, playFocus: FocusRequester, takeFocus: Boolean = true, underNav: Boolean = false) {
     var index by remember { mutableIntStateOf(0) }
     var paused by remember { mutableStateOf(false) }
+    // Holds still while Play or More Info has focus, so the title does not change under the viewer.
+    var focused by remember { mutableStateOf(false) }
     val t = items[index % items.size]
 
     LaunchedEffect(Unit) {
@@ -302,14 +304,14 @@ private fun Hero(items: List<Title>, nav: Nav, playFocus: FocusRequester, takeFo
         withFrameNanos { }
         runCatching { playFocus.requestFocus() }
     }
-    LaunchedEffect(paused) {
-        while (!paused) {
+    LaunchedEffect(paused, focused) {
+        while (!paused && !focused) {
             kotlinx.coroutines.delay(8000)
             index = (index + 1) % items.size
         }
     }
 
-    Box(Modifier.fillMaxWidth().height(HeroHeight)) {
+    Box(Modifier.fillMaxWidth().height(HeroHeight).onFocusChanged { focused = it.hasFocus }) {
         AsyncImage(
             model = Tmdb.img(t.backdrop, "w1280"),
             contentDescription = t.name,

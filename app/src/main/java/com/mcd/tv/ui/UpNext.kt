@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.mcd.tv.data.PlayMeta
+import com.mcd.tv.data.StillWatching
 import com.mcd.tv.data.Tmdb
 import com.mcd.tv.player.PlayerScreen
 import kotlinx.coroutines.delay
@@ -41,6 +42,8 @@ private const val UP_NEXT_SECONDS = 10
  * Player for a TV episode that rolls into the next one. When the episode ends, the player is
  * closed (freeing the decoder) and an "Up next" card counts down 10 s before [onNext] runs.
  * "Play now" (focused) skips the wait; "Cancel" or BACK runs [onCancel].
+ * After 3 episodes in a row that started by themselves (no key pressed), the card stops and asks
+ * "Still watching?" instead: "Keep watching" (focused) or "Stop".
  */
 @Composable
 fun UpNextPlayer(
@@ -72,6 +75,8 @@ private fun UpNextCard(meta: PlayMeta, onNext: () -> Unit, onCancel: () -> Unit)
     var done by remember { mutableStateOf(false) }
     val next by rememberUpdatedState(onNext)
     val cancel by rememberUpdatedState(onCancel)
+    // Read once: the answer stays put while the card is up.
+    val ask = remember { StillWatching.counter.shouldAsk() }
 
     fun go(action: () -> Unit) {
         if (done) return
@@ -86,10 +91,12 @@ private fun UpNextCard(meta: PlayMeta, onNext: () -> Unit, onCancel: () -> Unit)
         runCatching { playFocus.requestFocus() }
     }
     LaunchedEffect(Unit) {
+        if (ask) return@LaunchedEffect // wait for "Keep watching"
         while (remaining > 0) {
             delay(1_000)
             remaining--
         }
+        if (!done) StillWatching.counter.autoAdvanced() // started with no key press
         go(next)
     }
 
@@ -107,14 +114,27 @@ private fun UpNextCard(meta: PlayMeta, onNext: () -> Unit, onCancel: () -> Unit)
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(meta.name, color = McdColors.Muted, fontSize = 16.sp)
-            Text(
-                "Up next: S${meta.season}E${meta.episode + 1} in $remaining…",
-                style = broadcastStyle(28.sp),
-            )
+            if (ask) {
+                Text("Still watching?", style = broadcastStyle(28.sp))
+                Text(
+                    "Paused after a few episodes in a row. Next: S${meta.season}E${meta.episode + 1}.",
+                    color = McdColors.White, fontSize = 16.sp,
+                )
+            } else {
+                Text(
+                    "Up next: S${meta.season}E${meta.episode + 1} in $remaining…",
+                    style = broadcastStyle(28.sp),
+                )
+            }
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                ActionButton("▶  Play now", { go(next) }, Modifier.focusRequester(playFocus), primary = true)
-                ActionButton("Cancel", { go(cancel) })
+                if (ask) {
+                    ActionButton("Keep watching", { StillWatching.counter.keyPressed(); go(next) }, Modifier.focusRequester(playFocus), primary = true)
+                    ActionButton("Stop", { go(cancel) })
+                } else {
+                    ActionButton("▶  Play now", { go(next) }, Modifier.focusRequester(playFocus), primary = true)
+                    ActionButton("Cancel", { go(cancel) })
+                }
             }
         }
     }

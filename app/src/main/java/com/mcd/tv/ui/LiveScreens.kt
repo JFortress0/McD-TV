@@ -245,11 +245,15 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
         }
     }
     // Program guide (XMLTV from the playlist or the Xtream API): loads in the background, cached 6 h.
+    // A failed load is tried again twice, 90 s apart, while this screen is open.
     LaunchedEffect(index) {
         val url = M3u.guideUrl
         if (url.isNotBlank()) {
-            val g = Epg.load(url, index.source)
-            if (g.isNotEmpty()) LiveSession.guide = g
+            for (attempt in 0..2) {
+                if (attempt > 0) delay(91_000)
+                val g = Epg.load(url, index.source)
+                if (g.isNotEmpty()) { LiveSession.guide = g; break }
+            }
         }
     }
     // Start on the card last played (Back from the player), otherwise on the selected rail entry.
