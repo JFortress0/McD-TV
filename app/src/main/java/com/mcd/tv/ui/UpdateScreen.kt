@@ -69,7 +69,14 @@ fun UpdateScreen(nav: Nav) {
                 fontSize = 18.sp, color = McdColors.White,
             )
         } else {
-            Text("Press Update now, then Install when the TV asks. Your settings and profiles stay.", fontSize = 18.sp, color = McdColors.White)
+            Text(
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    "Press Update now. Jarvis installs it and opens again. Your settings and profiles stay."
+                } else {
+                    "Press Update now, then Install when the TV asks. Your settings and profiles stay."
+                },
+                fontSize = 18.sp, color = McdColors.White,
+            )
         }
         if (Updater.status.isNotBlank()) Text(Updater.status, fontSize = 18.sp, color = McdColors.Muted)
         if (Updater.busy) Text("Stay on this page until it finishes. Leaving stops the download.", fontSize = 16.sp, color = McdColors.Muted)
