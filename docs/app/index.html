@@ -2863,7 +2863,7 @@ async function renderSources(v, tok, type, id, q) {
     const rep = Object.entries(S.addonReport || {}), bad = rep.filter(([, r]) => r !== "ok");
     const msg = !addonUrls().length ? "No addons on this device yet. Open Jarvis once with a TV on, or connect with a code (Settings), so it gets your addons."
       : bad.length ? `${bad.length === rep.length ? "Your addons" : "Some addons"} didn't answer (${bad.map(([n, r]) => n + ": " + r).join(", ")}). Something on this network is blocking them: a VPN, iCloud Private Relay, or Limit IP Address Tracking. Turn those off for Wi-Fi and try again.`
-      : "Your addons found no sources for this title.";
+      : "Your addons answered but list no sources for this title yet. New talk shows and specials often have none.";
     say(msg, true); listEl.innerHTML = ""; S.streamCache.clear(); return;
   }
   say(`${a.visible.length + a.hidden.length} sources. Tap one, or let Best source pick.`);
@@ -4586,7 +4586,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-12.1";
+const BUILD = "2026-10-12.2";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
