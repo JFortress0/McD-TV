@@ -42,6 +42,7 @@ import com.mcd.tv.Screen
 import com.mcd.tv.data.Addons
 import com.mcd.tv.data.PlayMeta
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.RealDebrid
 import com.mcd.tv.data.Resolver
 import com.mcd.tv.data.ArrangedStreams
 import com.mcd.tv.data.RankedStream
@@ -135,10 +136,25 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
                 ActionButton("Retry", { retry++ }, primary = true)
             }
             is Load.Ok -> if (l.value.isEmpty()) {
+                // Say why: no addons, addons that did not answer (often a VPN), or nothing listed for this title.
+                val failed = remember(l) { Addons.lastFailed }
+                val all = Prefs.addonUrls.size
                 StatusText(
-                    if (Prefs.addonUrls.isEmpty()) "No addons installed. Add one on the Control page: Settings > Phone & Computer Setup."
-                    else "Your addons found no sources for this title.",
+                    when {
+                        all == 0 -> "No addons installed. Add one on the Control page: Settings > Phone & Computer Setup."
+                        failed.size >= all -> "Your addons did not answer (${failed.joinToString()}). A VPN on this TV or the router can block them. Turn it off and press Retry."
+                        failed.isNotEmpty() -> "No sources found. ${failed.joinToString()} did not answer, so press Retry. A VPN can block addons."
+                        else -> "Your addons answered but list no sources for this title yet. New talk shows and specials often have none. " +
+                            "If you added it to Real-Debrid yourself, it is in Real-Debrid Cloud."
+                    },
                 )
+                if (all > 0) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ActionButton("Retry", { retry++ }, Modifier.focusRequester(firstFocus), primary = true)
+                        if (RealDebrid.connected) ActionButton("Real-Debrid Cloud", { nav.push(Screen.RdCloud) })
+                    }
+                    LaunchedEffect(Unit) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
+                }
             } else LazyColumn(
                 contentPadding = PaddingValues(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
