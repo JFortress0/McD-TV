@@ -41,6 +41,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.mcd.tv.Nav
 import com.mcd.tv.Screen
+import com.mcd.tv.data.ContinueRules
 import com.mcd.tv.data.Details
 import com.mcd.tv.data.Episode
 import com.mcd.tv.data.Library
@@ -113,7 +114,11 @@ private fun DetailBody(nav: Nav, d: Details) {
         if (more) { withFrameNanos { }; runCatching { moreFocus.requestFocus() } }
     }
     val movieProgress = remember(cloud) { if (t.type == "movie") Library.history().firstOrNull { it.meta.historyKey == "movie:${t.id}" } else null }
+    // The last episode was finished: Play starts the next one (Sources rolls over to the next season).
+    val upNext = last?.takeIf { it.meta.season > 0 }?.let { ContinueRules.playEpisode(it.meta.season, it.meta.episode, it.progress) }
+        ?: (season to 1)
     val playLabel = when {
+        t.type == "tv" && last != null && last.finished && last.meta.season > 0 -> "▶  Play S${upNext.first}E${upNext.second}"
         t.type == "tv" && last != null -> "▶  Resume S${last.meta.season}E${last.meta.episode}"
         movieProgress != null && !movieProgress.finished && movieProgress.positionMs > 60_000 -> "▶  Resume"
         else -> "▶  Play"
@@ -177,7 +182,7 @@ private fun DetailBody(nav: Nav, d: Details) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             ActionButton(playLabel, {
                                 if (t.type == "movie") play(0, 0, true)
-                                else play(last?.meta?.season ?: season, last?.meta?.episode ?: 1, true)
+                                else play(upNext.first, upNext.second, true)
                             }, Modifier.focusRequester(playFocus), primary = true)
                             d.trailerKey?.let { key ->
                                 ActionButton("▶  Trailer", { if (!openYouTube(context, key)) note = "No YouTube app on this TV" })

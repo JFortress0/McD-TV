@@ -44,6 +44,7 @@ import coil.compose.AsyncImage
 import com.mcd.tv.Nav
 import com.mcd.tv.Screen
 import com.mcd.tv.data.Channel
+import com.mcd.tv.data.ContinueRules
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.LiveOrganizer
 import com.mcd.tv.data.M3u
@@ -410,6 +411,8 @@ private fun HistoryRow(
                 WideCard(
                     title = h.meta.name,
                     subtitle = when {
+                        h.finished && h.meta.type == "tv" && h.meta.season > 0 ->
+                            ContinueRules.playEpisode(h.meta.season, h.meta.episode, h.progress).let { (s, e) -> "Up next: S$s E$e" }
                         h.finished -> "Watched"
                         h.meta.type == "tv" -> "S${h.meta.season} E${h.meta.episode}  •  ${(h.progress * 100).toInt()}%"
                         else -> "${(h.progress * 100).toInt()}% watched"
