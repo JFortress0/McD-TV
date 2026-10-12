@@ -150,25 +150,32 @@ object Addons {
      * Asks every installed addon for streams. id is an IMDb id for movies,
      * or "tt123:season:episode" for TV. Slow addons are skipped after 20 s.
      */
+    /** Names of the addons that did not answer (error or timeout) on the last [streams] call. */
+    @Volatile var lastFailed: List<String> = emptyList()
+        private set
+
     suspend fun streams(type: String, id: String): List<StreamSource> = coroutineScope {
         val stremioType = if (type == "tv") "series" else "movie"
         // TV ids look like "tt123:1:5" (season 1, episode 5).
         val parts = id.split(":")
         val season = if (type == "tv") parts.getOrNull(1)?.toIntOrNull() else null
         val episode = if (type == "tv") parts.getOrNull(2)?.toIntOrNull() else null
-        Prefs.addonUrls.map { m ->
+        // null: the addon did not answer (blocked, down or too slow). An empty list: it answered with nothing.
+        val replies = Prefs.addonUrls.map { m ->
             async {
-                withTimeoutOrNull(20_000) {
+                m to withTimeoutOrNull(20_000) {
                     runCatching {
                         val addonName = nameOf(m)
                         val o = JSONObject(Http.get("${base(m)}/stream/$stremioType/$id.json", timeoutMs = ADDON_TIMEOUT_MS))
                         val arr = o.optJSONArray("streams")
                         if (arr == null) emptyList()
                         else (0 until arr.length()).map { parse(addonName, arr.getJSONObject(it)).copy(season = season, episode = episode) }
-                    }.getOrDefault(emptyList())
-                } ?: emptyList()
+                    }.getOrNull()
+                }
             }
-        }.awaitAll().flatten().let { sort(it) }
+        }.awaitAll()
+        lastFailed = replies.filter { it.second == null }.map { nameOf(it.first, fallback = "An addon") }
+        replies.flatMap { it.second.orEmpty() }.let { sort(it) }
     }
 
     private fun parse(addon: String, s: JSONObject): StreamSource {
