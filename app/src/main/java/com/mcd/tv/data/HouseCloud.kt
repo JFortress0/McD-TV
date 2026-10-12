@@ -1,6 +1,8 @@
 package com.mcd.tv.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -14,8 +16,8 @@ import java.security.SecureRandom
  *
  *  - Setup: every TV keeps one encrypted snapshot current (settings, keys, playlist, addons and each profile's
  *    lists and Live TV favorites). A phone with the house link reads it any time, with every TV off.
- *  - Live TV favorites a phone changes (ResumeCloud's "livefav" list) are pulled here and applied to this TV.
- *    The TVs then agree with each other through ProfileSync as before.
+ *  - Live TV favorites: every TV and phone merges its list with the shared "livefav" list (syncLiveFavorites),
+ *    so all of them end up with the same channels.
  *  - "Connect a phone": a short-lived 8-digit code that hands the house link to a phone (no TV link needed).
  *
  * Encrypted with keys from the house key (same tags and format as ResumeCloud); the relay sees only tags.
@@ -52,8 +54,12 @@ object HouseCloud {
             .put("watchlist", JSONArray(Library.watchlist(pid).take(100).map { ref(it.type, it.id) }))
             .put("favorites", JSONArray(Library.favorites(pid).take(100).map { ref(it.type, it.id) }))
             .put("continue", JSONArray(Library.continueWatching(pid).take(60).map {
-                ref(it.meta.type, it.meta.tmdbId).put("season", it.meta.season).put("episode", it.meta.episode)
-                    .put("progress", Math.round(it.progress * 100) / 100.0)
+                // A finished episode: the phone shows the next one ("next": true, nothing watched yet).
+                val upNext = it.meta.type == "tv" && it.finished
+                val (s, e) = if (upNext) ContinueRules.playEpisode(it.meta.season, it.meta.episode, it.progress) else it.meta.season to it.meta.episode
+                ref(it.meta.type, it.meta.tmdbId).put("season", s).put("episode", e)
+                    .put("progress", if (upNext) 0.0 else Math.round(it.progress * 100) / 100.0)
+                    .apply { if (upNext) put("next", true) }
             }))
             .put("live_favorites", live)
     }
@@ -113,49 +119,51 @@ object HouseCloud {
     private val LIVE_NUM = Regex("""/(\d+)(?:\.[A-Za-z0-9]+)?(?:\?.*)?$""")
     private fun num(u: String): String? = LIVE_NUM.find(u)?.groupValues?.get(1)
 
+    private val favLock = Mutex()
+
+    private fun localFavUrls(profile: String): List<String> = runCatching {
+        val a = JSONArray(Prefs.json("live_favorites@$profile").ifBlank { "[]" })
+        List(a.length()) { a.optString(it) }.filter { it.isNotBlank() }
+    }.getOrDefault(emptyList())
+
     /**
-     * Applies [profile]'s favorites list from the relay when a phone (or another TV) saved it after this TV last
-     * looked and it differs from this TV's. True when this TV's favorites changed.
+     * Merges [profile]'s Live TV favorites with the shared copy on the relay (LiveFavMerge): channels added on any
+     * TV or phone are kept, and a channel removed anywhere is removed everywhere. Applies the result here and
+     * sends it back when the shared copy differs. True when this TV's favorites changed.
+     *
+     * "livefav_base@pN": the list this TV and the shared copy last agreed on. "livefav_extra@pN": shared channels
+     * this TV's playlist does not have; they stay in the shared list and are never read as removed here.
      */
-    suspend fun pullLiveFavorites(profile: String): Boolean = withContext(Dispatchers.IO) {
-        if (Prefs.qaMode) return@withContext false
-        runCatching {
-            val key = ResumeCloud.houseKey() ?: return@runCatching false
-            val c = URL(
-                "https://jarvis-rd.netlify.app/resume?h=${ResumeCloud.enc(ResumeCloud.tag(key, "house"))}" +
-                    "&p=${ResumeCloud.enc(ResumeCloud.tag(key, "livefav|$profile"))}",
-            ).openConnection() as HttpURLConnection
-            val text = try {
-                c.connectTimeout = 15_000
-                c.readTimeout = 20_000
-                if (c.responseCode != 200) return@runCatching false
-                c.inputStream.bufferedReader().use { it.readText() }
-            } finally {
-                c.disconnect()
-            }
-            val rec = JSONObject(text).optJSONObject("e")?.optJSONObject(ResumeCloud.tag(key, "list")) ?: return@runCatching false
-            val at = rec.optLong("t")
-            val seenKey = "livefav_seen@$profile"
-            if (at <= (Prefs.json(seenKey).toLongOrNull() ?: 0L)) return@runCatching false
-            val o = JSONObject(ResumeCloud.open(key, rec.optString("v")) ?: return@runCatching false)
-            val a = o.optJSONArray("ids") ?: return@runCatching false
-            val ids = List(a.length()) { a.optString(it) }.filter { it.all(Char::isDigit) && it.isNotEmpty() }
-            val local = runCatching { JSONArray(Prefs.json("live_favorites@$profile").ifBlank { "[]" }) }.getOrDefault(JSONArray())
-            val localUrls = List(local.length()) { local.optString(it) }
-            val localIds = localUrls.mapNotNull { num(it) }.toSet()
-            var changed = false
-            if (ids.toSet() != localIds) {
-                // Removed elsewhere: drop here. Added elsewhere: add this TV's copy of the channel.
-                localUrls.filter { u -> num(u)?.let { it !in ids } == true }.forEach { Prefs.setLiveFavorite(profile, it, false); changed = true }
-                val missing = ids.filter { it !in localIds }
-                if (missing.isNotEmpty()) {
-                    val byNum = runCatching { M3u.load() }.getOrDefault(emptyList()).associateBy { num(it.url) }
-                    missing.forEach { id -> byNum[id]?.url?.let { Prefs.setLiveFavorite(profile, it, true); changed = true } }
-                }
-            }
-            Prefs.putJson(seenKey, at.toString())
-            changed
-        }.getOrDefault(false)
+    suspend fun syncLiveFavorites(profile: String): Boolean = withContext(Dispatchers.IO) {
+        if (Prefs.qaMode || profile !in Prefs.PROFILE_IDS) return@withContext false
+        favLock.withLock { runCatching { syncLiveFavoritesNow(profile) }.getOrDefault(false) }
+    }
+
+    private suspend fun syncLiveFavoritesNow(profile: String): Boolean {
+        val key = ResumeCloud.houseKey() ?: return false
+        val remote = ResumeCloud.fetchLiveFavs(key, profile) ?: return false
+        val baseKey = "livefav_base@$profile"
+        val extraKey = "livefav_extra@$profile"
+        val base = LiveFavMerge.parse(Prefs.json(baseKey))
+        val extra = LiveFavMerge.parse(Prefs.json(extraKey))
+        val localUrls = localFavUrls(profile)
+        val local = localUrls.mapNotNull { num(it) }.toSet()
+        val merged = LiveFavMerge.merge(base, local + (extra intersect base), remote)
+        var changed = false
+        // Channels with no stream number in their URL are left alone: they can't be shared.
+        localUrls.filter { u -> num(u)?.let { it !in merged } == true }.forEach {
+            Prefs.setLiveFavorite(profile, it, false, share = false); changed = true
+        }
+        val missing = merged - local
+        if (missing.isNotEmpty()) {
+            val byNum = runCatching { M3u.load() }.getOrDefault(emptyList()).associateBy { num(it.url) }
+            missing.forEach { id -> byNum[id]?.url?.let { Prefs.setLiveFavorite(profile, it, true, share = false); changed = true } }
+        }
+        val have = localFavUrls(profile).mapNotNull { num(it) }.toSet()
+        Prefs.putJson(extraKey, LiveFavMerge.format(merged - have))
+        val saved = merged == remote || ResumeCloud.pushLiveFavIds(key, profile, merged)
+        if (saved) Prefs.putJson(baseKey, LiveFavMerge.format(merged))
+        return changed
     }
 
     // ---------------------------------------------------------------- connect a phone with a code

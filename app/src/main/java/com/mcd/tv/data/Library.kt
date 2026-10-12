@@ -147,7 +147,13 @@ object Library {
         return id in set
     }
 
-    fun continueWatching(profile: String? = null) = history(profile).filter { !it.finished && it.positionMs > 60_000 }
+    /** In progress, plus shows whose latest episode was finished (the next one is up). See [ContinueRules]. */
+    fun continueWatching(profile: String? = null): List<HistoryEntry> {
+        val now = System.currentTimeMillis()
+        return history(profile).filter {
+            ContinueRules.keep(it.meta.type, it.meta.season, it.meta.episode, it.positionMs, it.progress, it.updatedAt, now)
+        }
+    }
 
     fun resumePosition(meta: PlayMeta): Long =
         history().firstOrNull { it.meta.historyKey == meta.historyKey && it.meta.season == meta.season && it.meta.episode == meta.episode }

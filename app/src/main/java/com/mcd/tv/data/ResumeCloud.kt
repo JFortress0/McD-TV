@@ -131,13 +131,13 @@ object ResumeCloud {
 
     // ---------------------------------------------------------------- Live TV favorites
 
-    private val LIVE_NUM = Regex("""/(\d+)(?:\.[A-Za-z0-9]+)?(?:\?.*)?$""")
     private val favJobs = HashMap<String, Job>()
 
     /**
-     * [profile]'s Live TV favorites changed (here, from a phone, or from another TV): a few seconds later they go
-     * to the relay as stream numbers, so the phones have them even when every TV is off. Profile tag
-     * "livefav|pN", key "list", value {ids, at}; the web app reads it (docs/app/index.html, RC.favGet).
+     * [profile]'s Live TV favorites changed on this TV (here, from a phone over the TV link, or from another
+     * TV): a few seconds later this TV merges them with the shared copy on the relay (HouseCloud.syncLiveFavorites),
+     * so the phones and the other TVs have them even when this TV is off. Profile tag "livefav|pN", key "list",
+     * value {ids, at}; the web app reads and writes it too (docs/app/index.html, RC.favGet and RC.favPut).
      */
     fun onLiveFavorites(profile: String) {
         if (Prefs.qaMode) return
@@ -146,26 +146,36 @@ object ResumeCloud {
             favJobs[profile] = scope.launch {
                 delay(5_000)
                 synchronized(lock) { favJobs.remove(profile) }
-                runCatching { pushLiveFavs(profile) }
+                runCatching { HouseCloud.syncLiveFavorites(profile) }
             }
         }
     }
 
-    private fun liveFavIds(profile: String): List<String> = runCatching {
-        val a = JSONArray(Prefs.json("live_favorites@$profile").ifBlank { "[]" })
-        List(a.length()) { a.optString(it) }.mapNotNull { LIVE_NUM.find(it)?.groupValues?.get(1) }.distinct().take(300)
-    }.getOrDefault(emptyList())
+    /** The shared favorites of [profile] as stream numbers: empty when none are saved yet, null when unreadable. */
+    internal fun fetchLiveFavs(key: ByteArray, profile: String): Set<String>? = runCatching<Set<String>?> {
+        val c = URL("$ENDPOINT?h=${enc(tag(key, "house"))}&p=${enc(tag(key, "livefav|$profile"))}").openConnection() as HttpURLConnection
+        val text = try {
+            c.connectTimeout = 15_000
+            c.readTimeout = 20_000
+            if (c.responseCode != 200) return@runCatching null
+            c.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            c.disconnect()
+        }
+        val rec = JSONObject(text).optJSONObject("e")?.optJSONObject(tag(key, "list")) ?: return@runCatching emptySet()
+        val o = JSONObject(open(key, rec.optString("v")) ?: return@runCatching null)
+        val a = o.optJSONArray("ids") ?: return@runCatching null
+        List(a.length()) { a.optString(it) }.filter { it.isNotEmpty() && it.all(Char::isDigit) }.toSet()
+    }.getOrNull()
 
-    private fun pushLiveFavs(profile: String) {
-        val key = houseKey() ?: return
-        val ids = liveFavIds(profile)
-        val sig = "v1:" + ids.sorted().joinToString(",")
-        if (Prefs.json("livefav_sent@$profile") == sig) return // already there
+    /** Saves [ids] as [profile]'s shared favorites. True when the relay took it. */
+    internal fun pushLiveFavIds(key: ByteArray, profile: String, ids: Set<String>): Boolean = runCatching {
         val now = System.currentTimeMillis()
+        val list = ids.sorted().take(300)
         val payload = JSONObject()
             .put("k", tag(key, "list"))
             .put("t", now)
-            .put("v", seal(key, JSONObject().put("ids", JSONArray(ids)).put("at", now).toString()))
+            .put("v", seal(key, JSONObject().put("ids", JSONArray(list)).put("at", now).toString()))
             .toString()
         val c = URL("$ENDPOINT?h=${enc(tag(key, "house"))}&p=${enc(tag(key, "livefav|$profile"))}").openConnection() as HttpURLConnection
         try {
@@ -175,11 +185,11 @@ object ResumeCloud {
             c.doOutput = true
             c.setRequestProperty("Content-Type", "application/json")
             c.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-            if (c.responseCode == 200) Prefs.putJson("livefav_sent@$profile", sig)
+            c.responseCode == 200
         } finally {
             c.disconnect()
         }
-    }
+    }.getOrDefault(false)
 
     // ---------------------------------------------------------------- reading
 
@@ -232,9 +242,8 @@ object ResumeCloud {
             if (!force && now - (lastPull[profile] ?: 0L) < PULL_EVERY_MS) return
             lastPull[profile] = now
         }
-        // Favorites a phone changed: apply them here. Then send this TV's (only when they differ) and the house snapshot.
-        runCatching { HouseCloud.pullLiveFavorites(profile) }
-        for (p in Prefs.PROFILE_IDS) onLiveFavorites(p)
+        // Live TV favorites: merge this TV's with the shared copy (phones and other TVs). Then the house snapshot.
+        runCatching { HouseCloud.syncLiveFavorites(profile) }
         runCatching { HouseCloud.pushSnapshot() }
         val remote = withContext(Dispatchers.IO) { runCatching { fetch(profile) }.getOrDefault(emptyList()) }
         if (remote.isEmpty()) return
