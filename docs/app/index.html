@@ -824,7 +824,12 @@ const RC = (() => {
     for (const r of cl) {
       seen.add(r.type + ":" + r.id);
       const prog = r.dur > 0 ? r.pos / r.dur : 0;
-      if (r.pos > 60000 && prog < 0.92) out.push({ type: r.type, id: r.id, season: r.season, episode: r.episode, progress: Math.round(prog * 100) / 100, at: r.at });
+      if (r.pos > 60000 && prog < 0.92) { out.push({ type: r.type, id: r.id, season: r.season, episode: r.episode, progress: Math.round(prog * 100) / 100, at: r.at }); continue; }
+      // Shows, like the TV (ContinueRules.kt): a finished episode puts the next one up, and a later episode
+      // that was only just started still counts. Shows with nothing in progress leave after 60 days.
+      if (r.type !== "tv" || !(r.season > 0) || !(r.episode > 0) || Date.now() - (r.at || 0) > 60 * 86400000) continue;
+      if (prog >= 0.92) out.push({ type: r.type, id: r.id, season: r.season, episode: r.episode + 1, progress: 0, next: true, at: r.at });
+      else if (r.season > 1 || r.episode > 1) out.push({ type: r.type, id: r.id, season: r.season, episode: r.episode, progress: Math.round(prog * 100) / 100, at: r.at });
     }
     for (const x of snap) if (!seen.has(x.type + ":" + x.id)) out.push(x);
     return out;
@@ -1362,7 +1367,7 @@ function posterCard(t) {
 }
 function contCard(t) {
   const r = t.ref || {};
-  const label = t.type === "tv" && r.season > 0 ? `S${r.season} E${r.episode}` : typeLabel(t.type);
+  const label = t.type === "tv" && r.season > 0 ? `${r.next ? "Up next: " : ""}S${r.season} E${r.episode}` : typeLabel(t.type);
   const pct = Math.round(Math.max(0, Math.min(1, +r.progress || 0)) * 100);
   return `<div class="wcard"><a href="#/title/${t.type}/${t.id}" aria-label="${esc(t.name)}, ${esc(label)}">
     <div class="wimg">${imgTag(t.backdrop || t.poster, "w780", "")}<div class="prog"><i style="width:${pct}%"></i></div></div>
@@ -3654,7 +3659,20 @@ const LV = (() => {
     L.live_favorites = on ? [...cur, ch.url] : cur.filter((u) => favKey(u) !== k);
     L.live_fav_at = Date.now();
     savePlists();
-    RC.favPut(L.live_favorites.map(favKey).filter((x) => /^#\d+$/.test(x)).map((x) => x.slice(1)), pid).catch(() => {});
+    // Change only this channel in the shared list, so channels a TV added since this phone looked are kept.
+    const num = /^#\d+$/.test(k) ? k.slice(1) : "";
+    (async () => {
+      const c = await RC.favGet(pid).catch(() => null);
+      const ids = new Set(c ? c.ids : L.live_favorites.map(favKey).filter((x) => /^#\d+$/.test(x)).map((x) => x.slice(1)));
+      if (num) { if (on) ids.add(num); else ids.delete(num); }
+      await RC.favPut([...ids], pid);
+      if (c) {
+        // Show the TVs' channels here too.
+        const all = [...ids].map((x) => "#" + x), have = new Set(L.live_favorites.map(favKey));
+        const add = all.filter((x) => !have.has(x));
+        if (add.length) { L.live_favorites = [...L.live_favorites, ...add]; savePlists(); redraw(); }
+      }
+    })().catch(() => {});
     toast(on ? "★ " + ch.name + " added to Favorites" : ch.name + " removed from Favorites", "ok");
     if (S.link) relaySend({ cmd: "live_fav", profile: pid, url: ch.url, on, ts: Date.now() }).catch(() => {});
     drawGrid(true);
@@ -4586,7 +4604,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-12.2";
+const BUILD = "2026-10-12.3";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
