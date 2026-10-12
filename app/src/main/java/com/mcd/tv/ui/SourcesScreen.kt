@@ -84,6 +84,27 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
         }
     }
 
+    /** The Play button's pick: try the sources best first and play the first that opens. */
+    suspend fun playBest(all: List<StreamSource>) {
+        if (busy) return
+        busy = true
+        status = "Finding the best source…"
+        runCatching { Resolver.best(all, meta) }
+            .onSuccess { (src, url) ->
+                // Same order Resolver.best tried, so "Try next source" picks up after the one that worked.
+                val order = StreamInfo.playOrder(all, episode = meta.type == "tv" || all.any { it.episode != null })
+                val queue = SourceQueue.put(order)
+                nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = src.headers, queue = queue, queuePos = order.indexOf(src)))
+            }
+            .onFailure {
+                if (it is CancellationException) throw it
+                status = "${it.message} Pick one below."
+                busy = false
+                withFrameNanos { }
+                runCatching { firstFocus.requestFocus() }
+            }
+    }
+
     val l = sources
     // Sorted, de-duplicated rows; CAM releases and oversized files are hidden until "Show N hidden sources".
     val arranged = remember(l) { (l as? Load.Ok<List<StreamSource>>)?.value?.let { StreamInfo.arrange(it, episode = meta.type == "tv") } }
@@ -100,21 +121,7 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
             nav.replace(Screen.Sources(meta.copy(season = meta.season + 1, episode = 1), imdbId, true))
         } else if (l is Load.Ok && l.value.isNotEmpty()) {
             if (autoPlay) {
-                busy = true
-                status = "Finding the best source…"
-                runCatching { Resolver.best(l.value, meta) }
-                    .onSuccess { (src, url) ->
-                        // Same order Resolver.best tried, so "Try next source" picks up after the one that worked.
-                        val order = StreamInfo.playOrder(l.value, episode = meta.type == "tv" || l.value.any { it.episode != null })
-                        val queue = SourceQueue.put(order)
-                        nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = src.headers, queue = queue, queuePos = order.indexOf(src)))
-                    }
-                    .onFailure {
-                        status = "${it.message} Pick one below."
-                        busy = false
-                        withFrameNanos { }
-                        runCatching { firstFocus.requestFocus() }
-                    }
+                playBest(l.value)
             } else {
                 // Wait one frame so the list is laid out before focusing its first row.
                 withFrameNanos { }
@@ -162,16 +169,18 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
                 val a = arranged ?: ArrangedStreams(emptyList(), emptyList())
                 val rows = if (showHidden) a.visible + a.hidden else a.visible
                 val order = rows.map { it.source }
+                // Episodes and "Choose Source" open this list: one press still plays the best source.
+                item(key = "play-best") {
+                    ActionButton("⚡  Play best source", { scope.launch { playBest(l.value) } }, Modifier.focusRequester(firstFocus), primary = true)
+                }
                 itemsIndexed(rows, key = { _, r -> r.info.dedupeKey }) { i, r ->
-                    val m = (if (i == 0) Modifier.focusRequester(firstFocus) else Modifier)
-                        .then(if (showHidden && i == a.visible.size) Modifier.focusRequester(hiddenFocus) else Modifier)
+                    val m = if (showHidden && i == a.visible.size) Modifier.focusRequester(hiddenFocus) else Modifier
                     SourceRow(r, onClick = { start(r.source, order, i) }, modifier = m)
                 }
                 if (a.hidden.isNotEmpty() && !showHidden) item(key = "show-hidden") {
                     ShowHiddenRow(
                         a.hidden.size,
                         onClick = { showHidden = true },
-                        modifier = if (rows.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
                     )
                 }
             }
