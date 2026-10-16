@@ -127,7 +127,7 @@ object RealDebrid {
 
     /** "HTTP 403 {"error":"ip_not_allowed",...}" to "Real-Debrid blocks the network this TV is on...". */
     private fun refused(e: HttpException): IllegalStateException =
-        IllegalStateException(RdErrors.api(e.code, e.message.orEmpty()), e)
+        RdErrors.refusal(e.code, e.message.orEmpty(), e)
 
     internal suspend fun apiGet(path: String): String = authed { Http.get("$API$path", it) }
     internal suspend fun apiPost(path: String, fields: Map<String, String>): String = authed { Http.postForm("$API$path", fields, it) }
@@ -434,11 +434,22 @@ object RdCloud {
 
 /** Turns any source into a URL the player can open. */
 object Resolver {
+    /** Sources Play best source tries before it gives up. */
+    private const val MAX_TRIES = 6
+
     /**
      * meta (optional) supplies season/episode for TV when the source itself does not carry them,
      * so Real-Debrid picks the right file out of a season pack.
      */
-    suspend fun resolve(s: StreamSource, meta: PlayMeta? = null): String = when {
+    suspend fun resolve(s: StreamSource, meta: PlayMeta? = null): String = try {
+        resolveOnce(s, meta)
+    } catch (e: RdRefused) {
+        // Error 35: RD refuses this file. Remember it so Play best source and the list skip it.
+        if (e.code == 35) RdFilter.markRefused(s)
+        throw e
+    }
+
+    private suspend fun resolveOnce(s: StreamSource, meta: PlayMeta?): String = when {
         s.url != null && s.url.contains("real-debrid.com/d/") && RealDebrid.connected -> RealDebrid.unrestrict(s.url)
         s.url != null -> s.url
         s.infoHash != null -> {
@@ -458,7 +469,11 @@ object Resolver {
         var last: Exception? = null
         // Same order as the source list: CAM and oversized files skipped unless nothing else is left.
         val episode = meta?.type == "tv" || list.any { it.episode != null }
-        for (s in StreamInfo.playOrder(list, episode).take(5)) {
+        // RD refuses many release names (error 35). Those sort last; ones it refused before are skipped.
+        val order = StreamInfo.playOrder(list, episode)
+        val fresh = order.filterNot { RdFilter.wasRefused(it) }.ifEmpty { order }
+        var cleanRefusals = 0
+        for (s in fresh.take(MAX_TRIES)) {
             try {
                 return s to resolve(s, meta)
             } catch (e: Exception) {
@@ -466,7 +481,14 @@ object Resolver {
                 last = e
                 // Real-Debrid needs reconnecting: no point trying the other torrents.
                 if (e is IllegalStateException && e.message?.startsWith("Real-Debrid needs reconnecting") == true) throw e
+                // RD also refuses every new file for a few minutes after several adds in a row.
+                if (e is RdRefused && e.code == 35 && !RdFilter.nameBlocked(s.name + "\n" + s.title) && ++cleanRefusals >= 2) {
+                    throw IllegalStateException("Real-Debrid is refusing new files for a few minutes. Wait 5 minutes and try again.", e)
+                }
             }
+        }
+        if (last is RdRefused && (last as RdRefused).code == 35) {
+            throw IllegalStateException("Real-Debrid refused the top sources for this title (error 35).", last)
         }
         throw last ?: IllegalStateException("No sources found. Add an addon in Settings.")
     }

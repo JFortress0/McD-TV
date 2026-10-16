@@ -25,6 +25,8 @@ data class StreamInfo(
     val cam: Boolean,
     /** Duplicate check: same torrent file, or same file name and size. */
     val dedupeKey: String,
+    /** Real-Debrid is likely to refuse it (error 35): a blocked tag in the name, or refused here before. */
+    val rdBlocked: Boolean = false,
 ) {
     val resolutionRank: Int get() = when (resolution) { "4K" -> 4; "1080p" -> 3; "720p" -> 2; "SD" -> 1; else -> 0 }
 
@@ -128,19 +130,22 @@ data class StreamInfo(
                 download = !s.cached && (hash != null || notCachedLink),
                 cam = cam,
                 dedupeKey = dedupeKey,
+                rdBlocked = RdFilter.likelyBlocked(s),
             )
         }
 
-        /** Cached first, then stars, resolution and size. Slow connection: 720p/1080p and smaller files first. */
+        /** Files RD will likely refuse last, then cached first, then stars, resolution and size. Slow connection: 720p/1080p and smaller files first. */
         private fun comparator(): Comparator<RankedStream> {
             val slow = Prefs.slowConnection
             return if (slow) {
-                compareByDescending<RankedStream> { it.info.instant }
+                compareBy<RankedStream> { it.info.rdBlocked }
+                    .thenByDescending { it.info.instant }
                     .thenByDescending { when (it.info.resolution) { "720p" -> 3; "1080p" -> 2; else -> 0 } }
                     .thenBy { if (it.info.sizeGb > 0) it.info.sizeGb else Double.MAX_VALUE }
                     .thenByDescending { it.info.stars }
             } else {
-                compareByDescending<RankedStream> { it.info.instant }
+                compareBy<RankedStream> { it.info.rdBlocked }
+                    .thenByDescending { it.info.instant }
                     .thenByDescending { it.info.stars }
                     .thenByDescending { it.info.resolutionRank }
                     .thenByDescending { it.info.sizeGb }
