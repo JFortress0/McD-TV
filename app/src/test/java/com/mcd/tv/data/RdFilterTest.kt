@@ -42,13 +42,12 @@ class RdFilterTest {
     }
 
     @Test
-    fun blockedSortsBelowClean() {
+    fun parseMarksBlocked() {
+        // ranked()/playOrder() read Prefs (needs an Android Context), so only parse is tested here.
         val list = listOf(
             src("The.Odyssey.2026.1080p.WEB-DL.DDP5.1\n💾 4.9 GB", hash = "a1"),
             src("The.Odyssey.2026.1080p.WEBRip.x265\n💾 1.6 GB", hash = "b2"),
         )
-        val order = StreamInfo.playOrder(list, episode = false)
-        assertEquals("b2", order.first().infoHash)
         assertTrue(StreamInfo.parse(list[0]).rdBlocked)
         assertFalse(StreamInfo.parse(list[1]).rdBlocked)
     }
