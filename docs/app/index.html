@@ -2268,6 +2268,20 @@ const SI = (() => {
     };
   }
 
+  /** RdFilter: RD refuses names with these tags, exact case (October 14, 2026), and files it refused here. */
+  const RD_TAGS = ["WEB-DL", "WEB.x264", "WEB.H264", "HDTV.x264", "HDTV.XviD"];
+  const RD_KEEP_MS = 6 * 3600 * 1000;
+  const refused = new Map();
+  const rdKey = (s) => s.infoHash ? "h:" + s.infoHash.toLowerCase() + ":" + (s.fileIdx == null ? -1 : s.fileIdx) : s.url ? "u:" + s.url : "n:" + s.addon + "|" + s.name + "|" + s.title;
+  const viaRd = (s) => !!s.infoHash || s.name.includes("RD") || /real-debrid/i.test(s.url || "");
+  const nameBlocked = (t) => RD_TAGS.some((x) => t.includes(x));
+  function markRefused(s) {
+    const now = Date.now(); refused.set(rdKey(s), now);
+    for (const [k, t] of refused) if (now - t > RD_KEEP_MS) refused.delete(k);
+  }
+  const wasRefused = (s) => { const t = refused.get(rdKey(s)); return t != null && Date.now() - t <= RD_KEEP_MS; };
+  const rdBlocked = (s) => viaRd(s) && (nameBlocked(s.name + "\n" + s.title) || wasRefused(s));
+
   /** StreamInfo.parse */
   function info(s) {
     const text = s.name + " " + s.title;
@@ -2325,20 +2339,20 @@ const SI = (() => {
     const resolutionRank = { "4K": 4, "1080p": 3, "720p": 2, SD: 1 }[resolution] || 0;
     return {
       stars, resolution, source, hdr: hdrList, audio, sizeGb: s.sizeGb, sizeLabel, instant: s.cached,
-      download: !s.cached && (hash != null || notCachedLink), cam, dedupeKey, resolutionRank,
+      download: !s.cached && (hash != null || notCachedLink), cam, dedupeKey, resolutionRank, rdBlocked: rdBlocked(s),
     };
   }
 
-  /** StreamInfo.comparator: cached first, then stars, resolution and size (slow connection: 720p/1080p, smaller first). */
+  /** StreamInfo.comparator: files RD will likely refuse last, then cached first, then stars, resolution and size (slow connection: 720p/1080p, smaller first). */
   function compare(slow) {
     const b = (x) => (x ? 1 : 0);
     if (slow) {
       const r = (i) => ({ "720p": 3, "1080p": 2 }[i.resolution] || 0);
       const sz = (i) => (i.sizeGb > 0 ? i.sizeGb : Number.MAX_VALUE);
-      return (x, y) => (b(y.info.instant) - b(x.info.instant)) || (r(y.info) - r(x.info)) ||
+      return (x, y) => (b(x.info.rdBlocked) - b(y.info.rdBlocked)) || (b(y.info.instant) - b(x.info.instant)) || (r(y.info) - r(x.info)) ||
         (sz(x.info) - sz(y.info)) || (y.info.stars - x.info.stars);
     }
-    return (x, y) => (b(y.info.instant) - b(x.info.instant)) || (y.info.stars - x.info.stars) ||
+    return (x, y) => (b(x.info.rdBlocked) - b(y.info.rdBlocked)) || (b(y.info.instant) - b(x.info.instant)) || (y.info.stars - x.info.stars) ||
       (y.info.resolutionRank - x.info.resolutionRank) || (y.info.sizeGb - x.info.sizeGb);
   }
 
@@ -2401,7 +2415,7 @@ const SI = (() => {
     return links[i];
   }
 
-  return { parseStream, info, ranked, arrange, playOrder, chooseFile, linkFor };
+  return { parseStream, info, ranked, arrange, playOrder, chooseFile, linkFor, markRefused, wasRefused, nameBlocked };
 })();
 // <<< StreamInfo port
 
@@ -2546,7 +2560,7 @@ async function rdFetch(method, path, fields, auth) {
     throw fatal("Couldn't reach Real-Debrid. Check your internet, or use Play on TV.");
   } finally { clearTimeout(timer); }
 }
-const RD_BLOCKED = "Real-Debrid blocked this release because a copyright holder flagged it. Other releases of this title are often blocked too. Try a different title, or watch this one on a streaming service you subscribe to.";
+const RD_BLOCKED = "Real-Debrid refuses this file by its name (error 35). Try another source.";
 /** A readable error for a failed RD call. "infringing_file": RD refuses releases a rights holder flagged. */
 function rdError(res) {
   const code = String((res.o && res.o.error) || "");
@@ -2808,7 +2822,8 @@ function srcRow(r, i) {
   if (f.audio) parts.push(`<span class="bdg">${esc(f.audio)}</span>`);
   if (f.source) parts.push(`<span class="so">${esc(f.source)}</span>`);
   if (f.sizeLabel) parts.push(`<span class="sz">${esc(f.sizeLabel)}</span>`);
-  if (f.instant) parts.push(`<span class="in">&#9889; Instant</span>`);
+  if (f.rdBlocked) parts.push(`<span class="dl">May be blocked</span>`);
+  else if (f.instant) parts.push(`<span class="in">&#9889; Instant</span>`);
   else if (f.download) parts.push(`<span class="dl">&#9203; Download</span>`);
   parts.push(`<span class="ad">${esc(r.source.addon)}</span>`);
   const tip = (r.source.name + "\n" + r.source.title).trim();
@@ -2954,20 +2969,31 @@ async function renderSources(v, tok, type, id, q) {
     const b = e.target.closest("[data-src]"); if (!b || busy) return;
     const s = rows[+b.dataset.src].source;
     lock(true); say(`Getting stream from ${s.addon}…`);
-    try { await go(s); } catch (err) { if (tok === routeTok) { sayErr(err); lock(false); } }
+    try { await go(s); } catch (err) { if (err.blocked) SI.markRefused(s); if (tok === routeTok) { sayErr(err); lock(false); } }
   });
   bestBtn.addEventListener("click", async () => {
     if (busy) return;
     lock(true);
-    // Resolver.best: the top 5 in list order (CAM and oversized only if nothing else), first that resolves wins.
-    const order = SI.playOrder(list, type === "tv", opts).slice(0, 5);
-    let last = null;
+    // Resolver.best: the top 6 in list order (CAM and oversized only if nothing else), first that resolves wins.
+    // RD refuses many release names (error 35): those sort last, and ones it refused before are skipped.
+    const all = SI.playOrder(list, type === "tv", opts);
+    const fresh = all.filter((s) => !SI.wasRefused(s));
+    const order = (fresh.length ? fresh : all).slice(0, 6);
+    let last = null, clean = 0;
     for (let i = 0; i < order.length; i++) {
       if (tok !== routeTok) return;
       say(`Finding the best source (${i + 1} of ${order.length})…`);
-      try { await go(order[i]); return; } catch (err) { last = err; if (err.fatal) break; }
+      try { await go(order[i]); return; } catch (err) {
+        last = err; if (err.fatal) break;
+        if (err.blocked) {
+          SI.markRefused(order[i]);
+          // RD also refuses every new file for a few minutes after several adds in a row.
+          if (!SI.nameBlocked(order[i].name + "\n" + order[i].title) && ++clean >= 2) { last = new Error("Real-Debrid is refusing new files for a few minutes. Wait 5 minutes and try again."); break; }
+        }
+      }
     }
-    if (tok === routeTok) { sayErr(last || new Error("No sources found."), last && (last.blocked || last.fatal) ? "" : " Pick one below."); lock(false); }
+    if (last && last.blocked) last = new Error("Real-Debrid refused the top sources for this title (error 35).");
+    if (tok === routeTok) { sayErr(last || new Error("No sources found."), last && last.fatal ? "" : " Pick one below."); lock(false); }
   });
 }
 
@@ -4604,7 +4630,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-12.3";
+const BUILD = "2026-10-16.1";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
