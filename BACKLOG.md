@@ -2,6 +2,10 @@
 
 Ranked upgrades from the October 2026 review by the four focus agents (.claude/agents). Effort: S small, M medium, L large. "Relay" marks items that need a Netlify deploy (15 credits each; batch them, see CLAUDE.md). Everything else is free to ship.
 
+## Done October 16
+
+- Real-Debrid name filter: RD refuses names with WEB-DL, WEB.x264, WEB.H264, HDTV.x264 or HDTV.XviD (exact case, rule of October 14, 2026) with error 35. Those sources sort last and show "May be blocked" (`RdFilter`, TV and web). A source RD refused is skipped for 6 hours. Play best source tries 6 and stops early when RD refuses clean names (its short account-wide block). The rule changes often: update `RdFilter.TAGS` and `RD_TAGS` together.
+
 ## Done in the October 12 overnight run
 
 - Live TV: Huntsville call signs go to Local even with "News" in the name (TV and web); a failed guide fetch retries after 90 s (the TV kept an empty guide for 6 hours); the web guide cache survives app launches (15 minutes, per playlist, no login stored); My Guide and For You use the event and game fallbacks; "Tap to play" in the web Live TV player.
