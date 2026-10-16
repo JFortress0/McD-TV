@@ -230,6 +230,7 @@ private fun SourceRow(r: RankedStream, onClick: () -> Unit, modifier: Modifier =
             if (info.source.isNotBlank()) Text(info.source, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
             if (info.sizeLabel.isNotBlank()) Text(info.sizeLabel, color = McdColors.White, fontSize = 13.sp, maxLines = 1)
             when {
+                info.rdBlocked -> Text("May be blocked", color = McdColors.Muted, fontSize = 13.sp, maxLines = 1)
                 info.instant -> Text("⚡ Instant", color = McdColors.RedBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 info.download -> Text("⏳ Download", color = McdColors.Muted, fontSize = 13.sp, maxLines = 1)
             }
