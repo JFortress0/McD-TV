@@ -2647,7 +2647,37 @@ function saveRdc(o) { rdc = o; if (o) LS.set(RDC_KEY, JSON.stringify(o)); else L
 const rdViaTv = () => !!(S.init && S.init.rd_connected && S.link);
 const rdAvailable = () => rdHere() || rdViaTv();
 
+/**
+ * One budget for every RD call on this page (phones, TVs and this page share one RD account): at most one call
+ * every 250 ms and 120 calls a minute. Over budget, calls wait their turn. After a 429 (error 34) every call waits
+ * out the pause: Retry-After when RD sends it, else 5 s, 15 s, then 30 s.
+ */
+const RDQ = { gap: 250, perMin: 120, last: 0, times: [], pauseUntil: 0, strikes: 0, chain: Promise.resolve() };
+function rdSlot() {
+  const turn = RDQ.chain.then(async () => {
+    for (;;) {
+      const now = Date.now();
+      while (RDQ.times.length && now - RDQ.times[0] >= 60000) RDQ.times.shift();
+      const wait = Math.max(RDQ.pauseUntil - now, RDQ.last + RDQ.gap - now, RDQ.times.length >= RDQ.perMin ? RDQ.times[0] + 60000 - now : 0);
+      if (wait <= 0) break;
+      await sleep(wait);
+    }
+    RDQ.last = Date.now(); RDQ.times.push(RDQ.last);
+  });
+  RDQ.chain = turn.catch(() => {});
+  return turn;
+}
+const rdIsBusy = (res) => res.status === 429 || !!(res.o && (res.o.error_code === 34 || res.o.error === "too_many_requests"));
+function rdNoteBusy(r) {
+  const ra = r && r.headers ? r.headers.get("Retry-After") : null;
+  let ms = ra != null && /^\d+$/.test(ra.trim()) ? +ra * 1000 : ra ? Date.parse(ra) - Date.now() : NaN;
+  if (!(ms > 0)) ms = [5000, 15000, 30000][Math.min(RDQ.strikes, 2)];
+  RDQ.strikes++;
+  RDQ.pauseUntil = Math.max(RDQ.pauseUntil, Date.now() + Math.min(ms, 300000));
+}
 async function rdFetch(method, path, fields, auth) {
+  await rdSlot();
+  if (/\/torrents\/addMagnet$/.test(path)) rdStampAdd();
   const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 25000);
   try {
     const r = await fetch(RD_PROXY + path, {
@@ -2656,16 +2686,23 @@ async function rdFetch(method, path, fields, auth) {
     });
     const txt = await r.text();
     let o = null; try { o = txt ? JSON.parse(txt) : null; } catch {}
-    return { status: r.status, ok: r.ok, o };
+    const res = { status: r.status, ok: r.ok, o };
+    if (rdIsBusy(res)) rdNoteBusy(r); else RDQ.strikes = 0;
+    return res;
   } catch {
     throw fatal("Couldn't reach Real-Debrid. Check your internet, or use Play on TV.");
   } finally { clearTimeout(timer); }
 }
 const RD_BLOCKED = "Real-Debrid refused this source (error 35). Try another source.";
+const RD_BUSY = "Real-Debrid is busy. Wait a moment and try again.";
+const RD_ADD_NOTE = "Real-Debrid allows one new source every 25 seconds.";
+/** RD said "too many requests": stop here (Play best source must not try the next one), the pause is already set. */
+function rdBusy() { const e = fatal(RD_BUSY); e.busy = true; return e; }
 /** A readable error for a failed RD call. "infringing_file" (error 35): RD refused the torrent at addMagnet, clean names too. */
 function rdError(res) {
   const code = String((res.o && res.o.error) || "");
-  if (code === "infringing_file") { const e = new Error(RD_BLOCKED); e.blocked = true; return e; }
+  if (rdIsBusy(res)) return rdBusy();
+  if (code === "infringing_file" || (res.o && res.o.error_code === 35)) { const e = new Error(RD_BLOCKED); e.blocked = true; return e; }
   return new Error("Real-Debrid: " + (code || "error " + res.status).replace(/_/g, " "));
 }
 let rdRefreshing = null;
@@ -2673,6 +2710,7 @@ let rdRefreshing = null;
 function rdRefresh() {
   if (!rdRefreshing) rdRefreshing = (async () => {
     const res = await rdFetch("POST", "oauth/v2/token", { client_id: rdc.id, client_secret: rdc.secret, code: rdc.r, grant_type: RD_GRANT });
+    if (rdIsBusy(res)) throw rdBusy();
     if (res.status === 400 || res.status === 401 || res.status === 403) { saveRdc(null); throw fatal(RECONNECT); }
     if (!res.ok || !res.o || !res.o.access_token) throw fatal("Real-Debrid sign-in failed (" + res.status + "). Try again.");
     saveRdc({ ...rdc, t: res.o.access_token, r: res.o.refresh_token || rdc.r, exp: Date.now() + (+res.o.expires_in || 3600) * 1000 - 60000 });
@@ -2763,6 +2801,8 @@ async function tvResolve(s, season, episode) {
     const t = setTimeout(() => { resWait.delete(req); reject(tvOff(TV_SLOW)); }, 45000);
     resWait.set(req, (m) => {
       clearTimeout(t); resWait.delete(req);
+      // The TV hit RD's "too many requests" (error 34): stop, like this page does, instead of asking again.
+      if (m.error && /too many requests|too_many_requests|error 34|\b429\b|Real-Debrid is busy/i.test(m.error)) { reject(rdBusy()); return; }
       if (m.error || !m.direct) { reject(new Error(m.error || "The TV could not get this stream.")); return; }
       resolve({ direct: m.direct, rdId: m.rd_id || null, mime: m.mime || "", filename: m.filename || "",
         tc: m.transcode && typeof m.transcode === "object" ? m.transcode : null });
@@ -2778,7 +2818,65 @@ async function tvResolve(s, season, episode) {
 }
 
 // ---- this device's own RD calls (mirror RealDebrid.kt) ----
-const rdInfo = (id) => rdCall("GET", "/torrents/info/" + encodeURIComponent(id));
+/**
+ * RD throttles new torrents: an addMagnet sent within about 25 s of the last one gets 451 error 35 even for a
+ * file it allows (measured October 17, 2026). So every add waits for a 25 s gap. The last add time is kept in
+ * this browser, so a reload keeps the gap. A refusal counts as real only when the add went out with the full gap.
+ */
+const RD_ADD_KEY = "mcdtv_web_rd_last_add", RD_ADD_SAFE = 25000;
+const RDADD = { last: 0, chain: Promise.resolve() };
+const rdAddGap = () => (typeof window.__rdAddGap === "number" ? window.__rdAddGap : RD_ADD_SAFE); // tests shorten it
+function rdLastAdd() { let t = 0; try { t = +localStorage.getItem(RD_ADD_KEY) || 0; } catch {} return Math.max(t, RDADD.last); }
+/** Called by rdFetch the moment an add goes out (after the call limiter), so the gap is measured between sends. */
+function rdStampAdd() { RDADD.last = Date.now(); try { localStorage.setItem(RD_ADD_KEY, String(RDADD.last)); } catch {} }
+/**
+ * Waits for the add gap, then runs [send] (the addMagnet call); one add at a time. [o.onWait] is told while it
+ * waits; [o.alive] false stops the wait. A 451 / error 35 from [send] gets fullGap: false when it went out too soon.
+ */
+function rdAddGate(o, send) {
+  o = o || {};
+  const turn = RDADD.chain.then(async () => {
+    let told = false;
+    for (;;) {
+      if (o.alive && !o.alive()) { const e = new Error("Stopped"); e.cancelled = true; throw e; }
+      const wait = rdLastAdd() + rdAddGap() - Date.now();
+      if (wait <= 0) break;
+      if (!told && o.onWait) { told = true; try { o.onWait(wait); } catch {} }
+      await sleep(Math.min(wait, 250));
+    }
+    const prev = rdLastAdd();
+    const full = () => !prev || RDADD.last - prev >= RD_ADD_SAFE;
+    try { return await send(); } catch (e) { if (e.blocked) e.fullGap = full(); throw e; }
+  });
+  RDADD.chain = turn.catch(() => {});
+  return turn;
+}
+/** /torrents/info, at most once every 2 s for the same torrent. */
+const rdInfoAt = new Map();
+async function rdInfo(id) {
+  const wait = (rdInfoAt.get(id) || 0) + 2000 - Date.now();
+  if (wait > 0) await sleep(wait);
+  rdInfoAt.set(id, Date.now());
+  if (rdInfoAt.size > 50) rdInfoAt.delete(rdInfoAt.keys().next().value);
+  const info = await rdCall("GET", "/torrents/info/" + encodeURIComponent(id));
+  if (info && info.status) rdListEdit(id, (x) => { x.status = info.status; x.progress = info.progress; });
+  return info;
+}
+/** Your RD torrents (first page), kept 60 s and updated here on add and delete, so each try doesn't list them again. */
+const RDLIST = { at: 0, list: null, user: "" };
+async function rdList() {
+  const user = rdToken() ? "t" : (rdc && rdc.id) || "";
+  if (RDLIST.list && RDLIST.user === user && Date.now() - RDLIST.at < 60000) return RDLIST.list;
+  const list = await rdCall("GET", "/torrents?limit=100&page=1");
+  Object.assign(RDLIST, { at: Date.now(), list: Array.isArray(list) ? list : [], user });
+  return RDLIST.list;
+}
+function rdListEdit(id, fn) {
+  if (!RDLIST.list) return;
+  const i = RDLIST.list.findIndex((x) => x.id === id);
+  if (i < 0) return;
+  if (fn) fn(RDLIST.list[i]); else RDLIST.list.splice(i, 1);
+}
 async function rdUnrestrict(link) {
   const o = await rdCall("POST", "/unrestrict/link", { link });
   if (!o || !o.download) throw new Error("Real-Debrid gave no link for this source.");
@@ -2788,28 +2886,33 @@ async function rdUnrestrict(link) {
 }
 const notCached = (p) => new Error(`Not cached on Real-Debrid yet (${Math.round(+p || 0)}%). Pick a ⚡ Instant source.`);
 /** RealDebrid.resolveHash: reuse the torrent if it is in your account, else add it, pick the file. Returns the RD link. */
-async function rdResolveHash(infoHash, fileIdx, season, episode) {
+async function rdResolveHash(infoHash, fileIdx, season, episode, o) {
   const hash = String(infoHash).trim().toLowerCase();
   const FAILED = ["magnet_error", "error", "virus", "dead"], BUSY = ["queued", "downloading", "compressing", "uploading"];
   let reuseId = null, existing = null;
   try {
-    const list = await rdCall("GET", "/torrents?limit=100&page=1");
-    existing = (Array.isArray(list) ? list : []).find((x) => String(x.hash || "").toLowerCase() === hash) || null;
+    existing = (await rdList()).find((x) => String(x.hash || "").toLowerCase() === hash) || null;
   } catch (e) { if (e.fatal) throw e; } // listing failed: just add the magnet
   if (existing) {
     const st = existing.status;
     if (st === "downloaded") {
-      const info = await rdInfo(existing.id);
-      const link = SI.linkFor(info, SI.chooseFile(info.files || [], fileIdx, season, episode));
+      let info = null;
+      try { info = await rdInfo(existing.id); } catch (e) { if (e.fatal) throw e; rdListEdit(existing.id); } // gone since the listing
+      const link = info && SI.linkFor(info, SI.chooseFile(info.files || [], fileIdx, season, episode));
       if (link) return link; // else the file we want was not selected in that copy: add a fresh one
     } else if (BUSY.includes(st)) throw notCached(existing.progress);
     else if (st === "waiting_files_selection" || st === "magnet_conversion") reuseId = existing.id;
   }
   const owned = reuseId == null;
-  const id = reuseId || (await rdCall("POST", "/torrents/addMagnet", { magnet: "magnet:?xt=urn:btih:" + hash })).id;
+  let id = reuseId;
+  if (!id) {
+    // A refusal after a short gap may be RD's add throttle, not a blocked file: rdAddGate marks which.
+    id = (await rdAddGate(o, () => rdCall("POST", "/torrents/addMagnet", { magnet: "magnet:?xt=urn:btih:" + hash }))).id;
+    if (RDLIST.list) RDLIST.list.unshift({ id, hash, status: "magnet_conversion", progress: 0 });
+  }
   try {
     let info = await rdInfo(id);
-    for (let waited = 0; info.status === "magnet_conversion" && waited < 10000; waited += 1000) { await sleep(1000); info = await rdInfo(id); }
+    for (const t0 = Date.now(); info.status === "magnet_conversion" && Date.now() - t0 < 10000;) info = await rdInfo(id);
     let status = info.status;
     if (status === "magnet_conversion") throw new Error("Real-Debrid is still reading this torrent. Pick another source.");
     if (FAILED.includes(status)) throw new Error("Real-Debrid: " + status.replace(/_/g, " "));
@@ -2825,12 +2928,11 @@ async function rdResolveHash(infoHash, fileIdx, season, episode) {
         if (link) return link;
       }
       if (FAILED.includes(status)) throw new Error("Real-Debrid: " + status.replace(/_/g, " "));
-      await sleep(1500);
     }
     throw notCached(info.progress);
   } catch (e) {
     // Not playable here: remove what we added so your RD cloud stays clean.
-    if (owned) rdCall("DELETE", "/torrents/delete/" + encodeURIComponent(id)).catch(() => {});
+    if (owned) { rdListEdit(id); rdCall("DELETE", "/torrents/delete/" + encodeURIComponent(id)).catch(() => {}); }
     throw e;
   }
 }
@@ -2851,23 +2953,23 @@ function hashFromUrl(url) {
 }
 
 /** Resolver.resolve for the browser: {direct, rdId, mime, filename, tc}. */
-async function resolveHere(s, meta) {
+async function resolveHere(s, meta, o) {
   const tv = meta.type === "tv" && meta.season > 0 && meta.episode > 0;
   const season = s.season != null ? s.season : tv ? meta.season : null;
   const episode = s.episode != null ? s.episode : tv ? meta.episode : null;
   if (s.url) {
     if (rdHere()) {
       const h = hashFromUrl(s.url);
-      if (h) return rdUnrestrict(await rdResolveHash(h.hash, s.fileIdx != null ? s.fileIdx : h.fileIdx, season, episode));
+      if (h) return rdUnrestrict(await rdResolveHash(h.hash, s.fileIdx != null ? s.fileIdx : h.fileIdx, season, episode, o));
       // Other links: RD unrestricts many hoster links itself, which also gives browser-friendly versions.
-      try { return await rdUnrestrict(s.url); } catch (e) { if (e.message === RECONNECT) throw e; }
+      try { return await rdUnrestrict(s.url); } catch (e) { if (e.message === RECONNECT || e.busy) throw e; }
       return { direct: s.url };
     }
-    if (rdViaTv()) { try { return await tvResolve(s, season, episode); } catch (e) { if (e.fatal) return { direct: s.url }; throw e; } }
+    if (rdViaTv()) { try { return await tvResolve(s, season, episode); } catch (e) { if (e.fatal && !e.busy) return { direct: s.url }; throw e; } }
     return { direct: s.url };
   }
   if (s.infoHash) {
-    if (rdHere()) return rdUnrestrict(await rdResolveHash(s.infoHash, s.fileIdx, season, episode));
+    if (rdHere()) return rdUnrestrict(await rdResolveHash(s.infoHash, s.fileIdx, season, episode, o));
     if (S.link && !(S.init && S.init.rd_connected === false)) return tvResolve(s, season, episode);
     throw fatal(NO_RD);
   }
@@ -2998,8 +3100,8 @@ async function renderSources(v, tok, type, id, q) {
   draw();
   let busy = false;
   const lock = (on) => { busy = on; bestBtn.disabled = on; $$(".src", listEl).forEach((b) => { b.disabled = on; }); };
-  async function go(s) {
-    const res = await resolveHere(s, meta);
+  async function go(s, o) {
+    const res = await resolveHere(s, meta, { alive: () => tok === routeTok, ...(o || {}) });
     if (tok !== routeTok) return true;
     say("Getting the stream ready…");
     const cands = await playCandidates(res);
@@ -3070,7 +3172,8 @@ async function renderSources(v, tok, type, id, q) {
     const b = e.target.closest("[data-src]"); if (!b || busy) return;
     const s = rows[+b.dataset.src].source;
     lock(true); say(`Getting stream from ${s.addon}…`);
-    try { await go(s); } catch (err) { if (err.blocked) SI.markRefused(s); if (tok === routeTok) { sayErr(err); lock(false); } }
+    const onWait = () => { if (tok === routeTok) say("Waiting to try this source. " + RD_ADD_NOTE); };
+    try { await go(s, { onWait }); } catch (err) { if (err.blocked && err.fullGap) SI.markRefused(s); if (tok === routeTok) { sayErr(err); lock(false); } }
   });
   bestBtn.addEventListener("click", async () => {
     if (busy) return;
@@ -3079,14 +3182,25 @@ async function renderSources(v, tok, type, id, q) {
     // RD refuses many torrents at addMagnet (error 35): likely ones sort last, and ones it refused before are skipped.
     const all = SI.playOrder(list, type === "tv", opts);
     const fresh = all.filter((s) => !SI.wasRefused(s));
-    const order = (fresh.length ? fresh : all).slice(0, 8);
+    let pool = fresh.length ? fresh : all;
+    // Sources already in your RD account play with no new add, so they go first (RD allows one new add every 25 s).
+    if (rdHere()) {
+      let owned = new Set();
+      try { owned = new Set((await rdList()).map((x) => String(x.hash || "").toLowerCase())); } catch (e) { if (e.busy) { if (tok === routeTok) { sayErr(e); lock(false); } return; } }
+      const hashOf = (s) => (s.infoHash ? s.infoHash.toLowerCase() : s.url ? (hashFromUrl(s.url) || {}).hash || "" : "");
+      if (tok !== routeTok) return;
+      pool = pool.filter((s) => owned.has(hashOf(s))).concat(pool.filter((s) => !owned.has(hashOf(s))));
+    }
+    const order = pool.slice(0, 8);
     let last = null;
     for (let i = 0; i < order.length; i++) {
       if (tok !== routeTok) return;
       say(`Finding the best source (${i + 1} of ${order.length})…`);
-      try { await go(order[i]); return; } catch (err) {
+      const onWait = () => { if (tok === routeTok) say(`Trying source ${i + 1} of ${order.length}. ${RD_ADD_NOTE}`); };
+      try { await go(order[i], { onWait }); return; } catch (err) {
+        if (err.cancelled || tok !== routeTok) return;
         last = err; if (err.fatal) break;
-        if (err.blocked) SI.markRefused(order[i]);
+        if (err.blocked && err.fullGap) SI.markRefused(order[i]);
       }
     }
     if (last && last.blocked) last = new Error("Real-Debrid refused the top sources (error 35). Play again tries the next ones.");
@@ -4747,7 +4861,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-16.3";
+const BUILD = "2026-10-17.1";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
