@@ -4,7 +4,7 @@ Ranked upgrades from the October 2026 review by the four focus agents (.claude/a
 
 ## Done October 16
 
-- Real-Debrid name filter: RD refuses names with WEB-DL, WEB.x264, WEB.H264, HDTV.x264 or HDTV.XviD (exact case, rule of October 14, 2026) with error 35. Those sources sort last and show "May be blocked" (`RdFilter`, TV and web). A source RD refused is skipped for 6 hours. Play best source tries 6 and stops early when RD refuses clean names (its short account-wide block). The rule changes often: update `RdFilter.TAGS` and `RD_TAGS` together.
+- Real-Debrid name filter: RD refuses names with WEB-DL, WEB.x264, WEB.H264, HDTV.x264 or HDTV.XviD (exact case, rule of October 14, 2026) with error 35. Those sources sort last and show "May be blocked" (`RdFilter`, TV and web). A source RD refused is skipped for 6 hours. Play best source tries 8 and does not stop early: RD refuses more names than the published tags. The rule changes often: update `RdFilter.TAGS` and `RD_TAGS` together.
 
 ## Done in the October 12 overnight run
 
