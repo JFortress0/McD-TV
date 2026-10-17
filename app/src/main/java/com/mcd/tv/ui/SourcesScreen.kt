@@ -89,7 +89,8 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
         if (busy) return
         busy = true
         status = "Finding the best source…"
-        runCatching { Resolver.best(all, meta) }
+        // Back leaves the screen and cancels this, including a wait between Real-Debrid adds.
+        runCatching { Resolver.best(all, meta, onStatus = { status = it }) }
             .onSuccess { (src, url) ->
                 // Same order Resolver.best tried, so "Try next source" picks up after the one that worked.
                 val order = StreamInfo.playOrder(all, episode = meta.type == "tv" || all.any { it.episode != null })

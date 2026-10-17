@@ -423,6 +423,8 @@ fun NoiseRunScreen(nav: Nav) {
         url = null
         val shows = Library.noiseShows()
         if (shows.isEmpty()) { status = "Add shows first."; return@LaunchedEffect }
+        // Real-Debrid takes one new torrent per 25 s: each round uses torrents already in the account, plus at most 2 adds.
+        val adds = Resolver.AddAllowance(2)
         repeat(6) { attempt ->
             val pick = runCatching {
                 val show = shows.random()
@@ -433,7 +435,7 @@ fun NoiseRunScreen(nav: Nav) {
                 val e = (1..s.episodeCount).random()
                 val m = PlayMeta("tv", show.id, show.name, show.poster, show.backdrop, s.number, e)
                 val list = Addons.streams("tv", "$imdb:${s.number}:$e")
-                val (src, u) = Resolver.best(list)
+                val (src, u) = Resolver.best(list, allowance = adds, onStatus = { status = "${show.name}: $it" })
                 Triple(m, u, src.headers)
             }.getOrNull()
             if (pick != null) { meta = pick.first; headers = pick.third; url = pick.second; return@LaunchedEffect }
