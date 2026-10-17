@@ -204,6 +204,103 @@ for (const w of [390,1280]) {
     await ctx.close();
   }
 }
+// Real-Debrid budget: Best source over refused sources, a 429 pause, and the page-wide limiter. The relay's /rd/
+// routes, TMDB and one addon are mocked. The API token is a fake test value.
+{
+  const hashes=Array.from({length:10},(_,i)=>(i.toString(16)+'abcdef0123456789').repeat(3).slice(0,40));
+  const streams=hashes.map((h,i)=>({name:'QA RD download 1080p',title:`Qa.Movie.1999.1080p.BluRay.x264.Q${i}\n💾 ${2+i/10} GB`,infoHash:h,fileIdx:0}));
+  const J={'Access-Control-Allow-Origin':'*','Content-Type':'application/json'};
+  async function rdPage(rd){
+    const env=await mk({width:390,height:844}); const {ctx,p}=env; const calls=[];
+    await ctx.route(/^https:\/\/api\.themoviedb\.org\/3\/movie\/603/,r=>r.fulfill({status:200,headers:J,body:JSON.stringify({id:603,title:'QA Movie',imdb_id:'tt0133093',runtime:120,release_date:'1999-03-31'})}));
+    await ctx.route(/^https:\/\/addon\.qa\.test\//,r=>{ const u=new URL(r.request().url());
+      return r.fulfill({status:200,headers:J,body:JSON.stringify(u.pathname.includes('/stream/')?{streams}:{id:'qa',name:'QA addon'})}); });
+    await ctx.route(/^https:\/\/jarvis-rd\.netlify\.app\/rd\//,r=>{ const q=r.request();
+      if(q.method()==='OPTIONS') return r.fulfill({status:204,headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, POST, DELETE'}});
+      const path=new URL(q.url()).pathname.replace('/rd/rest/1.0',''); const c={t:Date.now(),m:q.method(),path}; calls.push(c);
+      const a=rd(c,calls)||{status:200,body:'{}'};
+      return r.fulfill({status:a.status,headers:{...J,'Access-Control-Expose-Headers':'Retry-After',...(a.headers||{})},body:a.body}); });
+    await ctx.addInitScript(()=>{ window.__st=[]; setInterval(()=>{ const e=document.querySelector('#srcStatus'); const t=e&&e.innerText; if(t&&window.__st[window.__st.length-1]!==t) window.__st.push(t); },50); });
+    await p.goto(B); await p.evaluate(()=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_profile','p1');
+      localStorage.setItem('mcdtv_web_init',JSON.stringify({tmdb_key:'x'}));
+      localStorage.setItem('mcdtv_web_addons_mine',JSON.stringify(['https://addon.qa.test/manifest.json']));
+      localStorage.setItem('mcdtv_web_rdt','QAFAKETOKEN'+'0'.repeat(29)); });
+    return {...env,calls};
+  }
+  const best=async(p,want,gap)=>{ await p.goto(B+'#/sources/movie/603'); await p.reload();
+    await p.waitForFunction(()=>{const b=document.querySelector('#bestBtn');return b&&!b.disabled},null,{timeout:15000});
+    if(gap) await p.evaluate(g=>{ window.__rdAddGap=g; },gap);
+    await p.click('#bestBtn');
+    if(want) await p.waitForFunction((w)=>{const s=document.querySelector('#srcStatus');return s&&s.innerText.includes(w)},want,{timeout:40000}).catch(()=>{});
+    return p.$eval('#srcStatus',e=>e.innerText).catch(()=>''); };
+  // (1) 8 sources refused at addMagnet (HTTP 451, error 35): 1 listing + 8 addMagnet = 9 calls at most.
+  // The add gap is shortened to 1500 ms here: adds must be at least that far apart (a), and only the first add
+  // (no add before it, so a full gap) may mark its source refused; the later ones went out too soon (c).
+  {
+    const {ctx,p,errs,calls}=await rdPage((c)=>c.path==='/torrents'?{status:200,body:'[]'}
+      :c.path==='/torrents/addMagnet'?{status:451,body:'{"error":"infringing_file","error_code":35}'}:null);
+    const txt=await best(p,'refused the top sources',1500);
+    const addT=calls.filter(c=>c.path==='/torrents/addMagnet').map(c=>c.t), adds=addT.length, lists=calls.filter(c=>c.path==='/torrents').length;
+    const addGaps=addT.slice(1).map((t,i)=>t-addT[i]);
+    const marked=await p.evaluate(hs=>hs.map(h=>SI.wasRefused({infoHash:h,fileIdx:0,name:'',title:'',addon:''})),hashes);
+    const waitNote=await p.evaluate(()=>window.__st.includes('Trying source 2 of 8. Real-Debrid allows one new source every 25 seconds.'));
+    const stored=await p.evaluate(()=>localStorage.getItem('mcdtv_web_rd_last_add'));
+    log('rd refused x8:',txt,'| calls',calls.length,'addMagnet',adds,'listings',lists,'add gaps',addGaps.join(','),'marked refused',marked.filter(Boolean).length,'wait note',waitNote,'stored',!!stored);
+    if(addGaps.some(g=>g<1450)) fails.push(`rd add gate: adds ${addGaps} ms apart (min 1500)`);
+    if(marked.filter(Boolean).length!==1) fails.push(`rd add gate: ${marked.filter(Boolean).length} sources marked refused (expected 1, the full-gap add)`);
+    if(!waitNote) fails.push('rd add gate: "Trying source 2 of 8" note not shown');
+    if(!stored) fails.push('rd add gate: last add time not saved');
+    if(!/Real-Debrid refused the top sources \(error 35\)/.test(txt)) fails.push(`rd refused: status "${txt}"`);
+    if(adds>8) fails.push(`rd refused: ${adds} addMagnet calls (max 8)`);
+    if(calls.length>9) fails.push(`rd refused: ${calls.length} RD calls (max 9)`);
+    if(errs.length) fails.push(...errs.map(e=>`rd refused pageerror ${e}`));
+    await ctx.close();
+  }
+  // (2) 429 with Retry-After: 2 on the listing: Best source stops with the busy text; the next call waits about 2 s.
+  {
+    let n429=0;
+    const {ctx,p,errs,calls}=await rdPage((c)=>{ if(c.path==='/torrents'&&!n429++) return {status:429,headers:{'Retry-After':'2'},body:'{"error":"too_many_requests","error_code":34}'};
+      if(c.path==='/user') return {status:200,body:'{"username":"qa"}'}; return null; });
+    const txt=await best(p,'Real-Debrid is busy');
+    const before=calls.length, t429=calls[0]&&calls[0].t;
+    await p.evaluate(()=>rdCall('GET','/user')).catch(()=>{});
+    const gap=calls[before]?calls[before].t-t429:-1;
+    log('rd 429:',txt,'| calls before stop',before,'next call after',gap,'ms');
+    if(!txt.includes('Real-Debrid is busy. Wait a moment and try again.')) fails.push(`rd 429: status "${txt}"`);
+    if(before!==1) fails.push(`rd 429: Best source made ${before} calls (expected 1, then stop)`);
+    if(!(gap>=1800&&gap<=3500)) fails.push(`rd 429: next call ${gap} ms after the 429 (expected about 2000)`);
+    if(errs.length) fails.push(...errs.map(e=>`rd 429 pageerror ${e}`));
+    await ctx.close();
+  }
+  // (b) A source whose torrent is already in the account is tried first, with no addMagnet.
+  {
+    const {ctx,p,errs,calls}=await rdPage((c)=>{
+      if(c.path==='/torrents') return {status:200,body:JSON.stringify([{id:'ACC1',hash:hashes[7],status:'downloaded'}])};
+      if(c.path==='/torrents/info/ACC1') return {status:200,body:JSON.stringify({id:'ACC1',status:'downloaded',files:[{id:1,path:'/Qa.Movie.1999.1080p.mp4',bytes:2e9,selected:1}],links:['https://rd.qa.test/d/1']})};
+      if(c.path==='/unrestrict/link') return {status:200,body:JSON.stringify({id:'U1',download:'https://dl.qa.test/x.mp4',mimeType:'video/mp4',filename:'x.mp4',streamable:1})};
+      if(c.path==='/torrents/addMagnet') return {status:451,body:'{"error":"infringing_file","error_code":35}'};
+      return null; });
+    await best(p,'');
+    await p.waitForFunction(()=>location.hash.startsWith('#/play/'),null,{timeout:15000}).catch(()=>{});
+    const h=await p.evaluate(()=>location.hash), seq=calls.map(c=>c.m+' '+c.path);
+    log('rd in account first:',h,'|',seq.join(', '));
+    if(seq.some(x=>x.includes('addMagnet'))) fails.push(`rd in account: addMagnet was called (${seq})`);
+    if(seq[1]!=='GET /torrents/info/ACC1') fails.push(`rd in account: first try was not the owned torrent (${seq})`);
+    if(!h.startsWith('#/play/')) fails.push(`rd in account: did not open the player (${h})`);
+    await ctx.close();
+  }
+  // (3) The limiter: 6 calls at once leave at least 250 ms apart.
+  {
+    const {ctx,p,errs,calls}=await rdPage(()=>({status:200,body:'{"username":"qa"}'}));
+    await p.goto(B+'#/settings'); await p.waitForTimeout(500);
+    await p.evaluate(()=>Promise.all(Array.from({length:6},()=>rdCall('GET','/user'))));
+    const gaps=calls.slice(1).map((c,i)=>c.t-calls[i].t);
+    log('rd limiter gaps',gaps.join(','));
+    if(calls.length!==6||gaps.some(g=>g<235)) fails.push(`rd limiter: ${calls.length} calls, gaps ${gaps}`);
+    if(errs.length) fails.push(...errs.map(e=>`rd limiter pageerror ${e}`));
+    await ctx.close();
+  }
+}
 log('FAILS', fails.length); fails.forEach(f=>log(' -',f));
 await b.close();
 process.exit(fails.length ? 1 : 0);
