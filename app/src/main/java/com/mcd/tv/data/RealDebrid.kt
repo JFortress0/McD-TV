@@ -435,7 +435,7 @@ object RdCloud {
 /** Turns any source into a URL the player can open. */
 object Resolver {
     /** Sources Play best source tries before it gives up. */
-    private const val MAX_TRIES = 6
+    private const val MAX_TRIES = 8
 
     /**
      * meta (optional) supplies season/episode for TV when the source itself does not carry them,
@@ -472,7 +472,6 @@ object Resolver {
         // RD refuses many release names (error 35). Those sort last; ones it refused before are skipped.
         val order = StreamInfo.playOrder(list, episode)
         val fresh = order.filterNot { RdFilter.wasRefused(it) }.ifEmpty { order }
-        var cleanRefusals = 0
         for (s in fresh.take(MAX_TRIES)) {
             try {
                 return s to resolve(s, meta)
@@ -481,14 +480,10 @@ object Resolver {
                 last = e
                 // Real-Debrid needs reconnecting: no point trying the other torrents.
                 if (e is IllegalStateException && e.message?.startsWith("Real-Debrid needs reconnecting") == true) throw e
-                // RD also refuses every new file for a few minutes after several adds in a row.
-                if (e is RdRefused && e.code == 35 && !RdFilter.nameBlocked(s.name + "\n" + s.title) && ++cleanRefusals >= 2) {
-                    throw IllegalStateException("Real-Debrid is refusing new files for a few minutes. Wait 5 minutes and try again.", e)
-                }
             }
         }
         if (last is RdRefused && (last as RdRefused).code == 35) {
-            throw IllegalStateException("Real-Debrid refused the top sources for this title (error 35).", last)
+            throw IllegalStateException("Real-Debrid refused the top sources (error 35). Play again tries the next ones.", last)
         }
         throw last ?: IllegalStateException("No sources found. Add an addon in Settings.")
     }
