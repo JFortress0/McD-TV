@@ -90,6 +90,7 @@ object Relay {
         Prefs.relaySince = ""
         generation++
         if (started) scope.launch { listen(generation) }
+        HouseSync.onNewLink()
     }
 
     @Synchronized

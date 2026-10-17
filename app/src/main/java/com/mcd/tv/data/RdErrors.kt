@@ -4,7 +4,7 @@ package com.mcd.tv.data
  * Plain messages for Real-Debrid refusals, so a TV shows what to do instead of "HTTP 403 {...}".
  * RD replies with JSON like {"error":"ip_not_allowed","error_code":22}. Pure logic; tests in RdErrorsTest.
  */
-/** A Real-Debrid refusal with its error code (35 = the file's name is blocked). */
+/** A Real-Debrid refusal with its error code (35 = RD refused this source). */
 class RdRefused(val code: Int?, message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
 
 object RdErrors {
@@ -28,7 +28,7 @@ object RdErrors {
             code == 34 || status == 429 || "too_many" in name ->
                 "Real-Debrid is getting too many requests$tag. Wait a minute and try again."
             code == 35 || "infringing" in name ->
-                "Real-Debrid refuses this file by its name$tag. Try another source."
+                "Real-Debrid refused this source$tag. Try another source."
             code == 36 || "fair_usage" in name ->
                 "Real-Debrid's fair use limit is reached$tag. Try again later."
             code == 23 || "traffic" in name ->

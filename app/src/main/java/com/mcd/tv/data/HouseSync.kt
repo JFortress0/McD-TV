@@ -80,6 +80,8 @@ object HouseSync {
     @Volatile private var generation = 0
     @Volatile private var lastText = ""
     @Volatile private var lastReplyAt = 0L
+    /** Last answer to a phone's "tv_who" (separate from [lastReplyAt], which is for "sync_req"). */
+    @Volatile private var lastLinkReplyAt = 0L
     /** Parts of "sync" messages being put back together, by message id. */
     private val pending = LinkedHashMap<String, Array<String?>>()
 
@@ -195,7 +197,50 @@ object HouseSync {
         scope.launch { listen(gen) }
         scope.launch { watch() }
         scope.launch { if (canPublish()) runCatching { publishRequest() } }
+        scope.launch {
+            delay(LINK_ANNOUNCE_DELAY_MS) // after the start-up sync_req, so the house's burst limit is not hit
+            runCatching { announceLinkIfDue() }
+        }
         ProfileSync.start()
+    }
+
+    /** Wait after start before announcing this TV's link. */
+    private const val LINK_ANNOUNCE_DELAY_MS = 8_000L
+
+    /** Link announces only from a TV fully in the house: not while joining, not during "Copy once". */
+    private fun linkAllowed(): Boolean = !joining() && !copyOnce()
+
+    /** At start: tells the house this TV's link if it changed since the last announce, or 11 hours passed. */
+    private suspend fun announceLinkIfDue() {
+        if (!linkAllowed() || !canPublish()) return
+        val now = System.currentTimeMillis()
+        val sig = TvLink.signature(Prefs.relayId)
+        val lastAt = Prefs.json("tv_link_at").toLongOrNull() ?: 0L
+        if (!TvLink.announceDue(sig, Prefs.json("tv_link_sig"), now, lastAt)) return
+        publishLink()
+    }
+
+    /** Called by [Relay.newLink]: phones on the old link can find the new one through the house. */
+    fun onNewLink() {
+        if (!started || Prefs.houseId.isBlank() || Prefs.houseKey.isBlank()) return // start() announces it
+        scope.launch {
+            delay(2_000L)
+            if (linkAllowed() && canPublish()) runCatching { publishLink() }
+        }
+    }
+
+    /** Sends "tv_link" (this TV's setup link) to the house. Never logged: it holds the relay key. */
+    private suspend fun publishLink(): Boolean {
+        val id = Prefs.relayId
+        val key = Prefs.relayKey
+        if (id.isBlank() || key.isBlank()) return false
+        val now = System.currentTimeMillis()
+        val ok = post(TvLink.message(Prefs.deviceId, deviceName(), id, key, now))
+        if (ok) {
+            Prefs.putJson("tv_link_sig", TvLink.signature(id))
+            Prefs.putJson("tv_link_at", now.toString())
+        }
+        return ok
     }
 
     /** Settings copied by "Copy once": everything shared except Real-Debrid, so the other person keeps their own. */
@@ -359,6 +404,18 @@ object HouseSync {
     private suspend fun handle(m: JSONObject) {
         val from = m.optString("from")
         if (from == Prefs.deviceId) return
+        when (m.optString("type")) {
+            // Phones and TVs finding each other's setup link. Not peers for profile sync, never applied.
+            "tv_link" -> return
+            "tv_who" -> {
+                if (!linkAllowed()) return
+                val now = System.currentTimeMillis()
+                if (!TvLink.replyDue(now, lastLinkReplyAt) || !canPublish(now)) return
+                lastLinkReplyAt = now
+                runCatching { publishLink() }
+                return
+            }
+        }
         if (profileSyncAllowed() && !m.optBoolean("once", false)) ProfileSync.notePeer(from)
         when (m.optString("type")) {
             "pdelta", "pstate", "pdigest" -> if (profileSyncAllowed()) runCatching { ProfileSync.onMessage(m) }
