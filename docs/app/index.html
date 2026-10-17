@@ -985,6 +985,7 @@ function setStatus(s) {
   const was = S.status;
   S.status = s;
   if (s === "online" && was !== "online") setTimeout(() => WLQ.flush(), 1500); // the TV is back: resend watchlist edits it missed
+  if (s === "offline" && was !== "offline") autoFindTvs(); // the linked TV is quiet: ask the house which TVs are on
   const dot = $("#tvdot"), lbl = $("#tvlbl");
   dot.className = "dot " + s;
   lbl.textContent = { none: "Not linked", connecting: "Connecting", online: "TV online", offline: "TV offline" }[s] || s;
@@ -1161,6 +1162,105 @@ async function connectWithCode(code) {
   await syncHouse();
   return true;
 }
+// ---------- linked TVs (shared with the Control page) ----------
+// The Control page keeps linked TVs in "mcdtv_tvs": [{id, key, name, house, dev?}]. "house" is "<house id>.<house key>".
+const TVS_KEY = "mcdtv_tvs";
+const HOUSE_RX = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{20,}$/;
+function tvsRead() { const a = readJSON(TVS_KEY); return Array.isArray(a) ? a.filter((t) => t && typeof t === "object" && t.id && t.key) : []; }
+/** No house link yet (no TV init, no code): take the one the Control page saved. A later TV init still wins. */
+function adoptHouse() {
+  if (S.init && S.init.house) return false;
+  const a = tvsRead(), mine = S.link && a.find((t) => t.id === S.link.id);
+  const pick = [mine, ...a].find((t) => t && HOUSE_RX.test(String(t.house || "")));
+  if (!pick) return false;
+  S.init = S.init ? { ...S.init, house: pick.house } : { house: pick.house, ts: 0 };
+  saveInit();
+  return true;
+}
+// Find my TVs: ask on the house topic, each TV answers with its current link ("tv_link"). One run per 60 s.
+const PHONE_KEY = "mcdtv_web_phone";
+const phoneId = () => { let id = LS.get(PHONE_KEY); if (!/^[a-z0-9]{8,32}$/.test(id || "")) { id = newReq() + newReq(); LS.set(PHONE_KEY, id); } return id; };
+const NO_TV = "No TV answered. TVs need the latest Jarvis update to answer here. Open Jarvis on a TV and try again.";
+let tvFind = null, tvFindAt = 0, tvFindLast = null, tvAutoFind = false;
+function findTvs() {
+  if (tvFind) return tvFind;
+  if (tvFindLast && Date.now() - tvFindAt < 60000) return Promise.resolve(tvFindLast);
+  tvFindAt = Date.now();
+  tvFind = (async () => {
+    adoptHouse();
+    const house = String((S.init && S.init.house) || "");
+    if (!HOUSE_RX.test(house)) return { tvs: [], error: "nohouse" };
+    const [hid, hk] = house.split(".");
+    let key; try { key = await importKey(hk); } catch { return { tvs: [], error: "nohouse" }; }
+    const topic = RELAY + "mcdtv-" + hid + "-house";
+    try {
+      const r = await fetch(topic, { method: "POST", body: await encrypt({ type: "tv_who", from: phoneId(), ts: Date.now() }, key) });
+      if (!r.ok) return { tvs: [], error: "relay" };
+    } catch { return { tvs: [], error: "relay" }; }
+    await sleep(8000);
+    let txt = "";
+    try { const r = await fetch(topic + "/json?poll=1&since=12h", { cache: "no-store" }); if (!r.ok) return { tvs: [], error: "relay" }; txt = await r.text(); }
+    catch { return { tvs: [], error: "relay" }; }
+    const by = new Map();
+    for (const line of txt.split("\n")) {
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      if (!e || e.event !== "message" || typeof e.message !== "string") continue;
+      const m = await decrypt(e.message, key);
+      if (!m || m.type !== "tv_link" || typeof m.from !== "string" || !m.from) continue;
+      const lm = /^([a-z2-9]{10,40})\.([A-Za-z0-9_-]{40,50})$/.exec(String(m.link || ""));
+      if (!lm) continue;
+      const ts = +m.ts || (+e.time || 0) * 1000;
+      const dev = m.from.slice(0, 64), old = by.get(dev);
+      if (old && old.ts >= ts) continue;
+      by.set(dev, { dev, id: lm[1], key: lm[2], name: String(m.name || "TV").replace(/\s+/g, " ").trim().slice(0, 40) || "TV", ts });
+    }
+    const tvs = [...by.values()].sort((a, b) => b.ts - a.ts);
+    if (!tvs.length) return { tvs, error: "" };
+    // Shared with the Control page: same shape, plus "dev". One entry per link id and per TV, the last 10.
+    const before = tvsRead(), cur = S.link && before.find((t) => t.id === S.link.id);
+    let a = before;
+    for (const t of tvs.slice().reverse()) {
+      a = a.filter((x) => x.id !== t.id && x.dev !== t.dev);
+      a.push({ id: t.id, key: t.key, name: t.name, house, dev: t.dev });
+    }
+    LS.set(TVS_KEY, JSON.stringify(a.slice(-10)));
+    let switched = null;
+    if (!(S.link && tvs.some((t) => t.id === S.link.id))) {
+      // Same TV with a new link, or no TV linked yet: link it. A different TV that is on only shows in the list,
+      // so a phone linked to a TV that is just off does not move to another room's TV by itself.
+      const sameName = cur && cur.name ? tvs.filter((t) => t.name === cur.name) : [];
+      // The same TV: its device id, else its name when only one TV that answered has it (two Fire TVs share a name).
+      switched = (cur && cur.dev && tvs.find((t) => t.dev === cur.dev)) || (!(cur && cur.dev) && sameName.length === 1 ? sameName[0] : null) || (S.link ? null : tvs[0]);
+      if (switched) {
+        await useTv(switched);
+        toast("Found your " + switched.name + ". Linked again.", "ok");
+      } else if (S.status !== "online") {
+        toast("Your TV is not answering. On now: " + tvs.map((t) => t.name).join(", ") + ". Use one in Settings > Find my TVs.", "warn");
+      }
+    }
+    return { tvs, error: "", switched: switched ? switched.id : "" };
+  })().then((r) => r, () => ({ tvs: [], error: "relay" })).then((r) => { tvFindLast = r; if (r.error) tvFindAt = 0; return r; }).finally(() => { tvFind = null; });
+  return tvFind;
+}
+/** Links this phone to a TV of the same house. Settings and lists are the house's, so they stay. */
+async function useTv(t) {
+  if (!t || !t.id || !t.key) return;
+  if (S.init && S.init.house) { S.init.relay_id = t.id; saveInit(); }
+  await pair({ id: t.id, key: t.key });
+}
+/** Once per app open, when the linked TV does not answer (or none is linked but the house is known). */
+function autoFindTvs() {
+  if (tvAutoFind || !(S.init && S.init.house)) return;
+  tvAutoFind = true;
+  findTvs().catch(() => {});
+}
+function tvFoundHTML(r) {
+  if (!r) return "";
+  if (r.error === "nohouse") return `<li><span class="pill no">!</span><span>Connect this phone to your house first: use Connect with a code below.</span></li>`;
+  if (r.error) return `<li><span class="pill no">!</span><span>Couldn't reach the TV link. Check your internet and try again.</span></li>`;
+  if (!r.tvs.length) return `<li><span class="pill no">!</span><span>${esc(NO_TV)}</span></li>`;
+  return r.tvs.map((t) => `<li><span class="pill ${S.link && S.link.id === t.id ? "ok" : ""}">TV</span><span style="flex:1"><b>${esc(t.name)}</b>${S.link && S.link.id === t.id ? `<span class="muted">Linked now</span>` : ""}</span>${S.link && S.link.id === t.id ? "" : `<button class="btn small" data-act="usetv" data-id="${esc(t.id)}">Use this TV</button>`}</li>`).join("");
+}
 async function askInit() {
   if (!S.link) return;
   S.lastInitAsk = Date.now();
@@ -1211,6 +1311,7 @@ async function pair(l) {
   if (!changed && S.key) return;
   if (S.init && S.init.relay_id && S.init.relay_id !== l.id) { S.init = null; LS.del(INIT_KEY); S.plists = {}; LS.del(PLISTS_KEY); LS.del(JKEY); LV.reset(); }
   try { S.key = await importKey(l.key); } catch { S.link = null; S.key = null; toast("That link is not valid.", "warn"); return; }
+  adoptHouse();
   if (S.init) { S.init.relay_id = l.id; saveInit(); }
   connect();
 }
@@ -2268,7 +2369,7 @@ const SI = (() => {
     };
   }
 
-  /** RdFilter: RD refuses names with these tags, exact case (October 14, 2026), and files it refused here. */
+  /** RdFilter: names with these tags (exact case, October 14, 2026) were often refused, so they rank last. RD also refuses clean names. Plus files it refused here. */
   const RD_TAGS = ["WEB-DL", "WEB.x264", "WEB.H264", "HDTV.x264", "HDTV.XviD"];
   const RD_KEEP_MS = 6 * 3600 * 1000;
   const refused = new Map();
@@ -2560,8 +2661,8 @@ async function rdFetch(method, path, fields, auth) {
     throw fatal("Couldn't reach Real-Debrid. Check your internet, or use Play on TV.");
   } finally { clearTimeout(timer); }
 }
-const RD_BLOCKED = "Real-Debrid refuses this file by its name (error 35). Try another source.";
-/** A readable error for a failed RD call. "infringing_file": RD refuses releases a rights holder flagged. */
+const RD_BLOCKED = "Real-Debrid refused this source (error 35). Try another source.";
+/** A readable error for a failed RD call. "infringing_file" (error 35): RD refused the torrent at addMagnet, clean names too. */
 function rdError(res) {
   const code = String((res.o && res.o.error) || "");
   if (code === "infringing_file") { const e = new Error(RD_BLOCKED); e.blocked = true; return e; }
@@ -2975,7 +3076,7 @@ async function renderSources(v, tok, type, id, q) {
     if (busy) return;
     lock(true);
     // Resolver.best: the top 8 in list order (CAM and oversized only if nothing else), first that resolves wins.
-    // RD refuses many release names (error 35): those sort last, and ones it refused before are skipped.
+    // RD refuses many torrents at addMagnet (error 35): likely ones sort last, and ones it refused before are skipped.
     const all = SI.playOrder(list, type === "tv", opts);
     const fresh = all.filter((s) => !SI.wasRefused(s));
     const order = (fresh.length ? fresh : all).slice(0, 8);
@@ -4179,6 +4280,8 @@ function renderSettings(v) {
       ${S.link ? `<p class="muted">This browser is linked to your Jarvis TV. Play on TV, Open on TV and Watchlist are sent to the TV encrypted, through the same relay as the Control page.</p>
         <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="retry">Refresh from TV</button><a class="btn small" href="../#${S.link.id}.${S.link.key}">Control page</a><button class="btn small" data-act="copylink">Copy link</button><button class="btn small" data-act="unpair">Unlink this browser</button></div>`
       : `<p class="muted">Not linked. <a href="#/pair" style="color:var(--bright)">How to link your TV</a></p>`}
+      <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="findtvs" id="findTvBtn">Find my TVs</button></div>
+      <ul class="netlist" id="tvFound" aria-live="polite">${tvFoundHTML(tvFindLast)}</ul>
       <label for="pasteLink">${S.link ? "Link a different TV: paste its link" : "Paste a Jarvis link"}</label>
       <div class="rowf"><input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off"><button class="btn small primary" data-act="paste">Link</button></div>
     </div>
@@ -4503,6 +4606,24 @@ document.addEventListener("click", async (e) => {
       try { await navigator.clipboard.writeText(m3u); toast("Playlist link copied", "ok"); } catch { prompt("Copy your playlist link:", m3u); }
       break;
     }
+    case "findtvs": {
+      const btn = $("#findTvBtn"), ul = $("#tvFound");
+      if (btn) btn.disabled = true;
+      if (ul) ul.innerHTML = `<li><span class="pill">…</span><span>Asking your TVs. This takes about 10 seconds.</span></li>`;
+      const r = await findTvs();
+      const ul2 = $("#tvFound"), btn2 = $("#findTvBtn");
+      if (ul2) ul2.innerHTML = tvFoundHTML(r);
+      if (btn2) btn2.disabled = false;
+      if (!r.error && !r.tvs.length) toast(NO_TV, "warn");
+      break;
+    }
+    case "usetv": {
+      const t = tvFindLast && tvFindLast.tvs.find((x) => x.id === d.id);
+      if (!t) break;
+      await useTv(t); toast("Linked to your " + t.name, "ok");
+      const ul = $("#tvFound"); if (ul) ul.innerHTML = tvFoundHTML(tvFindLast);
+      break;
+    }
     case "paircode": {
       const inp = $("#pairCode");
       const code = String((inp && inp.value) || "").replace(/\D/g, "");
@@ -4626,7 +4747,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-16.2";
+const BUILD = "2026-10-16.3";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
@@ -4698,6 +4819,8 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
   if (fromHash) { history.replaceState(null, "", location.pathname + location.search + "#/"); await pair(fromHash); }
   else if (stored) await pair(stored);
   else setStatus("none");
+  adoptHouse(); // the Control page may know the house when no TV sent it here
+  if (!S.link) autoFindTvs();
   route();
   // The house's copy: settings and lists even when no TV answers.
   syncHouse();
