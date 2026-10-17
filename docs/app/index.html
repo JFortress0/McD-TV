@@ -2974,25 +2974,21 @@ async function renderSources(v, tok, type, id, q) {
   bestBtn.addEventListener("click", async () => {
     if (busy) return;
     lock(true);
-    // Resolver.best: the top 6 in list order (CAM and oversized only if nothing else), first that resolves wins.
+    // Resolver.best: the top 8 in list order (CAM and oversized only if nothing else), first that resolves wins.
     // RD refuses many release names (error 35): those sort last, and ones it refused before are skipped.
     const all = SI.playOrder(list, type === "tv", opts);
     const fresh = all.filter((s) => !SI.wasRefused(s));
-    const order = (fresh.length ? fresh : all).slice(0, 6);
-    let last = null, clean = 0;
+    const order = (fresh.length ? fresh : all).slice(0, 8);
+    let last = null;
     for (let i = 0; i < order.length; i++) {
       if (tok !== routeTok) return;
       say(`Finding the best source (${i + 1} of ${order.length})…`);
       try { await go(order[i]); return; } catch (err) {
         last = err; if (err.fatal) break;
-        if (err.blocked) {
-          SI.markRefused(order[i]);
-          // RD also refuses every new file for a few minutes after several adds in a row.
-          if (!SI.nameBlocked(order[i].name + "\n" + order[i].title) && ++clean >= 2) { last = new Error("Real-Debrid is refusing new files for a few minutes. Wait 5 minutes and try again."); break; }
-        }
+        if (err.blocked) SI.markRefused(order[i]);
       }
     }
-    if (last && last.blocked) last = new Error("Real-Debrid refused the top sources for this title (error 35).");
+    if (last && last.blocked) last = new Error("Real-Debrid refused the top sources (error 35). Play again tries the next ones.");
     if (tok === routeTok) { sayErr(last || new Error("No sources found."), last && last.fatal ? "" : " Pick one below."); lock(false); }
   });
 }
@@ -4630,7 +4626,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-16.1";
+const BUILD = "2026-10-16.2";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
