@@ -143,6 +143,67 @@ for (const w of [390,1280]) {
   if(errs.length) fails.push(...errs.map(e=>`update test pageerror ${e}`));
   await ctx.close();
 }
+// Find my TVs: the house link from the Control page's "mcdtv_tvs", then "tv_who" on the house topic and the TVs'
+// "tv_link" answers (mocked here, encrypted with a test house key) relink the phone and update "mcdtv_tvs".
+{
+  const rb=(n)=>{ const a=new Uint8Array(n); globalThis.crypto.getRandomValues(a); return Buffer.from(a).toString('base64url'); };
+  const HID='qahouse'+Date.now().toString(36), HK=rb(32), house=HID+'.'+HK;
+  const OLD={id:'oldfiretvaa22',key:rb(32)}, NEW={id:'newfiretvbb22',key:rb(32)}, GTV={id:'googletvcc22',key:rb(32)};
+  const keysAll=[HK,OLD.key,NEW.key,GTV.key];
+  let reply=''; const posts=[];
+  const ntfyMock=async(ctx)=>ctx.route(/^https:\/\/ntfy\.sh\/mcdtv-qahouse/,r=>{ const q=r.request(), u=new URL(q.url());
+    if(q.method()==='POST'){ posts.push(q.postData()||''); return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'},body:'{}'}); }
+    if(u.pathname.endsWith('/json')) return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/x-ndjson'},body:reply});
+    return r.fulfill({status:404,headers:{'Access-Control-Allow-Origin':'*'},body:''}); });
+  const seed=(p,link)=>p.evaluate(([house,OLD,link])=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_profile','p1');
+    localStorage.setItem('mcdtv_web_init',JSON.stringify({tmdb_key:'x'}));
+    localStorage.setItem('mcdtv_tvs',JSON.stringify([{id:OLD.id,key:OLD.key,name:'Fire TV',house}]));
+    if(link) localStorage.setItem('mcdtv_link',OLD.id+'.'+OLD.key); },[house,OLD,link]);
+  // (a) + (b): linked to an old Fire TV link that no longer answers.
+  {
+    const {ctx,p,errs}=await mk({width:390,height:844}); await ntfyMock(ctx);
+    await p.goto(B); await seed(p,true);
+    const t=Date.now();
+    reply=(await p.evaluate(async([HK,NEW,GTV,t])=>{ const k=await importKey(HK); const ev=async(o,i)=>JSON.stringify({id:'m'+i,time:Math.floor(t/1000),event:'message',topic:'x',message:await encrypt(o,k)});
+      return [await ev({type:'sync',ts:t},0), await ev({type:'tv_link',from:'devfire',name:'Fire TV',link:'bad.link',ts:t-1000},1),
+        await ev({type:'tv_link',from:'devfire',name:'Fire TV',link:NEW.id+'.'+NEW.key,ts:t-500},2),
+        await ev({type:'tv_link',from:'devgoogle',name:'Google TV',link:GTV.id+'.'+GTV.key,ts:t},3)].join('\n')+'\n'; },[HK,NEW,GTV,t]));
+    await p.reload(); await p.waitForTimeout(800);
+    const a=await p.evaluate(()=>({ready:RC.ready(),house:!!(S.init&&S.init.house),saved:!!(JSON.parse(localStorage.mcdtv_web_init||'{}').house)}));
+    log('find tvs (a) house from mcdtv_tvs',JSON.stringify(a));
+    if(!a.ready||!a.house||!a.saved) fails.push(`find tvs (a): house link not adopted from mcdtv_tvs ${JSON.stringify(a)}`);
+    const r=await p.evaluate(async()=>{ const r=await findTvs(); await new Promise(z=>setTimeout(z,300));
+      return {n:r.tvs.length,link:S.link&&S.link.id,tvs:JSON.parse(localStorage.mcdtv_tvs||'[]').map(t=>t.id+':'+(t.dev||'')+':'+t.name),stored:localStorage.mcdtv_link.split('.')[0],house:!!(S.init&&S.init.house),toast:document.querySelector('#toast').innerText,errs:localStorage.mcdtv_web_errors||''}; });
+    log('find tvs (b)',JSON.stringify({...r,errs:r.errs.length}));
+    if(r.n!==2) fails.push(`find tvs (b): expected 2 TVs, got ${r.n}`);
+    if(r.link!==NEW.id||r.stored!==NEW.id) fails.push(`find tvs (b): link not switched to the same-name TV (${r.link})`);
+    if(!r.tvs.includes(NEW.id+':devfire:Fire TV')||!r.tvs.includes(GTV.id+':devgoogle:Google TV')) fails.push(`find tvs (b): mcdtv_tvs not updated ${r.tvs}`);
+    if(!r.house) fails.push('find tvs (b): house link lost after relinking');
+    if(!/Found your Fire TV\. Linked again\./.test(r.toast)) fails.push(`find tvs (b): toast "${r.toast}"`);
+    const leak=keysAll.find(k=>r.toast.includes(k)||r.errs.includes(k)); if(leak) fails.push('find tvs (b): a key shows in a toast or the error log');
+    const who=await p.evaluate(async([HK,msgs])=>{ const k=await importKey(HK); const out=[]; for(const m of msgs){ const o=await decrypt(m,k); if(o) out.push(o.type+':'+typeof o.from+':'+typeof o.ts); } return out; },[HK,posts]);
+    log('find tvs posts',who.join(',')); if(!who.length||!who.every(x=>x==='tv_who:string:number')) fails.push(`find tvs: tv_who post ${who}`);
+    if(errs.length) fails.push(...errs.map(e=>`find tvs pageerror ${e}`));
+    await ctx.close();
+  }
+  // (c): nobody answers: Settings > Find my TVs says so.
+  {
+    reply='';
+    const {ctx,p,errs}=await mk({width:390,height:844}); await ntfyMock(ctx);
+    await p.goto(B); await seed(p,false);
+    await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(800);
+    if(!await p.$('#findTvBtn')) fails.push('find tvs (c): Find my TVs button missing'); else {
+      await p.click('#findTvBtn');
+      await p.waitForFunction(()=>!document.querySelector('#findTvBtn').disabled,null,{timeout:20000}).catch(()=>fails.push('find tvs (c): never finished'));
+      const txt=await p.$eval('#tvFound',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+      log('find tvs (c) no answer',txt);
+      if(!txt.includes('No TV answered. TVs need the latest Jarvis update to answer here. Open Jarvis on a TV and try again.')) fails.push(`find tvs (c): no-TV message missing: "${txt}"`);
+      const h=await hsc(p); if(h.sw>h.iw) fails.push(`find tvs (c): settings overflow ${h.sw} ${h.wide}`);
+    }
+    if(errs.length) fails.push(...errs.map(e=>`find tvs (c) pageerror ${e}`));
+    await ctx.close();
+  }
+}
 log('FAILS', fails.length); fails.forEach(f=>log(' -',f));
 await b.close();
 process.exit(fails.length ? 1 : 0);
