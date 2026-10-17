@@ -16,7 +16,10 @@ class RdErrorsTest {
     @Test
     fun otherKnownErrors() {
         assertTrue(RdErrors.api(429, "").contains("too many requests (HTTP 429)"))
-        assertTrue(RdErrors.api(503, """{"error":"infringing_file","error_code":35}""").contains("refuses this file"))
+        assertEquals(
+            "Real-Debrid refused this source (error 35). Try another source.",
+            RdErrors.api(451, """{"error":"infringing_file","error_code":35}"""),
+        )
         assertTrue(RdErrors.api(503, """{"error":"fair_usage_limit","error_code":36}""").contains("fair use"))
         assertTrue(RdErrors.api(403, """{"error":"permission_denied","error_code":9}""").contains("refused this account"))
     }
