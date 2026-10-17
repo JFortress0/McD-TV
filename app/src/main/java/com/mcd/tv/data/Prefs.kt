@@ -333,6 +333,10 @@ object Prefs {
     var rdExpiresAt: Long
         get() = sp.getLong("rd_expires", 0L)
         set(v) = sp.edit().putLong("rd_expires", v).apply()
+    /** When this TV last sent a torrent to Real-Debrid (RdAddGate). This TV only. */
+    var rdLastAdd: Long
+        get() = sp.getLong("rd_last_add", 0L)
+        set(v) = sp.edit().putLong("rd_last_add", v).apply()
 
     fun clearRealDebrid() {
         sp.edit().remove("rd_client_id").remove("rd_client_secret").remove("rd_access")
@@ -356,7 +360,7 @@ object Prefs {
     /** Keys that belong to this TV only and never sync to the account. */
     private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key",
         "house_id", "house_key", "house_since", "house_stamp", "device_id", "active_profile", "sync_peers", "sync_budget", "sync_pause",
-        "tv_link_sig", "tv_link_at")
+        "tv_link_sig", "tv_link_at", "rd_last_add")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String

@@ -71,6 +71,56 @@ object RealDebrid {
     /** Only one token refresh at a time; the others wait and reuse its result. */
     private val refreshLock = Mutex()
 
+    /** Paces every RD call this TV makes and backs off after "too many requests" (RdLimiter). */
+    internal val limiter = RdLimiter(clock = { System.currentTimeMillis() })
+
+    /** One new torrent per 25 s on this TV: RD refuses faster adds with error 35 (RdAddGate). */
+    internal val addGate = RdAddGate(
+        clock = { System.currentTimeMillis() },
+        load = { Prefs.rdLastAdd },
+        save = { Prefs.rdLastAdd = it },
+    )
+
+    /** How long until this TV may send the next new torrent to RD, in ms. */
+    fun addWaitMs(): Long = addGate.waitMs()
+
+    /**
+     * POST /torrents/addMagnet through [addGate]. Returns RD's torrent id.
+     * A 451 / error 35 on an add sent a full gap after the last one is RD refusing the file, and callers
+     * remember it (RdFilter.markRefused). An add after a shorter gap must never be remembered as refused:
+     * that 35 is RD's add throttle. The gate makes that case impossible; if it happens anyway, the code is dropped.
+     */
+    internal suspend fun postAdd(magnet: String): String {
+        val ticket = addGate.acquireAdd()
+        try {
+            return JSONObject(apiPost("/torrents/addMagnet", mapOf("magnet" to magnet))).getString("id")
+        } catch (e: RdRefused) {
+            if (e.code == 35 && !ticket.fullGap) throw RdRefused(null, e.message.orEmpty(), e)
+            throw e
+        }
+    }
+
+    /** First page of the torrent list, kept 60 s so each attempt does not list the account again. */
+    internal val torrents = RdTorrentCache(clock = { System.currentTimeMillis() })
+
+    /**
+     * Runs one RD request through [limiter]. "Too many requests" (HTTP 429 / error 34) starts the backoff
+     * and becomes [RdBusy], so callers stop instead of trying more sources.
+     */
+    private suspend fun <T> limited(request: suspend () -> T): T {
+        limiter.acquire()
+        try {
+            return request().also { limiter.onSuccess() }
+        } catch (e: HttpException) {
+            if (RdLimiter.isBusy(e.code, e.message.orEmpty())) {
+                limiter.onBusy(e.retryAfter)
+                throw RdBusy()
+            }
+            limiter.onSuccess() // RD answered (a refusal, not a rate limit)
+            throw e
+        }
+    }
+
     private suspend fun token(): String {
         if (!connected) throw IllegalStateException("Connect Real-Debrid in Settings first")
         if (System.currentTimeMillis() > Prefs.rdExpiresAt) refresh(stale = Prefs.rdAccessToken, force = false)
@@ -88,13 +138,15 @@ object RealDebrid {
             if (!force && System.currentTimeMillis() <= Prefs.rdExpiresAt) return
             if (!connected) throw IllegalStateException(RECONNECT)
             val reply = try {
-                Http.postForm(
-                    "$OAUTH/token",
-                    mapOf(
-                        "client_id" to Prefs.rdClientId, "client_secret" to Prefs.rdClientSecret,
-                        "code" to Prefs.rdRefreshToken, "grant_type" to "http://oauth.net/grant_type/device/1.0",
-                    ),
-                )
+                limited {
+                    Http.postForm(
+                        "$OAUTH/token",
+                        mapOf(
+                            "client_id" to Prefs.rdClientId, "client_secret" to Prefs.rdClientSecret,
+                            "code" to Prefs.rdRefreshToken, "grant_type" to "http://oauth.net/grant_type/device/1.0",
+                        ),
+                    )
+                }
             } catch (e: HttpException) {
                 // RD refuses a dead grant with 400, 401 or 403 ("permission_denied", "{code} is invalid").
                 // The tokens are NOT cleared here: HouseSync would copy the empty sign-in to every linked TV.
@@ -113,12 +165,12 @@ object RealDebrid {
     internal suspend fun <T> authed(call: suspend (Map<String, String>) -> T): T {
         val t = token()
         return try {
-            call(mapOf("Authorization" to "Bearer $t"))
+            limited { call(mapOf("Authorization" to "Bearer $t")) }
         } catch (e: HttpException) {
             if (e.code != 401) throw refused(e)
             refresh(stale = t, force = true)
             try {
-                call(mapOf("Authorization" to "Bearer ${Prefs.rdAccessToken}"))
+                limited { call(mapOf("Authorization" to "Bearer ${Prefs.rdAccessToken}")) }
             } catch (e2: HttpException) {
                 throw refused(e2)
             }
@@ -151,15 +203,26 @@ object RealDebrid {
     private val failedStatuses = setOf("magnet_error", "error", "virus", "dead")
     private val busyStatuses = setOf("queued", "downloading", "compressing", "uploading")
 
-    internal suspend fun torrentInfo(id: String): JSONObject = JSONObject(apiGet("/torrents/info/$id"))
+    /** RD's torrents/info is polled no faster than this. */
+    private const val POLL_MS = 2_000L
+
+    internal suspend fun torrentInfo(id: String): JSONObject =
+        JSONObject(apiGet("/torrents/info/$id")).also { torrents.update(id, it.optString("status"), it.optInt("progress")) }
+
+    /** Adds a magnet to the account and to this TV's copy of the list. Returns RD's torrent id. */
+    private suspend fun addMagnetId(hash: String, magnet: String): String {
+        val id = postAdd(magnet)
+        torrents.add(RdTorrentCache.Entry(id, hash, "magnet_conversion", 0))
+        return id
+    }
 
     /** Waits (up to ~10 s) while RD is still turning the magnet into a file list. */
     internal suspend fun waitForFiles(id: String): JSONObject {
         var info = torrentInfo(id)
         var waited = 0L
         while (info.optString("status") == "magnet_conversion" && waited < 10_000) {
-            delay(1000)
-            waited += 1000
+            delay(POLL_MS)
+            waited += POLL_MS
             info = torrentInfo(id)
         }
         return info
@@ -207,13 +270,49 @@ object RealDebrid {
         return links.getString(i)
     }
 
-    /** The newest torrent with this hash already in your RD account (first page only), or null. */
-    private suspend fun findExisting(hash: String): JSONObject? {
-        val body = apiGet("/torrents?limit=100&page=1")
-        if (body.isBlank()) return null // RD answers 204 with no body when the list is empty
+    /** RD's torrent list JSON to cache entries. */
+    internal fun entriesOf(body: String): List<RdTorrentCache.Entry> {
+        if (body.isBlank()) return emptyList() // RD answers 204 with no body when the list is empty
         val a = JSONArray(body)
-        return (0 until a.length()).map { a.getJSONObject(it) }
-            .firstOrNull { it.optString("hash").equals(hash, ignoreCase = true) }
+        return (0 until a.length()).map { a.getJSONObject(it) }.map {
+            RdTorrentCache.Entry(it.optString("id"), it.optString("hash").lowercase(), it.optString("status"), it.optInt("progress"))
+        }
+    }
+
+    /**
+     * The newest torrent with this hash already in your RD account (first page only), or null.
+     * Uses this TV's copy of the list while it is under 60 s old.
+     */
+    private suspend fun findExisting(hash: String): RdTorrentCache.Entry? =
+        accountList().firstOrNull { it.hash.equals(hash, ignoreCase = true) }
+
+    private suspend fun accountList(): List<RdTorrentCache.Entry> =
+        torrents.get() ?: entriesOf(apiGet("/torrents?limit=100&page=1")).also { torrents.put(it) }
+
+    /**
+     * Hashes of the torrents already in your account (first page, cached 60 s). Those play without a new add.
+     * Empty when the list can't be read; busy and reconnect errors are passed on.
+     */
+    suspend fun accountHashes(): Set<String> {
+        if (!connected) return emptySet()
+        return try {
+            accountList().map { it.hash.lowercase() }.toSet()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: RdBusy) {
+            throw e
+        } catch (e: IllegalStateException) {
+            if (e.message?.startsWith("Real-Debrid needs reconnecting") == true) throw e
+            emptySet()
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    /** Deletes a torrent this TV added, from the account and from the cached list. */
+    private suspend fun deleteTorrent(id: String) {
+        torrents.remove(id)
+        apiDelete("/torrents/delete/$id")
     }
 
     /** A stream for the Jarvis web app: the file link, plus RD's browser-friendly versions when RD has them. */
@@ -275,7 +374,7 @@ object RealDebrid {
         } catch (e: CancellationException) {
             throw e
         } catch (e: IllegalStateException) {
-            if (e.message?.startsWith("Real-Debrid needs reconnecting") == true) throw e
+            if (e is RdBusy || e.message?.startsWith("Real-Debrid needs reconnecting") == true) throw e
         } catch (e: Exception) {
             // not an RD link: look where it redirects
         }
@@ -299,7 +398,7 @@ object RealDebrid {
             val host = runCatching { java.net.URL(cur).host.lowercase() }.getOrDefault("")
             if (host == "real-debrid.com" || host.endsWith(".real-debrid.com")) {
                 return runCatching { unrestrictInfo(cur) }.getOrElse {
-                    if (it is CancellationException) throw it
+                    if (it is CancellationException || it is RdBusy) throw it
                     // RD's own download link that it won't unrestrict again: play it as is
                     JSONObject().put("download", cur)
                 }
@@ -333,23 +432,30 @@ object RealDebrid {
             null // listing failed: just add the magnet
         }
         if (existing != null) {
-            val id = existing.optString("id")
-            when (existing.optString("status")) {
+            val id = existing.id
+            // The cached list can be up to 60 s old: check the torrent itself. Gone (deleted on another TV): add it again.
+            val current = try {
+                torrentInfo(id)
+            } catch (e: RdRefused) {
+                torrents.remove(id)
+                null
+            }
+            if (current != null) when (current.optString("status")) {
                 "downloaded" -> {
-                    val info = torrentInfo(id)
-                    val chosen = chooseFile(filesOf(info), fileIdx, season, episode)
+                    val chosen = chooseFile(filesOf(current), fileIdx, season, episode)
                     // If the file we want was not selected in that copy, fall through and add a fresh one.
-                    linkFor(info, chosen)?.let { return it }
+                    linkFor(current, chosen)?.let { return it }
                 }
                 in busyStatuses ->
-                    throw IllegalStateException("Not cached on Real-Debrid yet (${existing.optInt("progress")}% downloaded). Pick a cached source.")
+                    throw IllegalStateException("Not cached on Real-Debrid yet (${current.optInt("progress")}% downloaded). Pick a cached source.")
                 "waiting_files_selection", "magnet_conversion" -> reuseId = id
                 else -> Unit // broken or unknown copy: add a fresh one
             }
         }
 
         val owned = reuseId == null
-        val id = reuseId ?: JSONObject(apiPost("/torrents/addMagnet", mapOf("magnet" to "magnet:?xt=urn:btih:$hash"))).getString("id")
+        // A refusal here (error 35) is final for this hash: it throws at once, with no retry and nothing to delete.
+        val id = reuseId ?: addMagnetId(hash, "magnet:?xt=urn:btih:$hash")
         try {
             var info = waitForFiles(id)
             var status = info.optString("status")
@@ -359,7 +465,9 @@ object RealDebrid {
             if (status == "waiting_files_selection") {
                 apiPost("/torrents/selectFiles/$id", mapOf("files" to (chosen?.optInt("id")?.toString() ?: "all")))
             }
-            repeat(8) {
+            // About 10 s in all, one check every 2 s.
+            repeat(6) { n ->
+                if (n > 0) delay(POLL_MS)
                 info = torrentInfo(id)
                 status = info.optString("status")
                 if (status == "downloaded") {
@@ -367,12 +475,11 @@ object RealDebrid {
                     if (link != null) return link
                 }
                 if (status in failedStatuses) throw IllegalStateException("Real-Debrid: $status")
-                delay(1500)
             }
             throw IllegalStateException("Not cached on Real-Debrid yet (${info.optInt("progress")}% downloaded). Pick a cached source.")
         } catch (e: Throwable) {
             // Not playable (uncached, failed, or the user backed out): remove it from the RD cloud.
-            if (owned) withContext(NonCancellable) { runCatching { apiDelete("/torrents/delete/$id") } }
+            if (owned) withContext(NonCancellable) { runCatching { deleteTorrent(id) } }
             throw e
         }
     }
@@ -390,6 +497,7 @@ object RdCloud {
     /** Everything in your RD cloud, newest first. */
     suspend fun list(): List<RdItem> {
         val body = RealDebrid.apiGet("/torrents?limit=200")
+        RealDebrid.torrents.put(RealDebrid.entriesOf(body))
         if (body.isBlank()) return emptyList() // 204: empty cloud
         val a = JSONArray(body)
         return (0 until a.length()).map { a.getJSONObject(it) }.map {
@@ -420,7 +528,8 @@ object RdCloud {
 
     /** Adds a magnet link you supply to your RD account and selects its video files. */
     suspend fun addMagnet(magnet: String): String {
-        val id = JSONObject(RealDebrid.apiPost("/torrents/addMagnet", mapOf("magnet" to magnet.trim()))).getString("id")
+        val id = RealDebrid.postAdd(magnet.trim())
+        RealDebrid.torrents.clear() // the list changed; the next lookup reads it again
         val info = RealDebrid.waitForFiles(id)
         if (info.optString("status") == "waiting_files_selection") {
             val files = info.optJSONArray("files") ?: JSONArray()
@@ -464,21 +573,48 @@ object Resolver {
         else -> throw IllegalStateException("This source has no playable link")
     }
 
-    /** Tries the top sources (filtered and sorted like the source list) until one resolves. Used by Play and Background Noise. */
-    suspend fun best(list: List<StreamSource>, meta: PlayMeta? = null): Pair<StreamSource, String> {
+    /** How many new torrents (adds) one caller may still send to RD. Background Noise gives each round 2. */
+    class AddAllowance(var left: Int)
+
+    /**
+     * Tries the top sources (filtered and sorted like the source list) until one resolves. Used by Play and
+     * Background Noise. Torrents already in your RD account go first (no add needed), then the rest in list
+     * order. RD takes one new torrent per 25 s, so between adds this waits and [onStatus] says why.
+     * [allowance] caps the adds (null: no cap beyond the 8 tries). Cancelling the caller (Back) stops the wait.
+     */
+    suspend fun best(
+        list: List<StreamSource>,
+        meta: PlayMeta? = null,
+        allowance: AddAllowance? = null,
+        onStatus: (String) -> Unit = {},
+    ): Pair<StreamSource, String> {
         var last: Exception? = null
         // Same order as the source list: CAM and oversized files skipped unless nothing else is left.
         val episode = meta?.type == "tv" || list.any { it.episode != null }
         // RD refuses many release names (error 35). Those sort last; ones it refused before are skipped.
         val order = StreamInfo.playOrder(list, episode)
         val fresh = order.filterNot { RdFilter.wasRefused(it) }.ifEmpty { order }
-        for (s in fresh.take(MAX_TRIES)) {
+        val have = if (fresh.any { it.infoHash != null }) RealDebrid.accountHashes() else emptySet()
+        fun inAccount(s: StreamSource) = s.infoHash != null && s.infoHash.lowercase() in have
+        fun needsAdd(s: StreamSource) = s.infoHash != null && s.url == null && !inAccount(s)
+        var adds = allowance?.left ?: Int.MAX_VALUE
+        val picked = (fresh.filter { inAccount(it) } + fresh.filterNot { inAccount(it) })
+            .filter { !needsAdd(it) || adds-- > 0 }
+            .take(MAX_TRIES)
+        for ((i, s) in picked.withIndex()) {
+            val add = needsAdd(s)
+            if (add && allowance != null) allowance.left--
+            onStatus(
+                if (add && RealDebrid.addWaitMs() > 0) "Trying source ${i + 1} of ${picked.size}. Real-Debrid allows one new source every 25 seconds."
+                else "Trying source ${i + 1} of ${picked.size}.",
+            )
             try {
                 return s to resolve(s, meta)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 last = e
-                // Real-Debrid needs reconnecting: no point trying the other torrents.
+                // Real-Debrid needs reconnecting, or is busy (too many requests): no point trying the other torrents.
+                if (e is RdBusy) throw e
                 if (e is IllegalStateException && e.message?.startsWith("Real-Debrid needs reconnecting") == true) throw e
             }
         }

@@ -9,7 +9,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-class HttpException(val code: Int, body: String) : IOException("HTTP $code ${body.take(160)}")
+/** [retryAfter] is the reply's Retry-After header, when the server sent one. */
+class HttpException(val code: Int, body: String, val retryAfter: String? = null) : IOException("HTTP $code ${body.take(160)}")
 
 /** Minimal HTTP client on top of HttpURLConnection (built into Android; no extra library). */
 object Http {
@@ -72,7 +73,7 @@ object Http {
             val stream = if (code in 200..299) c.inputStream else c.errorStream
             if (code !in 200..299) {
                 val err = runCatching { stream?.let { readCapped(it, 64 * 1024, url, truncate = true) } }.getOrNull() ?: ""
-                throw HttpException(code, err)
+                throw HttpException(code, err, c.getHeaderField("Retry-After"))
             }
             return stream?.let { readCapped(it, MAX_BYTES, url, truncate = false) } ?: ""
         } finally {
