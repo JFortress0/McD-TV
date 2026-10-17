@@ -6,6 +6,9 @@ Ranked upgrades from the October 2026 review by the four focus agents (.claude/a
 
 - Real-Debrid name filter: RD refuses names with WEB-DL, WEB.x264, WEB.H264, HDTV.x264 or HDTV.XviD (exact case, rule of October 14, 2026) with error 35. Those sources sort last and show "May be blocked" (`RdFilter`, TV and web). A source RD refused is skipped for 6 hours. Play best source tries 8 and does not stop early: RD refuses more names than the published tags. The rule changes often: update `RdFilter.TAGS` and `RD_TAGS` together.
 
+- Real-Debrid probe (real data, see the project doc rd-probe-2026-10-16.md): since October 14, RD refuses most torrents at addMagnet (HTTP 451, error 35), clean names and tagged names alike, with the device sign-in and with a personal API token, through the relay. Some hashes are accepted (Tears of Steel). Torrents already in the account still play. The error 35 text no longer says "by its name" (TV and web).
+- TV link: TVs announce their current link on the house topic ("tv_link", answer to a phone's "tv_who", at most once per 20 s; at start only when the link changed or 11 h passed). The web app finds TVs through the house (Settings > Find my TVs, and once per app open when the TV does not answer) and relinks to the same TV (device id, or a unique name). The web app also takes the house link the Control page saved in `mcdtv_tvs`, so a phone syncs with the house with no TV answering. Data behind it: the saved Fire TV link got no answer for 12 h while two TVs were active on the house topic.
+
 ## Done in the October 12 overnight run
 
 - Live TV: Huntsville call signs go to Local even with "News" in the name (TV and web); a failed guide fetch retries after 90 s (the TV kept an empty guide for 6 hours); the web guide cache survives app launches (15 minutes, per playlist, no login stored); My Guide and For You use the event and game fallbacks; "Tap to play" in the web Live TV player.
