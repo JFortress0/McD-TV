@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
+        com.mcd.tv.data.IptvVod.init(this)
         com.mcd.tv.ui.AppImages.install(this)
         if (intent?.getBooleanExtra("qa_mode", false) == true) { LocalWeb.qaMode = true; Prefs.qaMode = true }
         // Automated QA launch: no profile picker, the last used profile is used.
