@@ -434,7 +434,7 @@ fun NoiseRunScreen(nav: Nav) {
                 val s = d.seasons.filter { it.episodeCount > 0 }.random()
                 val e = (1..s.episodeCount).random()
                 val m = PlayMeta("tv", show.id, show.name, show.poster, show.backdrop, s.number, e)
-                val list = Addons.streams("tv", "$imdb:${s.number}:$e")
+                val list = Addons.streams("tv", "$imdb:${s.number}:$e", show.id)
                 val (src, u) = Resolver.best(list, allowance = adds, onStatus = { status = "${show.name}: $it" })
                 Triple(m, u, src.headers)
             }.getOrNull()

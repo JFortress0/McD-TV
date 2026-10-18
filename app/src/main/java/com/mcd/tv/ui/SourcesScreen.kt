@@ -49,6 +49,7 @@ import com.mcd.tv.data.RankedStream
 import com.mcd.tv.data.StreamInfo
 import com.mcd.tv.data.SourceQueue
 import com.mcd.tv.data.StreamSource
+import com.mcd.tv.data.XtreamVod
 import com.mcd.tv.player.NextSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -63,7 +64,7 @@ import kotlinx.coroutines.launch
 fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
     val streamId = if (meta.type == "tv") "$imdbId:${meta.season}:${meta.episode}" else imdbId
     var retry by remember { mutableIntStateOf(0) }
-    val sources by rememberLoad(streamId, retry) { Addons.streams(meta.type, streamId) }
+    val sources by rememberLoad(streamId, retry) { Addons.streams(meta.type, streamId, meta.tmdbId) }
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -228,6 +229,7 @@ private fun SourceRow(r: RankedStream, onClick: () -> Unit, modifier: Modifier =
             if (info.resolution.isNotBlank()) Badge(info.resolution, if (info.resolution == "4K" || info.resolution == "1080p") McdColors.RedDark else McdColors.Raised)
             info.hdr.forEach { Badge(it, McdColors.Raised) }
             if (info.audio.isNotBlank()) Badge(info.audio, McdColors.Raised)
+            if (XtreamVod.isIptv(r.source)) Badge(r.source.name, McdColors.RedDark)
             if (info.source.isNotBlank()) Text(info.source, color = McdColors.Muted, fontSize = 12.sp, maxLines = 1)
             if (info.sizeLabel.isNotBlank()) Text(info.sizeLabel, color = McdColors.White, fontSize = 13.sp, maxLines = 1)
             when {
