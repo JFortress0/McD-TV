@@ -594,6 +594,11 @@ object Resolver {
         // RD refuses many release names (error 35). Those sort last; ones it refused before are skipped.
         val order = StreamInfo.playOrder(list, episode)
         val fresh = order.filterNot { RdFilter.wasRefused(it) }.ifEmpty { order }
+        // Your IPTV provider's copies are direct links (no Real-Debrid, no add limit): they go first.
+        fresh.firstOrNull { XtreamVod.isIptv(it) && it.url != null }?.let { s ->
+            onStatus("Playing from your IPTV provider.")
+            return s to s.url!!
+        }
         val have = if (fresh.any { it.infoHash != null }) RealDebrid.accountHashes() else emptySet()
         fun inAccount(s: StreamSource) = s.infoHash != null && s.infoHash.lowercase() in have
         fun needsAdd(s: StreamSource) = s.infoHash != null && s.url == null && !inAccount(s)

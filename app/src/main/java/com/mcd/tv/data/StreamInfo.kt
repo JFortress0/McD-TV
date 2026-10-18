@@ -134,17 +134,22 @@ data class StreamInfo(
             )
         }
 
-        /** Files RD will likely refuse last, then cached first, then stars, resolution and size. Slow connection: 720p/1080p and smaller files first. */
+        /**
+         * Your IPTV provider's copies first (direct links: no Real-Debrid, no add limit), then files RD will
+         * likely refuse last, cached first, then stars, resolution and size. Slow connection: 720p/1080p and smaller files first.
+         */
         private fun comparator(): Comparator<RankedStream> {
             val slow = Prefs.slowConnection
             return if (slow) {
-                compareBy<RankedStream> { it.info.rdBlocked }
+                compareByDescending<RankedStream> { XtreamVod.isIptv(it.source) }
+                    .thenBy { it.info.rdBlocked }
                     .thenByDescending { it.info.instant }
                     .thenByDescending { when (it.info.resolution) { "720p" -> 3; "1080p" -> 2; else -> 0 } }
                     .thenBy { if (it.info.sizeGb > 0) it.info.sizeGb else Double.MAX_VALUE }
                     .thenByDescending { it.info.stars }
             } else {
-                compareBy<RankedStream> { it.info.rdBlocked }
+                compareByDescending<RankedStream> { XtreamVod.isIptv(it.source) }
+                    .thenBy { it.info.rdBlocked }
                     .thenByDescending { it.info.instant }
                     .thenByDescending { it.info.stars }
                     .thenByDescending { it.info.resolutionRank }

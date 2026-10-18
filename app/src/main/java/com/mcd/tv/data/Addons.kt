@@ -154,12 +154,17 @@ object Addons {
     @Volatile var lastFailed: List<String> = emptyList()
         private set
 
-    suspend fun streams(type: String, id: String): List<StreamSource> = coroutineScope {
+    /**
+     * [tmdbId] (optional) also asks your IPTV provider's on-demand library (IptvVod) for the same title.
+     * Those sources are direct links that need no Real-Debrid; they sort first.
+     */
+    suspend fun streams(type: String, id: String, tmdbId: Int? = null): List<StreamSource> = coroutineScope {
         val stremioType = if (type == "tv") "series" else "movie"
         // TV ids look like "tt123:1:5" (season 1, episode 5).
         val parts = id.split(":")
         val season = if (type == "tv") parts.getOrNull(1)?.toIntOrNull() else null
         val episode = if (type == "tv") parts.getOrNull(2)?.toIntOrNull() else null
+        val iptv = async { IptvVod.sources(type, tmdbId, season, episode) }
         // null: the addon did not answer (blocked, down or too slow). An empty list: it answered with nothing.
         val replies = Prefs.addonUrls.map { m ->
             async {
@@ -175,7 +180,7 @@ object Addons {
             }
         }.awaitAll()
         lastFailed = replies.filter { it.second == null }.map { nameOf(it.first, fallback = "An addon") }
-        replies.flatMap { it.second.orEmpty() }.let { sort(it) }
+        (iptv.await() + replies.flatMap { it.second.orEmpty() }).let { sort(it) }
     }
 
     private fun parse(addon: String, s: JSONObject): StreamSource {
