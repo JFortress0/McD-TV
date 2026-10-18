@@ -2,6 +2,7 @@
 // blocked, so no real service is hit. Run: python3 tools/webtest/srv.py & node tools/webtest/qa.mjs
 // CHROME_PATH: optional Chromium binary (else Playwright's own).
 import { chromium } from 'playwright';
+import fs from 'node:fs';
 const B='http://127.0.0.1:8781/index.html';
 const b = await chromium.launch(process.env.CHROME_PATH ? {executablePath: process.env.CHROME_PATH} : {});
 const now=Date.now();
@@ -300,6 +301,81 @@ for (const w of [390,1280]) {
     if(errs.length) fails.push(...errs.map(e=>`rd limiter pageerror ${e}`));
     await ctx.close();
   }
+}
+// Your IPTV provider's movies and shows: the relay's /iptv route answers player_api calls from
+// tools/webtest/xtream-vod-fixture.json (real shapes). TMDB, one addon and the RD routes are mocked too.
+{
+  const FX=JSON.parse(fs.readFileSync(new URL('./xtream-vod-fixture.json', import.meta.url),'utf8'));
+  const USER='qaIptvUserZ7', PASS='qaIptvPassQ9', M3U=`http://iptv.qa.test:8080/get.php?username=${USER}&password=${PASS}&type=m3u_plus`;
+  const J={'Access-Control-Allow-Origin':'*','Content-Type':'application/json'};
+  const {ctx,p,errs}=await mk({width:390,height:844}); const iv=[], rd=[];
+  await ctx.route(/^https:\/\/api\.themoviedb\.org\/3\/movie\/398978/,r=>r.fulfill({status:200,headers:J,body:JSON.stringify({id:398978,title:'The Irishman',imdb_id:'tt1302006',runtime:209,release_date:'2019-11-01'})}));
+  await ctx.route(/^https:\/\/api\.themoviedb\.org\/3\/tv\/57532/,r=>r.fulfill({status:200,headers:J,body:JSON.stringify({id:57532,name:'PAW Patrol',first_air_date:'2013-08-12',external_ids:{imdb_id:'tt3121722'},episode_run_time:[22],seasons:[{season_number:1,episode_count:26}]})}));
+  await ctx.route(/^https:\/\/addon\.qa\.test\//,r=>{ const u=new URL(r.request().url());
+    return r.fulfill({status:200,headers:J,body:JSON.stringify(u.pathname.includes('/stream/')?{streams:[{name:'QA RD 1080p',title:'Qa.Show.1080p.WEB-DL.x264\n💾 2 GB',infoHash:'ab'.repeat(20),fileIdx:0}]}:{id:'qa',name:'QA addon'})}); });
+  await ctx.route(/^https:\/\/jarvis-rd\.netlify\.app\/rd\//,r=>{ rd.push(r.request().method()+' '+new URL(r.request().url()).pathname);
+    return r.fulfill({status:200,headers:{...J,'Access-Control-Allow-Headers':'Authorization, Content-Type'},body:'[]'}); });
+  await ctx.route(/^https:\/\/jarvis-rd\.netlify\.app\/iptv/,r=>{ let t; try{ t=new URL(new URL(r.request().url()).searchParams.get('u')); }catch{ return r.fulfill({status:400,headers:J,body:'{}'}); }
+    if(!t.pathname.endsWith('/player_api.php')||!t.searchParams.get('username')) return r.fulfill({status:404,headers:J,body:'{}'});
+    const a=t.searchParams.get('action')||''; iv.push(a+(t.searchParams.get('series_id')?':'+t.searchParams.get('series_id'):''));
+    const d=a==='get_vod_streams'?FX.get_vod_streams:a==='get_series'?FX.get_series:a==='get_series_info'?(FX['get_series_info_'+t.searchParams.get('series_id')]||{}):a===''?{user_info:{auth:1,status:'Active'}}:[];
+    return r.fulfill({status:200,headers:J,body:JSON.stringify(d)}); });
+  await p.goto(B); await p.evaluate(([M3U])=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_profile','p1');
+    localStorage.setItem('mcdtv_web_init',JSON.stringify({tmdb_key:'x',m3u_url:M3U}));
+    localStorage.setItem('mcdtv_web_addons_mine',JSON.stringify(['https://addon.qa.test/manifest.json']));
+    localStorage.setItem('mcdtv_web_extplayer','vlc');
+    localStorage.setItem('mcdtv_web_rdt','QAFAKETOKEN'+'0'.repeat(29)); },[M3U]);
+  const rowsOf=()=>p.$$eval('#srcList .src',r=>r.map(x=>({iptv:x.classList.contains('iptv'),t:x.innerText.replace(/\s+/g,' ')})));
+  const openSrc=async(h)=>{ await p.goto(B+h); await p.reload(); await p.waitForFunction(()=>document.querySelectorAll('#srcList .src').length>0,null,{timeout:15000}).catch(()=>{}); return rowsOf(); };
+  // (a) The Irishman (TMDB 398978): 4 copies from the provider, listed first and labeled, the 4K copy on top.
+  const mv=await openSrc('#/sources/movie/398978');
+  const nIv=mv.filter(x=>x.iptv).length, firstIv=mv.slice(0,4).every(x=>x.iptv&&x.t.includes('Your IPTV provider'));
+  log('iptv (a) movie rows',mv.map(x=>x.t).join(' || '),'| status',await p.$eval('#srcStatus',e=>e.innerText));
+  if(nIv!==4||!firstIv) fails.push(`iptv (a): expected 4 IPTV sources first, got ${nIv} (first four labeled: ${firstIv})`);
+  if(!/4K/.test(mv[0]&&mv[0].t||'')) fails.push(`iptv (a): first IPTV copy is not the 4K one: "${mv[0]&&mv[0].t}"`);
+  if(!mv.some(x=>!x.iptv)) fails.push('iptv (a): the addon source is missing below the IPTV ones');
+  // (c) Best source hands the top copy to the player app at once, with no Real-Debrid call.
+  await p.evaluate(()=>{ window.__opened=[]; window.openApp=(l)=>{ window.__opened.push(l); }; });
+  const rd0=rd.length; await p.click('#bestBtn');
+  await p.waitForFunction(()=>window.__opened.length>0,null,{timeout:8000}).catch(()=>{});
+  const opened=await p.evaluate(()=>window.__opened.slice());
+  const box=await p.$eval('#extBox',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+  const dec=opened[0]?decodeURIComponent(opened[0].split('url=')[1]||''):'';
+  log('iptv (c) best source opened',opened.length,dec.replace(USER,'[u]').replace(PASS,'[p]'),'| rd calls',rd.length-rd0,'| box',box.slice(0,160));
+  if(opened.length!==1||!opened[0].startsWith('vlc-x-callback://')) fails.push(`iptv (c): player app not opened (${opened.length})`);
+  if(!/\/movie\/[^/]+\/[^/]+\/900004\.mkv$/.test(dec)) fails.push('iptv (c): Best source did not pick the 4K copy (900004.mkv)');
+  if(rd.length!==rd0) fails.push(`iptv (c): Best source made ${rd.length-rd0} Real-Debrid calls: ${rd.slice(rd0)}`);
+  if(!box.includes('Your IPTV account plays one stream at a time. Stop Live TV or other playback, then try again.')) fails.push('iptv (c): one-stream note missing');
+  // (b) PAW Patrol (TMDB 57532) S1 E1: the episode from get_series_info.
+  const ep=await openSrc('#/sources/tv/57532?s=1&e=1');
+  log('iptv (b) episode rows',ep.map(x=>x.t).join(' || '),'| calls',iv.join(','));
+  if(!ep[0]||!ep[0].iptv||!/S01E01/.test(ep[0].t)) fails.push(`iptv (b): PAW Patrol S1E1 not listed first: "${ep[0]&&ep[0].t}"`);
+  if(ep.filter(x=>x.iptv).length!==1) fails.push(`iptv (b): expected 1 IPTV episode, got ${ep.filter(x=>x.iptv).length}`);
+  // The index is kept for 24 hours (IndexedDB): a reload does not download the library again.
+  await openSrc('#/sources/movie/398978');
+  const vodCalls=iv.filter(x=>x==='get_vod_streams').length;
+  log('iptv library downloads',vodCalls); if(vodCalls!==1) fails.push(`iptv: library downloaded ${vodCalls} times (expected 1, then the saved index)`);
+  // Settings > Check network: the library size.
+  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(600);
+  await p.click('#netBtn'); await p.waitForFunction(()=>!document.querySelector('#netBtn').disabled,null,{timeout:15000}).catch(()=>{});
+  const nrow=(await p.$$eval('#netList li',r=>r.map(x=>x.innerText.replace(/\s+/g,' ')))).find(x=>x.includes('IPTV movies and shows'))||'';
+  log('iptv netcheck',nrow); if(!/^OK\b.*8 movies, 2 shows/.test(nrow)) fails.push(`iptv netcheck row: "${nrow}"`);
+  // (d) No login in the page, toasts, error log, browser storage or the saved index.
+  await p.evaluate(()=>logErr('qa iptv probe','qa.js:1'));
+  const leak=await p.evaluate(async([U,P])=>{ const html=document.documentElement.outerHTML+((document.querySelector('#toast')||{}).innerText||'');
+    const idx=await new Promise(res=>{ try{ const q=indexedDB.open('jarvis-iptv'); q.onsuccess=()=>{ try{ const g=q.result.transaction('kv').objectStore('kv').get('index'); g.onsuccess=()=>res(JSON.stringify(g.result||null)); g.onerror=()=>res('err'); }catch(e){ res('none'); } }; q.onerror=()=>res('err'); }catch{ res('err'); } });
+    const errs=localStorage.getItem('mcdtv_web_errors')||'';
+    return {dom:html.includes(U)||html.includes(P),errs:errs.includes(U)||errs.includes(P),idx:idx.includes(U)||idx.includes(P),idxSaved:idx.length>100}; },[USER,PASS]);
+  // Back on the Sources page too (the hand-off panel is shown there).
+  await openSrc('#/sources/movie/398978'); await p.evaluate(()=>{ window.openApp=()=>{}; }); await p.click('#srcList .src.iptv'); await p.waitForTimeout(700);
+  const srcDom=await p.evaluate(([U,P])=>{ const h=document.documentElement.outerHTML; return h.includes(U)||h.includes(P)||h.includes(encodeURIComponent(U)); },[USER,PASS]);
+  log('iptv (d) leaks',JSON.stringify({...leak,srcDom}));
+  if(leak.dom||srcDom) fails.push('iptv (d): the IPTV login shows in the page');
+  if(leak.errs) fails.push('iptv (d): the IPTV login is in the error log');
+  if(leak.idx) fails.push('iptv (d): the IPTV login is in the saved index');
+  if(!leak.idxSaved) fails.push('iptv: the index was not saved in IndexedDB');
+  if(errs.length) fails.push(...errs.map(e=>`iptv pageerror ${e}`));
+  await ctx.close();
 }
 log('FAILS', fails.length); fails.forEach(f=>log(' -',f));
 await b.close();

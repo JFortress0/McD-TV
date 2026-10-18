@@ -1,0 +1,301 @@
+{
+ "_note": "Real shapes from J's IPTV provider (Xtream Codes player_api), Oct 18 2026. Credentials and host removed. tmdb is a string or a number. episode_num is a number; a season can start at 0. 98% of 28,795 VOD and 8,454 of 8,602 series carry a tmdb id. user_info.allowed_output_formats = [m3u8, ts, rtmp]; max_connections = 1. The PAW Patrol entries are real; stream_ids 9000xx (Irishman, Odyssey, no-id) are placeholders with real names and tmdb values.",
+ "get_vod_streams": [
+  {
+   "num": 109,
+   "name": "EN - PAW Patrol: The Dino Movie  (2026)",
+   "stream_type": "movie",
+   "stream_id": 2152442,
+   "stream_icon": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/qnin56Syy5rbG7KCaxWY7SPuy6p.jpg",
+   "rating": "7.16",
+   "rating_5based": 3.6,
+   "tmdb": "1185806",
+   "trailer": "",
+   "added": "1789283460",
+   "is_adult": 0,
+   "category_id": "173",
+   "category_ids": [
+    173
+   ],
+   "container_extension": "mkv",
+   "custom_sid": null,
+   "direct_source": ""
+  },
+  {
+   "num": 1191,
+   "name": "EN - A Paw Patrol Christmas  (2025)",
+   "stream_type": "movie",
+   "stream_id": 1711547,
+   "stream_icon": "",
+   "rating": "10",
+   "rating_5based": 5,
+   "tmdb": "1507275",
+   "trailer": "",
+   "added": "1764673740",
+   "is_adult": 0,
+   "category_id": "173",
+   "category_ids": [
+    173
+   ],
+   "container_extension": "mkv",
+   "custom_sid": null,
+   "direct_source": ""
+  },
+  {
+   "num": 2001,
+   "name": "EN - The Irishman  (2019)",
+   "stream_type": "movie",
+   "stream_id": 900001,
+   "stream_icon": "",
+   "rating": "7.6",
+   "rating_5based": 3.8,
+   "tmdb": "398978",
+   "trailer": "",
+   "added": "1600000000",
+   "is_adult": 0,
+   "category_id": "10",
+   "category_ids": [
+    10
+   ],
+   "container_extension": "mp4",
+   "custom_sid": null,
+   "direct_source": ""
+  },
+  {
+   "num": 2002,
+   "name": "NF - The Irishman",
+   "stream_type": "movie",
+   "stream_id": 900002,
+   "stream_icon": "",
+   "rating": "7.6",
+   "rating_5based": 3.8,
+   "tmdb": 398978,
+   "trailer": "",
+   "added": "1600000001",
+   "is_adult": 0,
+   "category_id": "11",
+   "category_ids": [
+    11
+   ],
+   "container_extension": "mp4",
+   "custom_sid": null,
+   "direct_source": ""
+  },
+  {
+   "num": 2003,
+   "name": "TOP - The Irishman",
+   "stream_type": "movie",
+   "stream_id": 900003,
+   "stream_icon": "",
+   "rating": "7.6",
+   "rating_5based": 3.8,
+   "tmdb": 398978,
+   "trailer": "",
+   "added": "1600000002",
+   "is_adult": 0,
+   "category_id": "12",
+   "category_ids": [
+    12
+   ],
+   "container_extension": "mkv",
+   "custom_sid": null,
+   "direct_source": ""
+  },
+  {
+   "num": 2004,
+   "name": "4K-NF - The Irishman  (2019)",
+   "stream_type": "movie",
+   "stream_id": 900004,
+   "stream_icon": "",
+   "rating": "7.6",
+   "rating_5based": 3.8,
+   "tmdb": "398978",
+   "trailer": "",
+   "added": "1600000003",
+   "is_adult": 0,
+   "category_id": "13",
+   "category_ids": [
+    13
+   ],
+   "container_extension": "mkv",
+   "custom_sid": null,
+   "direct_source": ""
+  },
+  {
+   "num": 3001,
+   "name": "EN - Odyssey  (2025)",
+   "stream_type": "movie",
+   "stream_id": 900010,
+   "stream_icon": "",
+   "rating": "6",
+   "rating_5based": 3,
+   "tmdb": "1330747",
+   "trailer": "",
+   "added": "1769558400",
+   "is_adult": 0,
+   "category_id": "10",
+   "category_ids": [
+    10
+   ],
+   "container_extension": "mkv",
+   "custom_sid": null,
+   "direct_source": ""
+  },
+  {
+   "num": 4001,
+   "name": "EN - Some Movie Without Id",
+   "stream_type": "movie",
+   "stream_id": 900020,
+   "stream_icon": "",
+   "rating": "",
+   "rating_5based": 0,
+   "tmdb": "",
+   "trailer": "",
+   "added": "1600000000",
+   "is_adult": 0,
+   "category_id": "10",
+   "category_ids": [
+    10
+   ],
+   "container_extension": "mp4",
+   "custom_sid": null,
+   "direct_source": ""
+  }
+ ],
+ "get_series": [
+  {
+   "num": 1141,
+   "name": "EN - PAW Patrol",
+   "series_id": 4716,
+   "cover": "",
+   "plot": "",
+   "cast": "",
+   "director": "Keith Chapman",
+   "genre": "Animation, Kids",
+   "releaseDate": "2013-08-12",
+   "release_date": "2013-08-12",
+   "last_modified": "1760000000",
+   "rating": "7",
+   "rating_5based": 3.5,
+   "backdrop_path": [],
+   "youtube_trailer": "",
+   "tmdb": "57532",
+   "episode_run_time": "22",
+   "category_id": "50",
+   "category_ids": [
+    50
+   ]
+  },
+  {
+   "num": 1142,
+   "name": "NF - PAW Patrol (US)",
+   "series_id": 3147,
+   "cover": "",
+   "plot": "",
+   "cast": "",
+   "director": "",
+   "genre": "Kids",
+   "releaseDate": "2013-08-12",
+   "release_date": "2013-08-12",
+   "last_modified": "1700000000",
+   "rating": "7",
+   "rating_5based": 3.5,
+   "backdrop_path": [],
+   "youtube_trailer": "",
+   "tmdb": 57532,
+   "episode_run_time": "22",
+   "category_id": "51",
+   "category_ids": [
+    51
+   ]
+  }
+ ],
+ "get_series_info_4716": {
+  "seasons": [
+   {
+    "season_number": 0,
+    "episode_count": "10",
+    "name": "Specials"
+   },
+   {
+    "season_number": 1,
+    "episode_count": "47",
+    "name": "Season 1"
+   }
+  ],
+  "info": {
+   "name": "EN - PAW Patrol",
+   "tmdb": "57532",
+   "category_id": "50"
+  },
+  "episodes": {
+   "1": [
+    {
+     "id": "274994",
+     "episode_num": 1,
+     "title": "EN - PAW Patrol - S01E01",
+     "container_extension": "mp4",
+     "info": {
+      "duration_secs": 710,
+      "duration": "00:11:50",
+      "video": {
+       "codec_name": "h264",
+       "width": 1280,
+       "height": 718
+      },
+      "audio": {
+       "codec_name": "aac",
+       "channels": 2
+      },
+      "bitrate": 1189
+     },
+     "custom_sid": null,
+     "added": "1624786691",
+     "season": 1,
+     "direct_source": ""
+    },
+    {
+     "id": "274995",
+     "episode_num": 2,
+     "title": "EN - PAW Patrol - S01E02",
+     "container_extension": "mp4",
+     "info": {
+      "duration_secs": 700
+     },
+     "custom_sid": null,
+     "added": "1624786691",
+     "season": 1,
+     "direct_source": ""
+    },
+    {
+     "id": "274996",
+     "episode_num": 3,
+     "title": "EN - PAW Patrol - S01E03",
+     "container_extension": "mp4",
+     "info": {},
+     "custom_sid": null,
+     "added": "1624786691",
+     "season": 1,
+     "direct_source": ""
+    }
+   ],
+   "8": [
+    {
+     "id": "1246661",
+     "episode_num": 0,
+     "title": "EN - PAW Patrol - S08E00",
+     "container_extension": "mkv",
+     "info": {},
+     "custom_sid": null,
+     "added": "1700000000",
+     "season": 8,
+     "direct_source": ""
+    }
+   ]
+  }
+ },
+ "urls": {
+  "movie": "{base}/movie/{user}/{pass}/{stream_id}.{container_extension}",
+  "episode": "{base}/series/{user}/{pass}/{episode id}.{container_extension}"
+ }
+}
