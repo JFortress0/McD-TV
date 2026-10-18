@@ -163,14 +163,15 @@ class XtreamVodTest {
         assertTrue(s.headers.isEmpty())
     }
 
+    // Ranking (StreamInfo.playOrder) reads Prefs, which plain JVM tests don't have: CI failed there. The order
+    // (IPTV first) is checked by the web suite; here only what needs no Prefs.
     @Test
-    fun iptvSourcesRankFirstAndAreNotCam() {
+    fun iptvSourcesAreFlaggedAndNotCam() {
         val rd = StreamSource("Torrentio", "RD+ 2160p", "The.Irishman.2019.2160p.REMUX.mkv", null, "abc", 0, "4K", "60 GB", 60.0, 10, true)
         val iptv = XtreamVod.movieSources(acct, movies()[398978]!!, null)
-        val order = StreamInfo.playOrder(listOf(rd) + iptv, episode = false)
-        assertEquals(5, order.size)
-        assertTrue(order.take(4).all { XtreamVod.isIptv(it) })
-        assertEquals("abc", order.last().infoHash)
-        assertTrue(StreamInfo.ranked(iptv).none { it.info.cam })
+        assertFalse(XtreamVod.isIptv(rd))
+        assertTrue(iptv.all { XtreamVod.isIptv(it) })
+        assertTrue(iptv.none { StreamInfo.parse(it).cam })
+        assertEquals("4K", StreamInfo.parse(iptv[3]).resolution)
     }
 }
