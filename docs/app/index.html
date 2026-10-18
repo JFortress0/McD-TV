@@ -2599,22 +2599,26 @@ async function addonName(m) {
   LS.set("mcdtv_web_addon_names", JSON.stringify(Object.fromEntries(Array.from(addonNames).slice(-40))));
   return n;
 }
-/** Addons.streams: every addon at once, 10 s each; failures are skipped. */
-async function fetchStreams(type, imdb, season, episode) {
+/**
+ * Addons.streams: every addon at once, 10 s each; failures are skipped. Plus the copies in your IPTV provider's
+ * library (by TMDB id [tmdbId]), listed first: they need no Real-Debrid.
+ */
+async function fetchStreams(type, imdb, season, episode, tmdbId) {
   const stremioType = type === "tv" ? "series" : "movie";
   const id = type === "tv" ? `${imdb}:${season}:${episode}` : imdb;
-  const ck = stremioType + "/" + id + "|" + addonUrls().join("|");
+  const ck = stremioType + "/" + id + "|" + (tmdbId || "") + "|" + (IV.has() ? "iv" : "") + "|" + addonUrls().join("|");
   const c = S.streamCache.get(ck);
   if (c && Date.now() - c.at < 5 * 60000) return c.list;
   S.addonReport = {};
-  const per = await Promise.all(addonUrls().map(async (m) => {
+  const ivP = IV.sources(type, tmdbId, season, episode, siOpts().slow).catch(() => []);
+  const per = !imdb ? [] : await Promise.all(addonUrls().map(async (m) => {
     const [name, data] = await Promise.all([addonName(m), fetchJSON(`${addonBase(m)}/stream/${stremioType}/${id}.json`, 10000).catch((e) => ({ failed: e && e.status ? "HTTP " + e.status : "no answer" }))]);
     S.addonReport = S.addonReport || {}; S.addonReport[name] = data && data.failed ? data.failed : "ok";
     const arr = data && Array.isArray(data.streams) ? data.streams : [];
     return arr.filter((o) => o && typeof o === "object")
       .map((o) => SI.parseStream(name, o, type === "tv" ? season : null, type === "tv" ? episode : null));
   }));
-  const list = [].concat(...per);
+  const list = [].concat(await ivP, ...per);
   S.streamCache.set(ck, { at: Date.now(), list });
   if (S.streamCache.size > 20) S.streamCache.delete(S.streamCache.keys().next().value);
   return list;
@@ -3017,6 +3021,12 @@ function setPos(m, p, d) {
 
 // ---------- Sources page (#/sources/type/id?s=&e=) ----------
 function srcRow(r, i) {
+  if (r.source.iptv) {
+    const s = r.source, parts = [`<span class="in">&#128250; IPTV</span>`];
+    if (s.resolution) parts.push(`<span class="bdg${s.resolution === "4K" || s.resolution === "1080p" ? " hi" : ""}">${esc(s.resolution)}</span>`);
+    parts.push(`<span class="so">${esc(s.title)}</span>`, `<span class="sz">${esc(String(s.ext || "").toUpperCase())}</span>`, `<span class="ad">${esc(s.addon)}</span>`);
+    return `<button class="src iptv" data-src="${i}" title="${esc(s.title + " (no Real-Debrid needed)")}">${parts.join("")}</button>`;
+  }
   const f = r.info;
   const st = `<span class="st" aria-label="${f.stars} of 5 stars">${"&#9733;".repeat(f.stars)}<i>${"&#9733;".repeat(5 - f.stars)}</i></span>`;
   const parts = [st];
@@ -3057,8 +3067,9 @@ async function renderSources(v, tok, type, id, q) {
   const head = `<a class="muted" href="${back}" style="font-size:13px;font-weight:600">&#8249; ${esc(t.name)}</a>
     <div class="srchead"><h1 style="margin-bottom:0">Play here</h1><div class="lbl">${esc(meta.label)}${siOpts().slow ? " · Slow connection: smaller files first" : ""}</div></div>`;
   const tvBtn = `<button class="btn" ${playAttrs(t, season, episode)}>&#9654; Play on TV</button>`;
-  if (!imdb) { v.innerHTML = `<div class="page">${head}<p class="muted">This title has no IMDb id yet, so your addons can't look it up.</p><div class="actions">${tvBtn}</div></div>`; return; }
-  if (!addonUrls().length) {
+  const ivOn = IV.has();
+  if (!imdb && !ivOn) { v.innerHTML = `<div class="page">${head}<p class="muted">This title has no IMDb id yet, so your addons can't look it up.</p><div class="actions">${tvBtn}</div></div>`; return; }
+  if (!addonUrls().length && !ivOn) {
     v.innerHTML = `<div class="page">${head}<div class="panel" style="margin-top:14px"><h2>No addons yet</h2>
       <p class="muted">${S.link ? "Your TV hasn't sent any addons. Add one on the TV or the Control page, then tap Refresh from TV. Or add one on this phone in Settings > Addons on this device." : "Add an addon in Settings > Addons on this device, or link your TV to use its addons."}</p>
       <div class="rowf" style="margin-top:10px">${S.link ? `<button class="btn small primary" data-act="retry">Refresh from TV</button>` : `<a class="btn small primary" href="#/pair">Link your TV</a>`}<a class="btn small" href="#/settings">Settings</a></div></div></div>`;
@@ -3066,7 +3077,7 @@ async function renderSources(v, tok, type, id, q) {
   }
   v.innerHTML = `<div class="page">${head}
     <div class="actions"><button class="btn primary" id="bestBtn" disabled>&#9889; Best source</button>${tvBtn}</div>
-    <div class="srcstatus" id="srcStatus" role="status" aria-live="polite">Asking your addons…</div>
+    <div class="srcstatus" id="srcStatus" role="status" aria-live="polite">${ivOn ? (addonUrls().length && imdb ? "Asking your addons and your IPTV provider…" : "Asking your IPTV provider…") : "Asking your addons…"}</div>
     <div class="srcs" id="srcList">${Array.from({ length: 6 }, () => `<div class="sk" style="height:46px"></div>`).join("")}</div></div>`;
   const status = $("#srcStatus", v), listEl = $("#srcList", v), bestBtn = $("#bestBtn", v);
   const say = (msg, bad) => { status.textContent = msg; status.classList.toggle("bad", !!bad); };
@@ -3076,23 +3087,29 @@ async function renderSources(v, tok, type, id, q) {
     if (err && (err.tvOff || err.message === NO_RD)) status.insertAdjacentHTML("beforeend", ` <a class="btn small" href="#/settings" style="margin-left:6px">Open Settings</a>`);
   };
   let list;
-  try { list = await fetchStreams(type, imdb, season, episode); } catch (e) { list = []; }
+  try { list = await fetchStreams(type, imdb, season, episode, id); } catch (e) { list = []; }
   if (tok !== routeTok) return;
   const opts = siOpts();
+  // Your IPTV provider's copies first (already best first), then the addons' sources, ranked.
+  const ivList = list.filter((s) => s.iptv), ivRows = ivList.map((s) => ({ source: s, info: {} }));
+  list = list.filter((s) => !s.iptv);
   const a = SI.arrange(list, type === "tv", opts);
-  let rows = a.visible, showHidden = false;
-  if (!list.length) {
+  let rows = ivRows.concat(a.visible), showHidden = false;
+  const ivNote = ivOn && S.iptvReport === "failed" ? " Your IPTV provider's library didn't load." : "";
+  if (!list.length && !ivList.length) {
     // Say why: no addons on this device, addons that didn't answer (blocked network), or really nothing found.
     const rep = Object.entries(S.addonReport || {}), bad = rep.filter(([, r]) => r !== "ok");
     const msg = !addonUrls().length ? "No addons on this device yet. Open Jarvis once with a TV on, or connect with a code (Settings), so it gets your addons."
       : bad.length ? `${bad.length === rep.length ? "Your addons" : "Some addons"} didn't answer (${bad.map(([n, r]) => n + ": " + r).join(", ")}). Something on this network is blocking them: a VPN, iCloud Private Relay, or Limit IP Address Tracking. Turn those off for Wi-Fi and try again.`
+      : !addonUrls().length || !imdb ? (ivOn ? (S.iptvReport === "failed" ? "Couldn't load your IPTV provider's library. Try again in a minute." : "Your IPTV provider has no copy of this title.") : "No sources found.")
       : "Your addons answered but list no sources for this title yet. New talk shows and specials often have none.";
-    say(msg, true); listEl.innerHTML = ""; S.streamCache.clear(); return;
+    say(msg + (msg.includes("IPTV") ? "" : ivNote), true); listEl.innerHTML = ""; S.streamCache.clear(); return;
   }
-  say(`${a.visible.length + a.hidden.length} sources. Tap one, or let Best source pick.`);
+  const nAll = ivList.length + a.visible.length + a.hidden.length;
+  say(`${nAll} source${nAll === 1 ? "" : "s"}${ivList.length ? `, ${ivList.length} from your IPTV provider` : ""}. Tap one, or let Best source pick.${ivNote}`);
   bestBtn.disabled = false;
   const draw = () => {
-    const all = showHidden ? a.visible.concat(a.hidden) : a.visible;
+    const all = ivRows.concat(showHidden ? a.visible.concat(a.hidden) : a.visible);
     rows = all;
     listEl.innerHTML = all.map(srcRow).join("") + (a.hidden.length && !showHidden
       ? `<button class="srcmore" id="showHidden">Show ${a.hidden.length} hidden source${a.hidden.length === 1 ? "" : "s"} (CAM releases, files over the size limit)</button>` : "");
@@ -3101,6 +3118,7 @@ async function renderSources(v, tok, type, id, q) {
   let busy = false;
   const lock = (on) => { busy = on; bestBtn.disabled = on; $$(".src", listEl).forEach((b) => { b.disabled = on; }); };
   async function go(s, o) {
+    if (s.iptv) { showIptv(s); return true; }
     const res = await resolveHere(s, meta, { alive: () => tok === routeTok, ...(o || {}) });
     if (tok !== routeTok) return true;
     say("Getting the stream ready…");
@@ -3163,20 +3181,53 @@ async function renderSources(v, tok, type, id, q) {
       }, 400);
     }
   }
+  /** A copy from your IPTV provider: plain http, so a player app plays it (no Real-Debrid). The link holds the login: never shown. */
+  function showIptv(s) {
+    say("");
+    const auto = extPref();
+    const durGuess = (meta.runtimeMin || 0) * 60000;
+    const startMs = resumeAt(meta, durGuess);
+    const apps = isMac ? ["iina"] : ["vlc", "infuse"];
+    const pick = startMs > 0 ? `<p style="margin-top:8px"><b>Pick up at ${fmtTime(startMs / 1000)}</b> <span class="muted">(where you left off${auto === "infuse" ? "; Infuse starts there" : ". Skip ahead to it in the player"})</span></p>` : "";
+    const box = document.createElement("div");
+    box.className = "panel"; box.id = "extBox"; box.style.margin = "12px 0";
+    box.innerHTML = `<h2>${auto === "ask" ? "Ready. Open it in a player app" : "Opening in " + EXT_NAME[auto] + "…"}</h2>
+      <p class="muted">${esc(s.title)}, from your IPTV provider. No Real-Debrid needed. ${isMac ? "IINA (free at iina.io) plays it." : "VLC (free on the App Store) plays it."}</p>${pick}
+      <p class="muted" style="margin-top:6px">If it doesn't start: ${esc(IPTV_ONE)}</p>
+      <div class="rowf" style="margin-top:10px;flex-wrap:wrap;gap:8px">${apps.map((x, i) => `<button class="btn small${i ? "" : " primary"}" type="button" data-ivapp="${x}">Open in ${EXT_NAME[x]}</button>`).join("")}</div>
+      <div class="rowf" style="margin-top:10px"><span class="muted">Next time:</span>${extPrefSelect("extPrefBox")}</div>`;
+    const old = $("#extBox", v); if (old) old.remove();
+    status.after(box);
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+    lock(false);
+    const inf = isMac ? Promise.resolve("") : infuseLink(meta, s.url, startMs, durGuess);
+    const open = async (app) => {
+      if (tok !== routeTok) return;
+      try { LV.closePlayer(); } catch {} // Live TV here would hold the account's one stream
+      if (app === "infuse") { openApp((await inf.catch(() => "")) || iptvAppLink(app, s.url)); return; }
+      noteHandoff(meta, startMs, durGuess);
+      openApp(iptvAppLink(app, s.url));
+    };
+    $$("[data-ivapp]", box).forEach((b) => b.addEventListener("click", () => open(b.dataset.ivapp)));
+    if (auto !== "ask") setTimeout(() => open(auto), 400);
+  }
   listEl.addEventListener("click", async (e) => {
     if (e.target.closest("#showHidden")) {
-      const first = a.visible.length; showHidden = true; draw();
+      const first = ivRows.length + a.visible.length; showHidden = true; draw();
       const b = listEl.querySelectorAll(".src")[first]; if (b) b.focus();
       return;
     }
     const b = e.target.closest("[data-src]"); if (!b || busy) return;
     const s = rows[+b.dataset.src].source;
+    if (s.iptv) { showIptv(s); return; }
     lock(true); say(`Getting stream from ${s.addon}…`);
     const onWait = () => { if (tok === routeTok) say("Waiting to try this source. " + RD_ADD_NOTE); };
     try { await go(s, { onWait }); } catch (err) { if (err.blocked && err.fullGap) SI.markRefused(s); if (tok === routeTok) { sayErr(err); lock(false); } }
   });
   bestBtn.addEventListener("click", async () => {
     if (busy) return;
+    // Your IPTV provider first: no Real-Debrid, no add limit. The best copy goes straight to the player app.
+    if (ivList.length) { say("Opening your IPTV provider's copy…"); showIptv(ivList[0]); return; }
     lock(true);
     // Resolver.best: the top 8 in list order (CAM and oversized only if nothing else), first that resolves wins.
     // RD refuses many torrents at addMagnet (error 35): likely ones sort last, and ones it refused before are skipped.
@@ -3436,6 +3487,7 @@ async function renderList(v, tok, tab) {
 // (data/LiveCatalog.kt) sorts channels into sections. Playlist links and stream URLs carry your
 // account details: they are never shown on screen and never logged.
 // =====================================================================================
+const IPTV_RELAY_URL = "https://jarvis-rd.netlify.app/iptv";
 const LIVE_NO = "Your provider's channels can't play in a web browser. Live TV works in the Jarvis TV app.";
 const HLS_JS = "https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js";
 const LIVE_SECTIONS = ["Favorites", "Recent", "Sports", "News", "Kids", "Movies", "Entertainment", "24/7", "Local", "International", "All"];
@@ -3716,7 +3768,7 @@ const LV = (() => {
   // Many providers switch off the playlist download and block browsers, but keep the app API IPTV apps use.
   // The Jarvis relay (rd-proxy/netlify/functions/iptv.mts) fetches that channel list; videos still go straight
   // from the provider to the player app.
-  const IPTV_RELAY = "https://jarvis-rd.netlify.app/iptv";
+  const IPTV_RELAY = IPTV_RELAY_URL;
   async function getViaRelay(url, ms, extra) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), ms || 60000);
@@ -3735,6 +3787,7 @@ const LV = (() => {
     if (+info.auth === 0) throw new Error("The provider rejected the username or password in your playlist link.");
     if (info.status && String(info.status).toLowerCase() !== "active") throw new Error("Your IPTV account is not active. Check with your provider.");
     const formats = Array.isArray(info.allowed_output_formats) ? info.allowed_output_formats.map(String) : [];
+    xtTs = !formats.length || formats.includes("ts");
     if (formats.length && !formats.includes("m3u8") && get === getText) throw new Error(LIVE_NO); // .ts only: browsers can't play it
     const cats = {};
     try { (JSON.parse(await get(`${api}&action=get_live_categories`)) || []).forEach((c) => { if (c) cats[String(c.category_id)] = String(c.category_name || ""); }); } catch {}
@@ -4260,6 +4313,10 @@ const LV = (() => {
   }
 
   // ---------- player ----------
+  // Player apps get the provider's .ts link for a live channel when it allows .ts: IINA stopped at 1:20 and replayed
+  // that part on the .m3u8 link, and played on with .ts (J's Mac, October 18, 2026). The browser player keeps .m3u8.
+  let xtTs = false;
+  const extLive = (u) => (xtTs && /\/live\/[^/]+\/[^/]+\/[^/]+\.m3u8(\?.*)?$/i.test(u) ? u.replace(/\.m3u8(\?.*)?$/i, ".ts$1") : u);
   let hlsPromise = null;
   function loadHls() {
     if (window.Hls) return Promise.resolve(window.Hls);
@@ -4283,7 +4340,7 @@ const LV = (() => {
     if (st.ext || mixedBlocked(ch.url)) {
       // Live channels always go to VLC on a phone (the provider accepts VLC); movies and shows go to Infuse.
       const app = isMac ? "iina" : "vlc";
-      const link = extUrl(app, ch.url) + (app === "iina" ? "&mpv_user-agent=" + encodeURIComponent(st.ua || LIVE_UA) : "");
+      const link = extUrl(app, extLive(ch.url)) + (app === "iina" ? "&mpv_user-agent=" + encodeURIComponent(st.ua || LIVE_UA) : "");
       toast("Opening " + ch.name + " in " + EXT_NAME[app] + "…", "ok");
       location.href = link;
       return;
@@ -4354,7 +4411,7 @@ const LV = (() => {
     document.body.style.overflow = "";
   }
   return {
-    show, play, closePlayer,
+    show, play, closePlayer, xtreamOf,
     reset() { st = { status: "idle", list: null, msg: "", key: "" }; view = { sec: "", q: "", shown: 0 }; },
     redraw,
     section(sec) { view.auto = false; view.sec = sec; view.sub = ""; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
@@ -4365,6 +4422,146 @@ const LV = (() => {
   };
 })();
 function renderLive(v, tok) { LV.show(v, tok); }
+
+// ---------- your IPTV provider's movies and shows (on demand) ----------
+// The playlist link's Xtream Codes app API lists the provider's movies (get_vod_streams) and shows (get_series),
+// most with a TMDB id. Read through the Jarvis relay only when a Sources page opens, then kept as a small index
+// (TMDB id -> copies: id, name, file type) in IndexedDB for 24 hours. The index holds no login and no links:
+// links are built from S.init.m3u_url when a source is listed, and they never go into the page, toasts or logs.
+// The provider is plain http, so a player app (VLC, IINA, Infuse) plays them, like big files and live channels.
+const IPTV_NAME = "Your IPTV provider";
+const IPTV_ONE = "Your IPTV account plays one stream at a time. Stop Live TV or other playback, then try again.";
+const IV = (() => {
+  const DB = "jarvis-iptv", STORE = "kv", TTL = 24 * 3600e3, INFO_TTL = 6 * 3600e3;
+  let mem = null, loading = null;
+  const infos = new Map(); // series_id -> {at, eps: {season: [[id, episode_num, title, ext, height]]}}
+  const acct = () => { try { return LV.xtreamOf(String((S.init && S.init.m3u_url) || "")); } catch { return null; } };
+  const has = () => !!acct();
+  /** A short hash of the account, so a new playlist link gets a new index. The login itself is not stored. */
+  async function acctKey(x) { return [...(await sha(x.base + "|" + x.user + "|" + x.pass))].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join(""); }
+  function idb() {
+    return new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open(DB, 1);
+        r.onupgradeneeded = () => { try { r.result.createObjectStore(STORE); } catch {} };
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error("blocked"));
+        setTimeout(() => rej(new Error("slow")), 3000);
+      } catch (e) { rej(e); }
+    });
+  }
+  async function idbGet(k) {
+    try {
+      const db = await idb();
+      return await new Promise((res) => { try { const q = db.transaction(STORE).objectStore(STORE).get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); } catch { res(null); } });
+    } catch { return null; }
+  }
+  async function idbPut(k, v) {
+    try { const db = await idb(); await new Promise((res) => { try { const t = db.transaction(STORE, "readwrite"); t.objectStore(STORE).put(v, k); t.oncomplete = t.onerror = t.onabort = () => res(); } catch { res(); } }); } catch {}
+  }
+  /** One app API call through the relay. Errors never carry the link (it holds the login). */
+  async function call(x, action, extra, ms) {
+    const api = `${x.base}/player_api.php?username=${encodeURIComponent(x.user)}&password=${encodeURIComponent(x.pass)}&action=${action}${extra || ""}`;
+    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms || 60000);
+    try {
+      const r = await fetch(IPTV_RELAY_URL + "?u=" + encodeURIComponent(api), { signal: ac.signal, credentials: "omit", referrerPolicy: "no-referrer" });
+      if (!r.ok) throw 0;
+      return await r.json();
+    } catch { throw new Error("IPTV library not reachable"); } finally { clearTimeout(t); }
+  }
+  const tmdbOf = (o) => { const t = String(o && o.tmdb != null ? o.tmdb : "").trim(); return /^[1-9]\d{0,9}$/.test(t) ? t : ""; };
+  const extOf = (e, d) => { const s = String(e || "").trim().toLowerCase(); return /^[a-z0-9]{2,5}$/.test(s) ? s : d; };
+  const idOf = (v) => { const s = String(v == null ? "" : v).trim(); return /^\d{1,12}$/.test(s) ? s : ""; };
+  /** The index for the saved playlist: {k, at, m: {tmdb: [[id, name, ext]]}, s: {tmdb: [[series_id, name]]}, nm, ns}. */
+  function index() {
+    const x = acct(); if (!x) return Promise.resolve(null);
+    if (loading) return loading;
+    loading = (async () => {
+      const k = await acctKey(x);
+      if (mem && mem.k === k && Date.now() - mem.at < TTL) return mem;
+      const saved = await idbGet("index");
+      if (saved && saved.k === k && Date.now() - saved.at < TTL && saved.m && saved.s) return (mem = saved);
+      let vod = null, ser = null;
+      await Promise.all([call(x, "get_vod_streams").then((v) => { vod = v; }, () => {}), call(x, "get_series").then((v) => { ser = v; }, () => {})]);
+      if (!Array.isArray(vod) && !Array.isArray(ser)) throw new Error("IPTV library not reachable");
+      const m = {}, s = {};
+      for (const o of Array.isArray(vod) ? vod : []) {
+        const t = tmdbOf(o), id = o && idOf(o.stream_id); if (!t || !id) continue;
+        (m[t] || (m[t] = [])).push([id, String(o.name || "").trim().slice(0, 120), extOf(o.container_extension, "mp4")]);
+      }
+      for (const o of Array.isArray(ser) ? ser : []) {
+        const t = tmdbOf(o), id = o && idOf(o.series_id); if (!t || !id) continue;
+        (s[t] || (s[t] = [])).push([id, String(o.name || "").trim().slice(0, 120)]);
+      }
+      const out = { k, at: Date.now(), m, s, nm: Array.isArray(vod) ? vod.length : 0, ns: Array.isArray(ser) ? ser.length : 0 };
+      vod = ser = null; // the big lists go; only the index stays
+      mem = out;
+      if (out.nm && out.ns) idbPut("index", out); // a partial list is not kept: the next page tries again
+      return out;
+    })().finally(() => { loading = null; });
+    return loading;
+  }
+  /** get_series_info, compact, 6 hours in memory. */
+  async function seriesInfo(x, sid) {
+    const c = infos.get(sid);
+    if (c && Date.now() - c.at < INFO_TTL) return c.eps;
+    const d = await call(x, "get_series_info", "&series_id=" + sid, 30000);
+    const eps = {};
+    const all = d && d.episodes && typeof d.episodes === "object" ? d.episodes : {};
+    for (const [sk, arr] of Object.entries(all)) {
+      if (!Array.isArray(arr)) continue;
+      for (const e of arr) {
+        const id = e && idOf(e.id); if (!id) continue;
+        const sn = e.season != null && isFinite(+e.season) ? +e.season : +sk;
+        const h = e.info && e.info.video && +e.info.video.height || 0;
+        (eps[sn] || (eps[sn] = [])).push([id, e.episode_num != null && isFinite(+e.episode_num) ? +e.episode_num : -1, String(e.title || "").trim().slice(0, 120), extOf(e.container_extension, "mp4"), h]);
+      }
+    }
+    infos.set(sid, { at: Date.now(), eps });
+    if (infos.size > 40) infos.delete(infos.keys().next().value);
+    return eps;
+  }
+  const resOfName = (n) => /(?:^|[^a-z0-9])(?:4k|uhd|2160p?)(?![a-z0-9])/i.test(n) ? "4K" : /(?:^|[^a-z0-9])(?:fhd|1080p?)(?![a-z0-9])/i.test(n) ? "1080p" : "";
+  const resOfHeight = (h) => h >= 1600 ? "4K" : h >= 900 ? "1080p" : h >= 650 ? "720p" : h > 0 ? "SD" : "";
+  const RANK = { "4K": 4, "1080p": 3, "720p": 2, SD: 1 };
+  function src(x, kind, id, ext, title, resolution, season, episode) {
+    return { addon: IPTV_NAME, name: IPTV_NAME, title, iptv: true, resolution, ext,
+      url: `${x.base}/${kind}/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.${ext}`,
+      infoHash: null, fileIdx: null, quality: resolution || "Unknown", sizeText: "", sizeGb: 0, seeders: null, cached: true, headers: {},
+      season: season == null ? null : season, episode: episode == null ? null : episode };
+  }
+  /** Best first: highest resolution (slow connection: 4K last), then the provider's order. */
+  function rank(list, slow) {
+    const r = (s) => { const v = RANK[s.resolution] || 0; return slow && v === 4 ? -1 : v; };
+    return list.map((s, i) => [s, i]).sort((a, b) => (r(b[0]) - r(a[0])) || (a[1] - b[1])).map((p) => p[0]);
+  }
+  /** Copies of this title (TMDB id) in the provider's library, as sources. Episodes match episode_num, then SxxEyy. */
+  async function sources(type, tmdbId, season, episode, slow) {
+    S.iptvReport = "";
+    const x = acct(); if (!x || !tmdbId) return [];
+    let ix;
+    try { ix = await index(); } catch { S.iptvReport = "failed"; return []; }
+    if (!ix) return [];
+    S.iptvReport = "ok";
+    const t = String(tmdbId);
+    if (type !== "tv") return rank((ix.m[t] || []).slice(0, 12).map(([id, name, ext]) => src(x, "movie", id, ext, name, resOfName(name))), slow);
+    const shows = (ix.s[t] || []).slice(0, 4);
+    const rx = new RegExp(`s0*${season}\\s*e0*${episode}(?!\\d)`, "i");
+    const per = await Promise.all(shows.map(async ([sid, sname]) => {
+      let eps; try { eps = await seriesInfo(x, sid); } catch { return null; }
+      const arr = eps[season] || [];
+      const e = arr.find((r) => r[1] === episode) || arr.find((r) => rx.test(r[2]));
+      return e ? src(x, "series", e[0], e[3], (e[2] || sname) + "", resOfHeight(e[4]) || resOfName(sname), season, episode) : null;
+    }));
+    return rank(per.filter(Boolean), slow);
+  }
+  /** Settings > Check network: how big the library is. */
+  async function counts() { const ix = await index(); return ix ? { movies: ix.nm, shows: ix.ns } : null; }
+  return { has, index, sources, counts, reset() { mem = null; infos.clear(); } };
+})();
+/** Hand a link to a player app (one place, so the web tests can watch it). */
+function openApp(link) { location.href = link; }
+/** The player-app link for an IPTV file. IINA introduces itself as VLC, as for live channels. */
+const iptvAppLink = (app, url) => extUrl(app, url) + (app === "iina" ? "&mpv_user-agent=" + encodeURIComponent(LIVE_UA) : "");
 
 // ---------- Who's watching? ----------
 function renderProfiles(v, next) {
@@ -4532,6 +4729,13 @@ async function netCheck() {
   if (rdHere()) jobs.push(job("Real-Debrid on this device", async () => {
     try { await rdCall("GET", "/user"); return { ok: true, note: "Signed in and working." }; }
     catch (e) { return { ok: false, note: e.message || NET_BLOCKED }; }
+  }));
+  // Your IPTV provider's on-demand library (through the relay; the 24-hour index when it is fresh).
+  if (IV.has()) jobs.push(job("IPTV movies and shows", async () => {
+    let c = null; try { c = await IV.counts(); } catch {}
+    if (!c) return { ok: false, note: "Couldn't load your IPTV provider's library. Try again in a minute." };
+    const n = (x) => Number(x || 0).toLocaleString("en-US");
+    return c.movies || c.shows ? { ok: true, note: `${n(c.movies)} movies, ${n(c.shows)} shows.` } : { ok: false, note: "Your IPTV provider lists no movies or shows." };
   }));
   jobs.push(job("TV link (ntfy.sh)", async () => {
     const res = await netProbe(RELAY + "v1/health", 6000);
@@ -4861,7 +5065,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-17.1";
+const BUILD = "2026-10-18.1";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
