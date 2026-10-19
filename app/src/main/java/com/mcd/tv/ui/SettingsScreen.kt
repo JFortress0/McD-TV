@@ -141,10 +141,13 @@ fun SettingsScreen(nav: Nav) {
 
     // Put focus where Settings opens: the saved row on a return, else the rail. A request made before the
     // window has focus can be lost on a cold start, so try again for a short while until the page holds focus.
-    // It runs again when the window gains focus, which on a slow cold start can come seconds later.
+    // It runs again when the window gains focus, which on a slow cold start can come seconds later, and when the
+    // first key press ends touch mode (rows cannot take focus in touch mode, so a launch in touch mode starts
+    // with nothing focused).
     var pageHasFocus by remember { mutableStateOf(false) }
     val windowFocused = androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
-    LaunchedEffect(windowFocused) {
+    val inputMode = androidx.compose.ui.platform.LocalInputModeManager.current.inputMode
+    LaunchedEffect(windowFocused, inputMode) {
         repeat(20) {
             withFrameNanos { }
             if (pageHasFocus) return@LaunchedEffect
