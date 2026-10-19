@@ -545,11 +545,7 @@ fun PhoneSetupScreen(nav: Nav) {
     val addrs = remember { LocalWeb.addresses() }
     var link by remember { mutableStateOf(com.mcd.tv.data.Relay.controlUrl()) }
     // Keep the TV awake (no screensaver) while this screen is open.
-    val view = androidx.compose.ui.platform.LocalView.current
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        view.keepScreenOn = true
-        onDispose { view.keepScreenOn = false }
-    }
+    KeepScreenOn("setup")
     Row(
         Modifier.fillMaxSize().hudBackground().padding(48.dp),
         horizontalArrangement = Arrangement.spacedBy(48.dp),

@@ -145,6 +145,46 @@ else
   fail "Settings: one BACK closes the keyboard and the editor"
 fi
 
+# 4w) The Wall keeps the screen on: no screensaver or sleep past the idle timeout, also after an HDMI-style
+# display change (density) and after Android re-creates the activity. A screen with no hold must go to sleep
+# (control), so the test can fail.
+wake() { adb shell dumpsys power | grep -o 'mWakefulness=[A-Za-z]*' | head -1 | cut -d= -f2; }
+keep_flag() { adb shell dumpsys window windows | grep -A40 'com.mcd.tv/com.mcd.tv.MainActivity' | grep -q KEEP_SCREEN_ON; }
+wall_shown() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml qa-out/ui-wall-now.xml >/dev/null 2>&1; grep -q "JARVIS WALL\|Not set up yet" qa-out/ui-wall-now.xml; }
+adb shell settings put system screen_off_timeout 15000
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen browse >/dev/null
+sleep 35
+CTRL=$(wake); echo "      control (Browse, no hold) after 35 s: $CTRL" | tee -a "$R"
+[ "$CTRL" != "Awake" ] && pass "Wall test control: a screen with no hold goes to sleep" || fail "Wall test control: a screen with no hold goes to sleep (still $CTRL)"
+adb shell input keyevent KEYCODE_WAKEUP; sleep 2
+# Open the Wall the way a person does (Settings > Jarvis Wall > Open Wall), not with "--es screen wall": a re-created
+# activity gets its launch intent again, so a deep link would bring the Wall back even without the fix.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings:wall >/dev/null
+sleep 8
+# Two RIGHTs: the first may only end touch mode (focus then goes to the rail), the second reaches Open Wall.
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 6
+wall_shown && pass "Wall: opens from Settings" || fail "Wall: opens from Settings"
+keep_flag && pass "Wall: window has FLAG_KEEP_SCREEN_ON" || fail "Wall: window has FLAG_KEEP_SCREEN_ON"
+sleep 30
+W=$(wake); shot wall-idle
+[ "$W" = "Awake" ] && pass "Wall: screen stays on past the idle timeout" || fail "Wall: screen stays on past the idle timeout ($W)"
+# An HDMI mode change can change the display density. The Wall must stay up and held.
+adb shell wm density 240; sleep 6
+if wall_shown && keep_flag; then pass "Wall: stays up and held after a density change"; else fail "Wall: stays up and held after a density change"; fi
+adb shell wm density reset; sleep 4
+# Android re-creates the activity ("Don't keep activities" destroys it on HOME): the app comes back to the Wall.
+adb shell settings put global always_finish_activities 1
+adb shell input keyevent KEYCODE_HOME; sleep 4
+adb shell am start -n com.mcd.tv/.MainActivity >/dev/null; sleep 8
+shot wall-recreated
+if wall_shown && keep_flag; then pass "Wall: comes back held after the activity is re-created"; else fail "Wall: comes back held after the activity is re-created"; fi
+adb shell settings put global always_finish_activities 0
+sleep 30
+W=$(wake); [ "$W" = "Awake" ] && pass "Wall: still awake after the re-create" || fail "Wall: still awake after the re-create ($W)"
+adb shell settings put system screen_off_timeout 2147483647
+
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
 mkdir -p qa-m3u
 cat > qa-m3u/test.m3u <<'M3U'

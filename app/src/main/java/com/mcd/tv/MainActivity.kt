@@ -168,23 +168,46 @@ class MainActivity : ComponentActivity() {
             "wall" -> Screen.Wall
             else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
         }
-        setContent { McdTheme { App(startScreen) } }
+        // Android re-created the activity while the Wall was up (an HDMI mode change, low memory): open the Wall
+        // again, so the screen stays held and the screensaver never takes over.
+        val wallWasUp = savedInstanceState?.getBoolean(KEY_WALL_UP) == true
+        setContent { McdTheme { App(startScreen, wallWasUp) } }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_WALL_UP, WallUp.showing)
+    }
+
+    private companion object {
+        const val KEY_WALL_UP = "wall_up"
+    }
+}
+
+/** True while the Wall is the screen on top (saved when Android re-creates the activity). */
+private object WallUp {
+    @Volatile var showing = false
 }
 
 @Composable
-private fun App(startScreen: Screen? = null) {
+private fun App(startScreen: Screen? = null, wallWasUp: Boolean = false) {
     val stack = remember {
-        when {
-            startScreen != null -> mutableStateListOf<Screen>(Screen.Home, startScreen)
+        val start = com.mcd.tv.data.StartScreen.pick(
+            hasDeepLink = startScreen != null, wallWasUp = wallWasUp, wallStartPref = Prefs.wallStart,
+            playIntro = Prefs.playIntro, skipProfiles = com.mcd.tv.ui.ProfileStart.skip,
+        )
+        when (start) {
+            com.mcd.tv.data.StartScreen.Start.DeepLink -> mutableStateListOf<Screen>(Screen.Home, startScreen!!)
             // A wall TV opens straight into the Wall. BACK goes to Home.
-            Prefs.wallStart -> mutableStateListOf<Screen>(Screen.Home, Screen.Wall)
-            Prefs.playIntro -> mutableStateListOf<Screen>(Screen.Intro)
-            !com.mcd.tv.ui.ProfileStart.skip -> mutableStateListOf<Screen>(Screen.Profiles)
-            else -> mutableStateListOf<Screen>(Screen.Home)
+            com.mcd.tv.data.StartScreen.Start.Wall -> mutableStateListOf<Screen>(Screen.Home, Screen.Wall)
+            com.mcd.tv.data.StartScreen.Start.Intro -> mutableStateListOf<Screen>(Screen.Intro)
+            com.mcd.tv.data.StartScreen.Start.Profiles -> mutableStateListOf<Screen>(Screen.Profiles)
+            com.mcd.tv.data.StartScreen.Start.Home -> mutableStateListOf<Screen>(Screen.Home)
         }
     }
+    SideEffect { WallUp.showing = stack.last() == Screen.Wall }
+    // The one owner of FLAG_KEEP_SCREEN_ON on the window (the Wall and Phone & Computer Setup hold it).
+    com.mcd.tv.ui.KeepScreenWindow()
     // removeAt instead of removeLast: removeLast crashes on older Android versions.
     fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
     val nav = remember {

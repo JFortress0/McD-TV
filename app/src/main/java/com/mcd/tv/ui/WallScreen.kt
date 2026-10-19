@@ -75,7 +75,8 @@ import java.util.Locale
  * Now and then it shows the whole month instead: by default the last minute of every half hour (pref wall_cycle, set
  * on the Control page or in Settings, see WallCycle). Remote: OK switches views (and stops the automatic switch
  * for 10 minutes), LEFT / RIGHT change the photo, BACK leaves.
- * The screen stays on while this page is open. From 11 PM to 6 AM it dims.
+ * The screen stays on while this page is open (KeepScreenOn: the window flag, so the Fire TV screensaver never
+ * starts). From 11 PM to 6 AM it dims.
  */
 
 private const val PHOTO_MS = 30_000L
@@ -87,12 +88,8 @@ private enum class WallView { Agenda, Month }
 
 @Composable
 fun WallScreen(nav: Nav) {
-    // Keep the TV awake while the wall is up.
-    val view = LocalView.current
-    DisposableEffect(Unit) {
-        view.keepScreenOn = true
-        onDispose { view.keepScreenOn = false }
-    }
+    // Keep the TV awake while the wall is up: the window flag, held until the Wall closes (see KeepScreen).
+    KeepScreenOn("wall")
 
     var feed by remember { mutableStateOf(Wall.cachedFeed()) }
     var feedError by remember { mutableStateOf<String?>(null) }
