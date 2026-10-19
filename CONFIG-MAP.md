@@ -43,7 +43,10 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 | Playlist (M3U or Xtream Codes) | Control page, TV home Wi-Fi page | `m3u_url`. Xtream user and password are read from the `get.php?username=&password=` link; there are no separate fields. | HouseSync, `web_init`. The phone loads it through `jarvis-rd.netlify.app/iptv`. | yes (the link holds the login) |
 | Guide (XMLTV) | no field | taken from the playlist header (`url-tvg`, `x-tvg-url`) or Xtream `xmltv.php`; kept in memory on the TV; phone cache `mcdtv_web_epg` | none | through the link |
 | Live TV favorites | star on the TV or phone | `live_favorites@pN`; phone `mcdtv_web_plists` | ProfileSync, `web_init` | no |
-| Recents, last channel, channel stats | automatic | `live_recents@pN`, `live_last_url@pN`, `live_stats` | this TV only | no |
+| Recents, last channel, channel stats | automatic | `live_recents@pN`, `live_last_url@pN`, `live_stats` (JSON list; `b` = measured stream bitrate in kbps, 0 in older entries) | this TV only | no |
+| Quality memory (up-front 4K or 1080p pick) | automatic | `quality_memory` = JSON `{est, estAt, ch: {guideKey: {br, down, clr}}}`: last throughput (bps) and when, per 4K channel its measured bitrate, last step-down and when a step-down was forgiven | this TV only, never synced, not per profile | no |
+| Quality changes log | automatic, shown in TV Settings > Addons and Live TV > Quality changes | `quality_log` = JSON list, newest first, last 40: `{at, t (title), f (from), to, c (reason code), e (estimate bps)}` | this TV only, never synced, not per profile | no |
+| Quality memory and log on the phone | automatic; the log shows in Web app Settings > Playback > Recent quality changes | `mcdtv_web_qmem` = JSON `{est, estAt, ch: {guideKey: {br, down, at}}}` (last measured speed, per 4K channel its measured bitrate and last step-down); `mcdtv_web_qlog` = JSON list, newest first, last 40: `{t, w (live or vod), name, from, to, why, est, br, note}` | this browser only; not in the setup link or invites | no |
 
 ## Profiles and the house
 
@@ -94,4 +97,4 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 
 ## What the Settings redesign (October 2026) changed in storage
 
-Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked). Later on October 19: TV `wall_cycle`, TV `quality_mode` and web `mcdtv_web_quality`.
+Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked). Later on October 19: TV `wall_cycle`, TV `quality_mode` and web `mcdtv_web_quality`. Then TV `quality_memory`, `quality_log` and the `b` field inside `live_stats`; web `mcdtv_web_qmem` and `mcdtv_web_qlog`.

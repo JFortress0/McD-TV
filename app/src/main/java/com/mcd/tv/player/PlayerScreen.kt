@@ -50,15 +50,23 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.NowPlaying
 import com.mcd.tv.data.PlayMeta
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.BitrateMeter
 import com.mcd.tv.data.QualityFallback
+import com.mcd.tv.data.QualityLog
+import com.mcd.tv.data.QualityMemory
 import com.mcd.tv.data.QualityMode
 import com.mcd.tv.data.StallWatch
+import com.mcd.tv.data.ThroughputEstimator
 import com.mcd.tv.data.RdErrors
 import com.mcd.tv.ui.ActionButton
 import com.mcd.tv.ui.McdColors
@@ -128,6 +136,8 @@ fun PlayerScreen(
     startPositionMs: Long = -1L,
     /** Shown for a few seconds when playback opens (e.g. after a switch to 1080p). */
     startNotice: String? = null,
+    /** Live TV: the channel's guide key, where [QualityMemory] keeps its measured bitrate and step-downs. */
+    qualityKey: String = "",
 ) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
@@ -161,6 +171,8 @@ fun PlayerScreen(
     val videoNow = remember { VideoNow() }
     var qualityNote by remember { mutableStateOf(startNotice) }
     val currentOnStepDown by rememberUpdatedState(onStepDown)
+    // Player telemetry: throughput from finished segments, the stream's real bitrate per height, quality state.
+    val tele = remember { QualityTele() }
 
     val player = remember {
         // Follow http->https redirects (common with debrid and CDN links).
@@ -177,7 +189,11 @@ fun PlayerScreen(
         // try the next one instead of failing.
         val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
 
+        // Multi-quality streams: wait 15 s of good throughput before going up and use 70% of it (no flapping).
+        val selector = DefaultTrackSelector(context, AdaptiveTrackSelection.Factory(15_000, 25_000, 25_000, 0.7f))
+
         ExoPlayer.Builder(context, renderers)
+            .setTrackSelector(selector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
             .apply { if (live) setLoadControl(LiveTuning.loadControl()) }
             .setSeekBackIncrementMs(SEEK_MS)
@@ -201,12 +217,16 @@ fun PlayerScreen(
             }
     }
 
+    fun logQuality(from: String, to: String, code: String) {
+        QualityLog.add(QualityLog.Entry(System.currentTimeMillis(), title.ifBlank { "Video" }, from, to, code, tele.estimator.estimate()))
+    }
+
     /**
-     * Playback struggles (see [StallWatch]). Quality Auto at 4K only: cap the track selector at 1080p when the
-     * stream has a lower track, else ask the screen to switch to a 1080p stream.
+     * Playback struggles ([why] from [StallWatch]). Quality Auto at 4K only, once per playback: cap the track
+     * selector at 1080p when the stream has a lower track, else ask the screen to switch to a 1080p stream.
      */
-    fun onStruggle() {
-        if (qualityMode != QualityMode.AUTO) return
+    fun onStruggle(why: String) {
+        if (qualityMode != QualityMode.AUTO || tele.stepped) return
         val height = maxOf(videoNow.height, player.videoSize.height)
         if (!QualityFallback.is4k(height, qualityLabel)) return
         val heights = ArrayList<Int>()
@@ -214,12 +234,25 @@ fun PlayerScreen(
             if (g.type != C.TRACK_TYPE_VIDEO) continue
             for (i in 0 until g.length) if (g.isTrackSupported(i)) heights.add(g.getTrackFormat(i).height)
         }
-        com.mcd.tv.data.RecentErrors.note("Playback: ${title.ifBlank { "video" }}: 4K kept stalling (${stallWatch.reason}). Trying 1080p.")
-        if (QualityFallback.canCapTo1080(heights)) {
+        val cap = QualityFallback.canCapTo1080(heights)
+        val stepDown = currentOnStepDown
+        if (!cap && stepDown == null) return
+        // Live sports favor resolution over buffer: step down here; never grow the buffer or live offset (LiveTuning stays fixed).
+        tele.stepped = true
+        com.mcd.tv.data.RecentErrors.note("Playback: ${title.ifBlank { "video" }}: 4K kept stalling (${QualityLog.words(why)}). Trying 1080p.")
+        val from = QualityLog.rendition(player.videoSize.width, height, tele.bitrateAt(height, videoNow.bitrate))
+        if (qualityKey.isNotBlank()) {
+            QualityMemory.noteChannel(qualityKey, br = tele.uhdBitrate(), down = System.currentTimeMillis())
+            QualityMemory.save()
+        }
+        if (cap) {
+            tele.capped = true
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setMaxVideoSize(1920, 1080).build()
             qualityNote = QualityFallback.NOTICE
+            logQuality(from, "1080p cap, same stream", why)
         } else {
-            currentOnStepDown?.invoke(player.currentPosition.coerceAtLeast(0L))
+            logQuality(from, if (live) "1080p channel" else "1080p source", why)
+            stepDown?.invoke(player.currentPosition.coerceAtLeast(0L))
         }
     }
 
@@ -241,7 +274,7 @@ fun PlayerScreen(
                     Player.STATE_BUFFERING -> if (player.playWhenReady) stallWatch.onBuffering(now)
                     else -> stallWatch.onStop(now)
                 }
-                if (stallWatch.check(now)) onStruggle()
+                stallWatch.check(now).let { if (it.isNotEmpty()) onStruggle(it) }
                 if (state == Player.STATE_READY) {
                     networkRetries = 0 // playing again: reset the retry budget
                     liveNote = null
@@ -320,7 +353,30 @@ fun PlayerScreen(
                 format: androidx.media3.common.Format,
                 decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
             ) {
-                if (format.height > 0) videoNow.height = format.height
+                // Every rendition change goes in the quality log. ExoPlayer leaving 4K by itself locks 1080p
+                // for the rest of this playback, so it never climbs back and flaps.
+                val h = format.height
+                if (h > 0 && tele.height > 0 && h != tele.height) {
+                    val from = QualityLog.rendition(tele.width, tele.height, tele.bitrateAt(tele.height, videoNow.bitrate))
+                    var code = when {
+                        tele.capped -> "capped"
+                        h < tele.height -> "player_down"
+                        else -> "player_up"
+                    }
+                    if (code == "player_down" && !tele.locked && qualityMode == QualityMode.AUTO &&
+                        tele.height >= QualityFallback.UHD_MIN_HEIGHT && h < QualityFallback.UHD_MIN_HEIGHT
+                    ) {
+                        tele.locked = true
+                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setMaxVideoSize(1920, 1080).build()
+                        code = "locked"
+                    }
+                    logQuality(from, QualityLog.rendition(format.width, h, tele.bitrateAt(h, format.bitrate)), code)
+                }
+                if (h > 0) {
+                    tele.height = h
+                    tele.width = format.width
+                    videoNow.height = h
+                }
                 videoNow.bitrate = format.bitrate // Format.NO_VALUE (-1) when the stream does not say
                 if (st != null) {
                     val fps = if (format.frameRate > 0) " ${"%.0f".format(format.frameRate)} fps" else ""
@@ -345,14 +401,48 @@ fun PlayerScreen(
                 bitrateEstimate: Long,
             ) {
                 st?.kbps = (bitrateEstimate / 1000).toInt()
+            }
+
+            // One finished media segment: throughput (same estimator as the web app) against the stream's
+            // real bitrate (segment bytes over its media time; the declared bitrate when that is unknown).
+            // Whole-file and endless TS loads have no segment length and are skipped.
+            override fun onLoadCompleted(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                loadEventInfo: LoadEventInfo,
+                mediaLoadData: MediaLoadData,
+            ) {
+                if (mediaLoadData.dataType != C.DATA_TYPE_MEDIA) return
+                if (mediaLoadData.trackType != C.TRACK_TYPE_VIDEO && mediaLoadData.trackType != C.TRACK_TYPE_DEFAULT) return
+                val start = mediaLoadData.mediaStartTimeMs
+                val end = mediaLoadData.mediaEndTimeMs
+                if (start == C.TIME_UNSET || end == C.TIME_UNSET || end <= start || end - start > 60_000L) return
+                val bytes = loadEventInfo.bytesLoaded
+                if (bytes <= 0) return
+                val fmt = mediaLoadData.trackFormat
+                val h = fmt?.height?.takeIf { it > 0 } ?: videoNow.height
+                tele.estimator.sample(loadEventInfo.loadDurationMs, bytes)
+                tele.meter.add(h, bytes, end - start)
+                val measured = tele.meter.bps()
+                if (measured > 0) tele.bpsByHeight[h] = measured
+                if (st != null && measured > 0) st.bitrateKbps = (measured / 1000).toInt()
+                val est = tele.estimator.estimate()
+                QualityMemory.noteEstimate(est, System.currentTimeMillis())
                 val now = SystemClock.elapsedRealtime()
-                stallWatch.onBandwidth(now, bitrateEstimate, videoNow.bitrate)
-                if (stallWatch.check(now)) onStruggle()
+                val bitrate = if (measured > 0) measured else (fmt?.bitrate ?: videoNow.bitrate).toDouble()
+                // The struggle check takes this segment's own speed: the in-a-row counts are the smoothing, and
+                // an average still full of earlier fast downloads would react 15 s late (web test A, Oct 19).
+                val segBps = bytes * 8000.0 / maxOf(loadEventInfo.loadDurationMs, 50L)
+                stallWatch.sample(now, segBps, bitrate)
+                stallWatch.check(now).let { if (it.isNotEmpty()) onStruggle(it) }
             }
         }
         player.addAnalyticsListener(analytics)
         onDispose {
             stats?.finish()
+            // What this playback learned, for the next up-front pick (one write).
+            val uhd = tele.uhdBitrate()
+            if (qualityKey.isNotBlank() && uhd > 0) QualityMemory.noteChannel(qualityKey, br = uhd)
+            QualityMemory.save()
             player.removeAnalyticsListener(analytics)
             retryJob?.cancel()
             progress.save(player, force = true)
@@ -402,8 +492,9 @@ fun PlayerScreen(
         if (!buffering || stallWatch.fired) return@LaunchedEffect
         while (true) {
             delay(1_000)
-            if (stallWatch.check(SystemClock.elapsedRealtime())) {
-                onStruggle()
+            val why = stallWatch.check(SystemClock.elapsedRealtime())
+            if (why.isNotEmpty()) {
+                onStruggle(why)
                 break
             }
         }
@@ -629,6 +720,27 @@ private const val SCREEN_ON_WHILE_PAUSED_MS = 10 * 60_000L
 private class VideoNow {
     var height = 0
     var bitrate = -1
+}
+
+/** Quality telemetry for one playback (main thread only). */
+private class QualityTele {
+    val estimator = ThroughputEstimator()
+    val meter = BitrateMeter()
+    /** Measured bitrate (bps) per picture height seen in this playback. */
+    val bpsByHeight = HashMap<Int, Double>()
+    /** The rendition on screen (from the decoder's input format). */
+    var width = 0
+    var height = 0
+    /** Stepped down once (cap or switch), capped by us, or locked at 1080p after ExoPlayer left 4K. */
+    var stepped = false
+    var capped = false
+    var locked = false
+
+    /** Measured bitrate at [h], else the declared one (<= 0 = unknown). */
+    fun bitrateAt(h: Int, declared: Int): Double = bpsByHeight[h] ?: declared.toDouble().coerceAtLeast(0.0)
+
+    /** The highest measured bitrate of a 4K rendition, 0 when none played. */
+    fun uhdBitrate(): Double = bpsByHeight.filterKeys { it >= QualityFallback.UHD_MIN_HEIGHT }.values.maxOrNull() ?: 0.0
 }
 
 /** Keeps [NowPlaying] current for this player: title, play or pause, position. Relay decides when to send it. */

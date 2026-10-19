@@ -11,6 +11,8 @@ class QualityFallbackTest {
 
     // ---------------------------------------------------------------- StallWatch
 
+    // Most StallWatch rules are in tools/qf-vectors.json (QualityVectorsTest). These cover the player glue.
+
     /** A watch that started at 0 and has been playing since 1 s. */
     private fun playing(): StallWatch = StallWatch(0).also { it.onReady(1_000) }
 
@@ -23,67 +25,28 @@ class QualityFallbackTest {
     fun threeShortStallsInAMinuteFire() {
         val w = playing()
         stall(w, 20_000, 1_000)
-        assertFalse(w.check(21_000))
+        assertEquals("", w.check(21_000))
         stall(w, 40_000, 1_000)
-        assertFalse(w.check(41_000))
+        assertEquals("", w.check(41_000))
         w.onBuffering(60_000)
-        assertTrue(w.check(60_000))
+        assertEquals("stalls", w.check(60_000))
         assertEquals("stalls", w.reason)
     }
 
     @Test
-    fun threeStallsSpreadOverMoreThanAMinuteDoNotFire() {
+    fun aLongStallWinsOverTheCount() {
         val w = playing()
-        stall(w, 11_000, 1_000)
-        stall(w, 50_000, 1_000)
-        stall(w, 80_000, 1_000) // the first one is 69 s old
-        assertFalse(w.check(81_000))
-    }
-
-    @Test
-    fun oneStallOfEightSecondsFires() {
-        val w = playing()
-        w.onBuffering(20_000)
-        assertFalse(w.check(27_999))
-        assertTrue(w.check(28_000))
-        assertEquals("long stall", w.reason)
-    }
-
-    @Test
-    fun twelveSecondsStalledInAMinuteFire() {
-        val w = playing()
-        stall(w, 15_000, 6_000)
-        assertFalse(w.check(21_000))
-        w.onBuffering(30_000)
-        assertFalse(w.check(35_000)) // 6 + 5 = 11 s
-        assertTrue(w.check(36_000)) // 6 + 6 = 12 s (and the second stall is still under 8 s)
-        assertEquals("stalled time", w.reason)
-    }
-
-    @Test
-    fun stalledTimeOutsideTheWindowDoesNotCount() {
-        val w = playing()
-        stall(w, 15_000, 7_000) // ends at 22 s
-        w.onBuffering(80_000)
-        assertFalse(w.check(85_000)) // window starts at 25 s: only 5 s count
-    }
-
-    @Test
-    fun firstTenSecondsAreIgnored() {
-        val w = StallWatch(0)
-        w.onReady(500)
-        w.onBuffering(5_000)
-        assertFalse(w.check(14_000)) // a 9 s startup stall is not a stall
-        w.onReady(14_000)
-        stall(w, 9_999, 0)
-        assertFalse(w.check(15_000))
+        stall(w, 20_000, 1_000)
+        stall(w, 30_000, 1_000)
+        w.onBuffering(40_000)
+        assertEquals("long_stall", w.check(48_000)) // 3 stalls too, but the long one is named first
     }
 
     @Test
     fun bufferingBeforePlaybackStartedIsNotAStall() {
         val w = StallWatch(0)
         w.onBuffering(12_000)
-        assertFalse(w.check(30_000))
+        assertEquals("", w.check(30_000))
     }
 
     @Test
@@ -91,72 +54,104 @@ class QualityFallbackTest {
         val w = playing()
         w.onSeek()
         w.onBuffering(20_000)
-        assertFalse(w.check(30_000))
+        assertEquals("", w.check(30_000))
         w.onReady(30_000)
         w.onBuffering(40_000) // a real stall again
-        assertTrue(w.check(48_000))
+        assertEquals("long_stall", w.check(48_000))
     }
 
     @Test
-    fun restartIgnoresTheNextTenSeconds() {
+    fun aSeekDuringAStallCancelsIt() {
         val w = playing()
+        w.onBuffering(20_000)
+        w.onSeek()
+        assertEquals("", w.check(30_000))
+    }
+
+    @Test
+    fun restartIgnoresTheNextTenSecondsAndRearms() {
+        val w = playing()
+        w.onBuffering(20_000)
+        assertEquals("long_stall", w.check(28_000))
+        assertEquals("", w.check(29_000))
         w.restart(30_000)
         w.onReady(31_000)
         w.onBuffering(35_000)
-        assertFalse(w.check(44_000))
-    }
-
-    @Test
-    fun firesOnlyOnce() {
-        val w = playing()
-        w.onBuffering(20_000)
-        assertTrue(w.check(28_000))
-        assertFalse(w.check(40_000))
+        assertEquals("", w.check(44_000)) // a startup stall
+        w.onReady(44_000)
+        w.onBuffering(50_000)
+        assertEquals("long_stall", w.check(58_000))
         assertTrue(w.fired)
     }
 
     @Test
-    fun lowBandwidthOnFourSamplesFiveSecondsApartFires() {
-        val w = playing()
-        val bitrate = 20_000_000
-        w.onBandwidth(12_000, 15_000_000L, bitrate)
-        w.onBandwidth(14_000, 15_000_000L, bitrate) // under 5 s after the last: ignored
-        w.onBandwidth(17_000, 15_000_000L, bitrate)
-        w.onBandwidth(22_000, 15_000_000L, bitrate)
-        assertFalse(w.check(22_000))
-        w.onBandwidth(27_000, 15_000_000L, bitrate)
-        assertTrue(w.check(27_000))
-        assertEquals("bandwidth", w.reason)
+    fun samplesCountFromTheStart() {
+        val w = StallWatch(0)
+        w.sample(0, 5e6, 10e6)
+        w.sample(3_000, 5e6, 10e6)
+        assertEquals("very_slow", w.check(3_000))
+    }
+
+    // ---------------------------------------------------------------- estimator, bitrate, up-front memory, log
+
+    @Test
+    fun estimatorIsZeroUntilASample() {
+        val e = ThroughputEstimator()
+        assertEquals(0.0, e.estimate(), 0.0)
+        e.sample(2_000, 2_500_000)
+        assertEquals(10_000_000.0, e.estimate(), 1.0)
     }
 
     @Test
-    fun aGoodSampleResetsTheBandwidthCount() {
-        val w = playing()
-        val bitrate = 20_000_000
-        w.onBandwidth(12_000, 15_000_000L, bitrate)
-        w.onBandwidth(17_000, 15_000_000L, bitrate)
-        w.onBandwidth(22_000, 15_000_000L, bitrate)
-        w.onBandwidth(27_000, 25_000_000L, bitrate)
-        w.onBandwidth(32_000, 15_000_000L, bitrate)
-        assertFalse(w.check(32_000))
+    fun bitrateMeterIsBytesOverMediaTimeAndRestartsOnANewHeight() {
+        val m = BitrateMeter()
+        assertEquals(0.0, m.bps(), 0.0)
+        m.add(2160, 12_000_000, 6_000) // 16 Mbps
+        m.add(2160, 15_000_000, 6_000) // 20 Mbps
+        assertEquals(18_000_000.0, m.bps(), 1.0)
+        m.add(1080, 3_000_000, 4_000)
+        assertEquals(6_000_000.0, m.bps(), 1.0)
+        m.add(1080, 1_000, 0) // no media time: ignored
+        assertEquals(6_000_000.0, m.bps(), 1.0)
     }
 
     @Test
-    fun unknownBitrateNeverCountsAsLow() {
-        val w = playing()
-        for (t in 0 until 10) w.onBandwidth(12_000L + t * 5_000L, 1_000L, -1)
-        assertFalse(w.check(70_000))
+    fun liveTvHealthSessionsSeedAStepDown() {
+        val now = 10L * 86_400_000L
+        assertEquals(2160, QualityFallback.heightOf("3840x2160 60 fps hevc"))
+        assertEquals(0, QualityFallback.heightOf(""))
+        assertTrue(QualityFallback.frozeIn4k(now, now - 3_600_000, "3840x2160 60 fps hevc", 3, 2_000))
+        assertTrue(QualityFallback.frozeIn4k(now, now - 3_600_000, "3840x2160 hevc", 1, 12_000))
+        assertFalse(QualityFallback.frozeIn4k(now, now - 3_600_000, "3840x2160 hevc", 2, 11_000))
+        assertFalse(QualityFallback.frozeIn4k(now, now - 3_600_000, "1920x1080 60 fps avc", 5, 30_000))
+        assertFalse(QualityFallback.frozeIn4k(now, now - 8L * 86_400_000L, "3840x2160 hevc", 5, 30_000))
     }
 
     @Test
-    fun bandwidthDuringStartupIsIgnored() {
-        val w = playing()
-        val bitrate = 20_000_000
-        w.onBandwidth(1_000, 1L, bitrate)
-        w.onBandwidth(6_000, 1L, bitrate)
-        w.onBandwidth(11_000, 1L, bitrate)
-        w.onBandwidth(16_000, 1L, bitrate)
-        assertFalse(w.check(16_000)) // only 11 s and 16 s counted
+    fun qualityMemoryRoundTrips() {
+        val st = QualityMemory.State(18_400_000.4, 1_000L)
+        st.ch["espn"] = QualityMemory.Channel(20_000_000.0, 5_000L, 0L)
+        st.ch["fox"] = QualityMemory.Channel(0.0, 0L, 7_000L)
+        val back = QualityMemory.decode(QualityMemory.encode(st))
+        assertEquals(18_400_000.0, back.est, 0.0)
+        assertEquals(1_000L, back.estAt)
+        assertEquals(20_000_000.0, back.ch["espn"]!!.br, 0.0)
+        assertEquals(5_000L, back.ch["espn"]!!.down)
+        assertEquals(7_000L, back.ch["fox"]!!.clr)
+        assertEquals(0.0, QualityMemory.decode("not json").est, 0.0)
+    }
+
+    @Test
+    fun qualityLogKeepsTheNewest40() {
+        var list = emptyList<QualityLog.Entry>()
+        for (i in 1..45) list = QualityLog.push(list, QualityLog.Entry(i.toLong(), "ESPN", "a", "b", "slow", 1e6))
+        assertEquals(40, list.size)
+        assertEquals(45L, list.first().at)
+        val back = QualityLog.decode(QualityLog.encode(list))
+        assertEquals(list, back)
+        assertEquals("3840x2160 18.4 Mbps", QualityLog.rendition(3840, 2160, 18_400_000.0))
+        assertEquals("1920x1080", QualityLog.rendition(1920, 1080, 0.0))
+        assertTrue(QualityLog.words("very_slow").isNotEmpty())
     }
 
     // ---------------------------------------------------------------- 4K and the track cap

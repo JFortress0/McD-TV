@@ -346,7 +346,18 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
                     com.mcd.tv.data.SourceQueue.get(s.queue)?.getOrNull(s.queuePos)?.let { "${it.name} ${it.title}" } ?: s.title
                 }
                 val playerScope = androidx.compose.runtime.rememberCoroutineScope()
-                val reSource: (Long) -> Unit = { pos -> playerScope.launch { nextSource?.stepDown(pos) } }
+                val reSource: (Long) -> Unit = { pos ->
+                    playerScope.launch {
+                        if (nextSource?.stepDown(pos) != true) {
+                            com.mcd.tv.data.QualityLog.add(
+                                com.mcd.tv.data.QualityLog.Entry(
+                                    System.currentTimeMillis(), s.title, "4K source", "4K source", "no_lower",
+                                    com.mcd.tv.data.QualityMemory.estimate(),
+                                ),
+                            )
+                        }
+                    }
+                }
                 val stepDown = if (nextSource == null || s.stepped) null else reSource
                 val notice = if (s.stepped) com.mcd.tv.data.QualityFallback.NOTICE else null
                 val startMs = s.startMs
