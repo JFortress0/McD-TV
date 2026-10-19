@@ -606,10 +606,12 @@ object Relay {
         )
         val ts = cmd.optLong("ts", 0L)
         val profile = Library.validProfile(cmd.optString("profile"))
-        val newer = Library.history(profile).firstOrNull { it.meta.historyKey == meta.historyKey }?.updatedAt ?: 0L
+        val had = Library.history(profile).firstOrNull { it.meta.historyKey == meta.historyKey }
         // Only for messages over 10 minutes old, so a phone clock a little behind the TV doesn't drop live updates.
-        if (isStale(cmd) && newer > ts) return
-        Library.record(meta, pos.coerceAtMost(dur), dur, profile)
+        if (isStale(cmd) && (had?.updatedAt ?: 0L) > ts) return
+        // The length never shrinks to a cut-off file's (ProgressMerge rule 3).
+        val keepDur = had != null && had.meta.season == season && had.meta.episode == episode && SourceHealth.shortSource(dur, had.durationMs)
+        Library.record(meta, pos.coerceAtMost(dur), if (keepDur) had!!.durationMs else dur, profile)
     }
 
     private fun apply(d: JSONObject) {

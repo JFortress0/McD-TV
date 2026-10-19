@@ -74,7 +74,8 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
     // Files the house flagged as incomplete for this title (any device): marked, listed last, tried last.
     val titleKey = SourceHealth.titleKey(meta.type, meta.tmdbId, meta.season, meta.episode)
     LaunchedEffect(titleKey) { BadSources.refresh(titleKey) }
-    val flagged = remember(titleKey, BadSources.version) { BadSources.flagged(titleKey) }
+    val scores = remember(titleKey, BadSources.version) { BadSources.scores(titleKey) }
+    val flagged = scores.keys
 
     /** [order] is the list on screen, so "Try next source" in the player goes down the same list. */
     fun start(s: StreamSource, order: List<StreamSource>, index: Int) {
@@ -99,7 +100,7 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
         // Back leaves the screen and cancels this, including a wait between Real-Debrid adds.
         // Continue Watching opens this with autoPlay at once: get the house's flags first (a few seconds at most).
         kotlinx.coroutines.withTimeoutOrNull(4_000) { BadSources.refresh(titleKey) }
-        val bad = BadSources.flagged(titleKey)
+        val bad = BadSources.scores(titleKey)
         runCatching { Resolver.best(all, meta, onStatus = { status = it }, flagged = bad) }
             .onSuccess { (src, url) ->
                 // Same order Resolver.best tried, so "Try next source" picks up after the one that worked.
@@ -120,11 +121,11 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
 
     val l = sources
     // Sorted, de-duplicated rows; CAM releases and oversized files are hidden until "Show N hidden sources".
-    val arranged = remember(l, flagged) {
+    val arranged = remember(l, scores) {
         (l as? Load.Ok<List<StreamSource>>)?.value?.let { StreamInfo.arrange(it, episode = meta.type == "tv") }?.let { a ->
             ArrangedStreams(
-                SourceHealth.demote(a.visible, flagged) { SourceHealth.key(it.source) },
-                SourceHealth.demote(a.hidden, flagged) { SourceHealth.key(it.source) },
+                SourceHealth.demote(a.visible, scores) { SourceHealth.key(it.source) },
+                SourceHealth.demote(a.hidden, scores) { SourceHealth.key(it.source) },
             )
         }
     }

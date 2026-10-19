@@ -13,7 +13,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Files flagged as incomplete (see [SourceHealth]), shared by the whole house: kept on this TV (pref
+ * Files flagged as incomplete (see [SourceHealth]) with a score (times reported), shared by the whole house: kept on this TV (pref
  * `bad_sources`) and on the relay's resume store with the house key, so the phones and the other TVs
  * skip them too. Profile tag "badsrc", key tag "title|<titleKey>", value [SourceHealth.encode].
  * The web app reads and writes the same entries (docs/app/index.html, RC.badGet and RC.badPut).
@@ -34,6 +34,9 @@ object BadSources {
 
     fun flagged(titleKey: String): Set<String> = flags(titleKey).map { it.key }.toSet()
 
+    /** Flagged files with their shared score (times reported), for [SourceHealth.demote]. */
+    fun scores(titleKey: String): Map<String, Int> = flags(titleKey).associate { it.key to it.n }
+
     private fun saveLocal(titleKey: String, flags: List<SourceHealth.Flag>) = synchronized(lock) {
         val o = all()
         o.put(titleKey, SourceHealth.encode(flags, System.currentTimeMillis()))
@@ -48,15 +51,17 @@ object BadSources {
     /** This file stopped for good at [stoppedMs]: flag it here, then on the shared copy. */
     fun mark(titleKey: String, sourceKey: String, stoppedMs: Long) {
         val now = System.currentTimeMillis()
-        val merged = SourceHealth.merge(listOf(SourceHealth.Flag(sourceKey, stoppedMs, now)), flags(titleKey), now)
-        saveLocal(titleKey, merged)
+        val before = flags(titleKey)
+        saveLocal(titleKey, SourceHealth.report(before, sourceKey, stoppedMs, now))
         version++
         if (Prefs.qaMode) return
         scope.launch {
             val key = ResumeCloud.houseKey() ?: return@launch
             runCatching {
-                val shared = fetch(key, titleKey)
-                push(key, titleKey, SourceHealth.merge(merged, shared, System.currentTimeMillis()))
+                // One more than the house's score (another device may have reported it meanwhile).
+                val out = SourceHealth.report(SourceHealth.merge(before, fetch(key, titleKey), now), sourceKey, stoppedMs, now)
+                push(key, titleKey, out)
+                saveLocal(titleKey, SourceHealth.merge(flags(titleKey), out, System.currentTimeMillis()))
             }
         }
     }
@@ -69,7 +74,7 @@ object BadSources {
         if (shared.isEmpty()) return
         val local = flags(titleKey)
         val merged = SourceHealth.merge(local, shared, System.currentTimeMillis())
-        if (merged.map { it.key }.toSet() != local.map { it.key }.toSet()) {
+        if (merged.map { it.key to it.n }.toSet() != local.map { it.key to it.n }.toSet()) {
             saveLocal(titleKey, merged)
             withContext(Dispatchers.Main) { version++ }
         }

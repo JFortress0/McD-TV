@@ -981,20 +981,28 @@ const SH = (() => {
     const exp = expected(0, runtime, savedDur);
     return srcDur > 0 && !shortSource(srcDur, exp) ? srcDur : exp > 0 ? exp : srcDur;
   }
+  /** One flag per file: the newest report's spot and time, the higher score n (times reported; never drops). */
   function merge(a, b, now) {
     const best = new Map();
     for (const f of [...(a || []), ...(b || [])]) {
       if (!f || !f.k || now - (+f.at || 0) >= KEEP) continue;
-      const o = best.get(f.k); if (!o || +f.at > +o.at) best.set(f.k, { k: f.k, s: +f.s || 0, at: +f.at || 0 });
+      const o = best.get(f.k), n = Math.max(1, +f.n || 1, o ? o.n : 0);
+      if (!o || +f.at > +o.at) best.set(f.k, { k: f.k, s: +f.s || 0, at: +f.at || 0, n }); else o.n = n;
     }
     return [...best.values()].sort((x, y) => y.at - x.at).slice(0, MAX);
   }
-  const encode = (flags, now) => JSON.stringify({ f: (flags || []).map((f) => ({ k: f.k, s: f.s, at: f.at })), at: now });
+  /** A new report of [k] here: one more than the score the house already has. */
+  const report = (existing, k, s, now) => merge([{ k, s: Math.round(s), at: now, n: (((existing || []).find((f) => f.k === k) || {}).n || 0) + 1 }], existing, now);
+  const encode = (flags, now) => JSON.stringify({ f: (flags || []).map((f) => ({ k: f.k, s: f.s, at: f.at, n: f.n || 1 })), at: now });
   function decode(text) {
-    try { const o = JSON.parse(text); return Array.isArray(o.f) ? o.f.filter((f) => f && typeof f.k === "string" && f.k && f.k.length <= 80).map((f) => ({ k: f.k, s: +f.s || 0, at: +f.at || 0 })) : []; } catch { return []; }
+    try { const o = JSON.parse(text); return Array.isArray(o.f) ? o.f.filter((f) => f && typeof f.k === "string" && f.k && f.k.length <= 80).map((f) => ({ k: f.k, s: +f.s || 0, at: +f.at || 0, n: Math.max(1, +f.n || 1) })) : []; } catch { return []; }
   }
-  /** [list] with flagged files moved to the end, in their order. */
-  const demote = (list, flagged, keyOf) => !flagged || !flagged.size ? list : list.filter((x) => !flagged.has(keyOf(x))).concat(list.filter((x) => flagged.has(keyOf(x))));
+  /** [list] with flagged files moved to the end, lowest score first. [flagged]: a Map of key to score (or a Set). */
+  function demote(list, flagged, keyOf) {
+    if (!flagged || !flagged.size) return list;
+    const sc = (x) => (flagged instanceof Map ? flagged.get(keyOf(x)) : flagged.has(keyOf(x)) ? 1 : undefined);
+    return list.filter((x) => sc(x) === undefined).concat(list.filter((x) => sc(x) !== undefined).sort((a, b) => sc(a) - sc(b)));
+  }
   const local = () => readJSON(LKEY) || {};
   const flags = (tk) => local()[tk] || [];
   function saveLocal(tk, list) {
@@ -1003,20 +1011,25 @@ const SH = (() => {
     if (ks.length > 200) ks.sort((a, b) => Math.max(0, ...all[a].map((f) => f.at)) - Math.max(0, ...all[b].map((f) => f.at))).slice(0, ks.length - 200).forEach((k) => delete all[k]);
     LS.set(LKEY, JSON.stringify(all));
   }
-  const flagged = (tk) => new Set(flags(tk).map((f) => f.k));
-  /** Merges the house's flags for this title into this device's (one request). Returns the flagged keys. */
+  /** Flagged files of this title with their score: a Map of key to times reported (has / get / size). */
+  const flagged = (tk) => new Map(flags(tk).map((f) => [f.k, f.n || 1]));
+  /** Merges the house's flags for this title into this device's (one request). Returns [flagged]. */
   async function refresh(tk) {
     const shared = await RC.badGet(tk);
     if (shared.length) saveLocal(tk, merge(flags(tk), shared, Date.now()));
     return flagged(tk);
   }
-  /** This file stopped for good at [stoppedMs]: flag it here, then on the shared copy. */
+  /** This file stopped for good at [stoppedMs]: flag it here, then add one to the house's score. */
   async function mark(tk, k, stoppedMs) {
-    const now = Date.now(), list = merge([{ k, s: Math.round(stoppedMs), at: now }], flags(tk), now);
-    saveLocal(tk, list);
-    try { await RC.badPut(tk, merge(list, await RC.badGet(tk), Date.now())); } catch {}
+    const now = Date.now(), before = flags(tk);
+    saveLocal(tk, report(before, k, stoppedMs, now));
+    try {
+      const out = report(merge(before, await RC.badGet(tk), now), k, stoppedMs, now);
+      await RC.badPut(tk, out);
+      saveLocal(tk, merge(flags(tk), out, Date.now()));
+    } catch {}
   }
-  return { key, hashInLink, titleKey, expected, incomplete, shortSource, progressDur, merge, encode, decode, demote, flagged, refresh, mark, RATIO, SHORT };
+  return { key, hashInLink, titleKey, expected, incomplete, shortSource, progressDur, merge, report, encode, decode, demote, flagged, refresh, mark, RATIO, SHORT };
 })();
 
 /**
@@ -3319,6 +3332,20 @@ async function playCandidates(res) {
 }
 
 // ---------- resume positions (this browser) ----------
+/** The longest length saved for this exact title or episode, here or by another device (0: none). */
+function savedDurFor(m) {
+  const cl = RC.peekFor(m.type, m.id), sp = getPos(m);
+  const c = cl && (m.type !== "tv" || (cl.season === +m.season && cl.episode === +m.episode)) ? +cl.dur || 0 : 0;
+  return Math.max(c, (sp && +sp.d) || 0);
+}
+/** The file's own length from Real-Debrid (streaming/mediaInfos), in ms; 0 when unknown. One call, 5 s at most. */
+async function rdLength(res) {
+  if (!res || !res.rdId || !rdHere()) return 0;
+  try {
+    const o = await Promise.race([rdCall("GET", "/streaming/mediaInfos/" + encodeURIComponent(res.rdId)), sleep(5000).then(() => null)]);
+    return o && +o.duration > 0 ? Math.round(+o.duration * 1000) : 0;
+  } catch { return 0; }
+}
 const posBase = (m) => m.type + ":" + m.id + (m.type === "tv" ? ":" + m.season + ":" + m.episode : "");
 const posKey = (m) => (S.profile || "p1") + "|" + posBase(m);
 function getPos(m) { const all = readJSON(POS_KEY) || {}; return all[posKey(m)] || ((S.profile || "p1") === "p1" ? all[posBase(m)] : null) || null; }
@@ -3444,6 +3471,21 @@ async function renderSources(v, tok, type, id, q) {
     if (s.iptv) { showIptv(s); return true; }
     const res = await resolveHere(s, meta, { alive: () => tok === routeTok, ...(o || {}) });
     if (tok !== routeTok) return true;
+    // The file's own length against the title's (209 minutes for The Irishman): a cut-off file betrays itself
+    // here, before it plays. A file whose header still says full length is caught by the player instead.
+    const lenMs = await rdLength(res);
+    const exp = SH.expected(0, (meta.runtimeMin || 0) * 60000, savedDurFor(meta));
+    if (tok !== routeTok) return true;
+    if (SH.shortSource(lenMs, exp)) {
+      const k = keyOf.get(s);
+      if (k) {
+        SH.mark(tk, k, lenMs);
+        bad = SH.flagged(tk);
+        a.visible.concat(a.hidden).forEach((r) => { r.bad = badRow(r); });
+        draw(); if (busy) lock(true);
+      }
+      throw new Error(`This source appears incomplete: ${fmtTime(lenMs / 1000)} of ${fmtTime(exp / 1000)}. Pick another source.`);
+    }
     say("Getting the stream ready…");
     const cands = await playCandidates(res);
     if (tok !== routeTok) return true;
@@ -3665,11 +3707,7 @@ function renderPlayer(v, tok, type, id, q) {
   // Lengths: this file's, the title's runtime, and the one another device saved. A cut-off file must not
   // shorten the title, or a stop there would read as "watched" on every device (SH.progressDur).
   const runtime = (m.runtimeMin || 0) * 60000;
-  const savedDur = (() => {
-    const cl = RC.peekFor(m.type, m.id), sp = getPos(m);
-    const c = cl && (m.type !== "tv" || (cl.season === +m.season && cl.episode === +m.episode)) ? +cl.dur || 0 : 0;
-    return Math.max(c, (sp && +sp.d) || 0);
-  })();
+  const savedDur = savedDurFor(m);
   const vidDur = () => (isFinite(vid.duration) && vid.duration > 0 ? vid.duration * 1000 : 0);
   const expected = () => SH.expected(vidDur(), runtime, savedDur);
   const durMs = () => SH.progressDur(vidDur(), runtime, savedDur);
@@ -3678,9 +3716,11 @@ function renderPlayer(v, tok, type, id, q) {
   function broken(atMs) {
     if (brokenDone || gone) return;
     brokenDone = true;
-    save(true);
+    // Where it really stopped (not the end it may have jumped to). Never played here: keep the saved spot.
+    const at = Math.min(vid.currentTime * 1000, atMs);
+    if (at > 5000) save(true, at);
     if (P.srcKey && P.tk) SH.mark(P.tk, P.srcKey, atMs);
-    const spot = fmtTime(Math.max(vid.currentTime * 1000, resumeMs) / 1000);
+    const spot = fmtTime(Math.max(at, resumeMs) / 1000);
     const href = P.back + (P.back.includes("?") ? "&" : "?") + "best=1", here = location.hash;
     showMsg(`This source appears incomplete. It stops at ${fmtTime(atMs / 1000)}. Switching to another source at ${spot}…`);
     const a = $("#plOther", v); if (a) { a.href = href; a.textContent = "Play another source"; }
@@ -3699,8 +3739,21 @@ function renderPlayer(v, tok, type, id, q) {
     const a = $("#plOther", v); if (a) a.href = P.back + (P.back.includes("?") ? "&" : "?") + "best=1";
     showMsg(`This source stopped loading at ${fmtTime(t)}. Pick another source. Jarvis resumes there.`);
   }, 5000);
-  function save(sendTv) {
-    const pos = vid.currentTime * 1000, dur = durMs();
+  // The last point that played normally. When a file's data runs out, browsers can jump straight to the
+  // header's end (3:29:00 for a file cut at 34:50) and fire "ended": that jump is a stop here, not the end.
+  let goodT = 0, seeking = false;
+  vid.addEventListener("seeking", () => { seeking = true; });
+  vid.addEventListener("seeked", () => { seeking = false; goodT = vid.currentTime; });
+  vid.addEventListener("timeupdate", () => {
+    const t = vid.currentTime;
+    if (seeking || brokenDone) return;
+    if (t >= goodT && t - goodT <= 5) { goodT = t; return; }
+    // Jumped ahead with no seek: the data ran out at goodT.
+    if (t - goodT > 5 && SH.incomplete(goodT * 1000, expected())) broken(goodT * 1000);
+  });
+  function save(sendTv, atMs) {
+    if (brokenDone && atMs == null) return; // the stop is saved; the player may sit at a false end now
+    const pos = atMs != null ? atMs : vid.currentTime * 1000, dur = durMs();
     if (!(pos > 5000) || !(dur > 0)) return;
     setPos(m, pos, dur);
     lastSave = Date.now();
@@ -3739,9 +3792,11 @@ function renderPlayer(v, tok, type, id, q) {
   });
   vid.addEventListener("pause", () => { if (!gone && !vid.ended) save(Date.now() - lastRelay > 5000); });
   vid.addEventListener("ended", () => {
-    const t = vid.currentTime * 1000;
-    save(true); // with the title's length: a cut-off end is not "watched"
-    if (SH.incomplete(t, expected())) broken(t);
+    if (brokenDone) return;
+    // A jump to the end with no seek: the file stopped where it last played normally.
+    const t = vid.duration * 1000 - goodT * 1000 > 30000 ? goodT * 1000 : vid.currentTime * 1000;
+    if (SH.incomplete(t, expected())) { broken(t); return; }
+    save(true, t); // with the title's length: a cut-off end is not "watched"
   });
   // Going to the background (see onBackground): save here and tell the house. Hidden, pagehide, freeze and the
   // pause iOS adds can all fire together, so the house and the TV get it once.
@@ -5558,7 +5613,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-19.3";
+const BUILD = "2026-10-19.4";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;

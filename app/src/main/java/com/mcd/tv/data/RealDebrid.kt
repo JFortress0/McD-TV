@@ -581,14 +581,14 @@ object Resolver {
      * Background Noise. Torrents already in your RD account go first (no add needed), then the rest in list
      * order. RD takes one new torrent per 25 s, so between adds this waits and [onStatus] says why.
      * [allowance] caps the adds (null: no cap beyond the 8 tries). Cancelling the caller (Back) stops the wait.
-     * Files in [flagged] (SourceHealth keys of files that stop far short, see BadSources) are tried last.
+     * Files in [flagged] (SourceHealth key to score, files that stop far short, see BadSources) are tried last.
      */
     suspend fun best(
         list: List<StreamSource>,
         meta: PlayMeta? = null,
         allowance: AddAllowance? = null,
         onStatus: (String) -> Unit = {},
-        flagged: Set<String> = emptySet(),
+        flagged: Map<String, Int> = emptyMap(),
     ): Pair<StreamSource, String> {
         var last: Exception? = null
         // Same order as the source list: CAM and oversized files skipped unless nothing else is left.

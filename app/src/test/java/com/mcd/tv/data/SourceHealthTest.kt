@@ -100,11 +100,28 @@ class SourceHealthTest {
     }
 
     @Test
+    fun scoreCountsReportsAndNeverDrops() {
+        val now = 10 * 86_400_000L
+        val web = SourceHealth.report(emptyList(), "h:$hashA", death, now - 100) // the web app saw it stop
+        assertEquals(1, web.single().n)
+        val tv = SourceHealth.report(web, "h:$hashA", death + 2_000, now) // then a TV, after reading the house's copy
+        assertEquals(2, tv.single().n)
+        assertEquals(death + 2_000, tv.single().stoppedMs)
+        // Reading an older copy back never lowers the score.
+        assertEquals(2, SourceHealth.merge(web, tv, now).single().n)
+        // Lower score first among flagged files; healthy files always ahead.
+        val list = listOf(src("A", hash = hashA), src("C", hash = "c".repeat(40)), src("B", hash = hashB))
+        val order = SourceHealth.demote(list, mapOf("h:$hashA" to 2, "h:" + "c".repeat(40) to 1), SourceHealth::key)
+        assertEquals(listOf("B", "C", "A"), order.map { it.title })
+    }
+
+    @Test
     fun flagJsonMatchesTheWebApp() {
-        // Written by the web app (SH.encode): the TV reads it, and the TV's own JSON reads back the same.
+        // Written by the web app (SH.encode) before scores existed: "n" missing reads as 1.
         val web = """{"f":[{"k":"h:$hashA","s":$death,"at":1760000000000}],"at":1760000000000}"""
         val flags = SourceHealth.decode(web)
-        assertEquals(listOf(SourceHealth.Flag("h:$hashA", death, 1760000000000L)), flags)
+        assertEquals(listOf(SourceHealth.Flag("h:$hashA", death, 1760000000000L, 1)), flags)
+        assertEquals(3, SourceHealth.decode("""{"f":[{"k":"h:$hashA","s":1,"at":1,"n":3}]}""").single().n)
         assertEquals(flags, SourceHealth.decode(SourceHealth.encode(flags, 1L)))
         assertEquals(emptyList<SourceHealth.Flag>(), SourceHealth.decode("not json"))
     }

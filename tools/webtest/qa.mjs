@@ -554,12 +554,14 @@ for (const w of [390,1280]) {
   });
   const want={keyHash:'h:'+'a'.repeat(40),keyLink:'h:'+'a'.repeat(40),keyUrl:'u:895c204c8f5b450e',noQueryHash:null,title:['movie:398978','tv:1399:1:2'],
     inc:[true,true,false,false,false,false],dur:[209*60000,208*60000,209*60000,(34*60+50)*1000],
-    tvFlag:[{k:'h:'+'a'.repeat(40),s:(34*60+50)*1000,at:1760000000000}],order:['720p','1080p'],savedDur:209*60000,resume:(34*60+50)*1000};
+    tvFlag:[{k:'h:'+'a'.repeat(40),s:(34*60+50)*1000,at:1760000000000,n:1}],order:['720p','1080p'],savedDur:209*60000,resume:(34*60+50)*1000};
   for (const k of Object.keys(want)) if (JSON.stringify(r[k])!==JSON.stringify(want[k])) fails.push(`source health ${k}: got ${JSON.stringify(r[k])} want ${JSON.stringify(want[k])}`);
   log('source health', fails.filter(f=>f.startsWith('source health')).length ? 'FAIL' : 'ok');
   if(errs.length) fails.push(...errs.map(e=>`source health pageerror ${e}`));
   await ctx.close();
 }
+// The real failure, replayed with a real video: web dies at 34:50 on a cut-off file, resumes on a healthy one.
+{ const { run } = await import('./interchange.mjs'); await run({ executablePath: process.env.CHROME_PATH, fails, log }); }
 log('FAILS', fails.length); fails.forEach(f=>log(' -',f));
 await b.close();
 process.exit(fails.length ? 1 : 0);

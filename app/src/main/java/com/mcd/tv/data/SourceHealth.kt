@@ -75,26 +75,44 @@ object SourceHealth {
         return if (sourceDurMs > 0 && !shortSource(sourceDurMs, expected)) sourceDurMs else expected.takeIf { it > 0 } ?: sourceDurMs
     }
 
-    /** One flagged file: [key] (see [key]), where it stopped, and when it was flagged. */
-    data class Flag(val key: String, val stoppedMs: Long, val at: Long)
+    /**
+     * One flagged file: [key] (see [key]), where it stopped, when it was last reported, and its score [n]:
+     * how many times a device in the house saw it stop short. The score is shared, so a file reported on
+     * the web goes last on every TV too, and a file reported twice goes behind one reported once.
+     */
+    data class Flag(val key: String, val stoppedMs: Long, val at: Long, val n: Int = 1)
 
-    /** Both lists together, one flag per file (the newest), old ones dropped, newest [MAX_FLAGS] kept. */
+    /**
+     * Both lists together, one flag per file: the newest report's spot and time, the higher score (a
+     * score never drops in a merge, so reading and writing back can't lose a report). Old flags are
+     * dropped; the newest [MAX_FLAGS] stay.
+     */
     fun merge(a: List<Flag>, b: List<Flag>, now: Long): List<Flag> =
         (a + b).filter { now - it.at < KEEP_MS && it.key.isNotBlank() }
-            .groupBy { it.key }.values.map { g -> g.maxBy { it.at } }
+            .groupBy { it.key }.values.map { g -> g.maxBy { it.at }.copy(n = g.maxOf { it.n }.coerceAtLeast(1)) }
             .sortedByDescending { it.at }
             .take(MAX_FLAGS)
 
-    /** [list] with flagged files moved to the end, in their order. */
-    fun <T> demote(list: List<T>, flagged: Set<String>, keyOf: (T) -> String): List<T> {
-        if (flagged.isEmpty()) return list
-        val (bad, good) = list.partition { keyOf(it) in flagged }
-        return good + bad
+    /** A new report of [key] on this device: one more than the score the house already has. */
+    fun report(existing: List<Flag>, key: String, stoppedMs: Long, now: Long): List<Flag> {
+        val n = (existing.firstOrNull { it.key == key }?.n ?: 0) + 1
+        return merge(listOf(Flag(key, stoppedMs, now, n)), existing, now)
     }
 
-    /** {"f":[{"k","s","at"}],"at"}: the same JSON the web app writes. */
+    /** [list] with flagged files moved to the end, in their order. */
+    fun <T> demote(list: List<T>, flagged: Set<String>, keyOf: (T) -> String): List<T> =
+        demote(list, flagged.associateWith { 1 }, keyOf)
+
+    /** [list] with flagged files moved to the end, lowest score first, otherwise in their order. */
+    fun <T> demote(list: List<T>, scores: Map<String, Int>, keyOf: (T) -> String): List<T> {
+        if (scores.isEmpty()) return list
+        val (bad, good) = list.partition { keyOf(it) in scores }
+        return good + bad.sortedBy { scores[keyOf(it)] ?: 0 }
+    }
+
+    /** {"f":[{"k","s","at","n"}],"at"}: the same JSON the web app writes ("n" missing reads as 1). */
     fun encode(flags: List<Flag>, now: Long): String = JSONObject()
-        .put("f", JSONArray().apply { flags.forEach { put(JSONObject().put("k", it.key).put("s", it.stoppedMs).put("at", it.at)) } })
+        .put("f", JSONArray().apply { flags.forEach { put(JSONObject().put("k", it.key).put("s", it.stoppedMs).put("at", it.at).put("n", it.n)) } })
         .put("at", now)
         .toString()
 
@@ -103,7 +121,7 @@ object SourceHealth {
         (0 until a.length()).mapNotNull { i ->
             val o = a.optJSONObject(i) ?: return@mapNotNull null
             val k = o.optString("k")
-            if (k.isBlank() || k.length > 80) null else Flag(k, o.optLong("s"), o.optLong("at"))
+            if (k.isBlank() || k.length > 80) null else Flag(k, o.optLong("s"), o.optLong("at"), o.optInt("n", 1).coerceAtLeast(1))
         }
     }.getOrDefault(emptyList())
 
