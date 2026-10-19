@@ -29,6 +29,28 @@ class TvLinkTest {
     }
 
     @Test
+    fun carriesWhoTheTvIs() {
+        val who = TvLink.Who(label = " Office TV ", platform = "Fire TV", maker = "Amazon", model = "AFTHY7ABBA", version = "0.2.192")
+        val m = TvLink.message(device, "Office TV", relayId, relayKey, ts, who)
+        assertEquals("Office TV", m.getString("label"))
+        assertEquals("AFTHY7ABBA", m.getString("model"))
+        assertEquals("0.2.192", m.getString("version"))
+        val info = TvLink.parse(JSONObject(m.toString()))!!
+        assertEquals(who.copy(label = "Office TV"), info.who)
+        // A TV from before October 18, 2026 sends none of it.
+        assertEquals(TvLink.Who(), TvLink.parse(msg())!!.who)
+    }
+
+    @Test
+    fun newLabelChangesSignature() {
+        val plain = TvLink.signature(relayId)
+        assertEquals(plain, TvLink.signature(relayId, ""))
+        assertEquals(plain, TvLink.signature(relayId, "   "))
+        assertNotEquals(plain, TvLink.signature(relayId, "The Wall"))
+        assertEquals(TvLink.signature(relayId, "The Wall"), TvLink.signature(relayId, " The  Wall "))
+    }
+
+    @Test
     fun rejectsBadId() {
         assertNull(TvLink.parse(msg(link = "K7MQ2WZR9XDP4NBVH3CT8E.$relayKey"))) // upper case
         assertNull(TvLink.parse(msg(link = "k7mq01.$relayKey"))) // 0 and 1 are not in the alphabet, too short
