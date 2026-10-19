@@ -24,21 +24,22 @@ class NowPlayingTest {
     }
 
     @Test
-    fun sendsOnStartStopPauseAndTitle() {
-        assertFalse(NowPlaying.sendDue(null, 0L, null, t0))
-        assertTrue(NowPlaying.sendDue(null, 0L, bluey, t0)) // started
-        assertTrue(NowPlaying.sendDue(bluey, t0, null, t0 + 1_000L)) // stopped
-        assertTrue(NowPlaying.sendDue(bluey, t0, bluey.copy(playing = false, ts = t0 + 1_000L), t0 + 1_000L)) // paused
-        assertTrue(NowPlaying.sendDue(bluey, t0, bluey.copy(episode = 2, ts = t0 + 1_000L), t0 + 1_000L)) // next episode
+    fun changesThatPhonesMustHear() {
+        assertFalse(NowPlaying.changed(null, null))
+        assertTrue(NowPlaying.changed(null, bluey)) // started
+        assertTrue(NowPlaying.changed(bluey, null)) // stopped
+        assertTrue(NowPlaying.changed(bluey, bluey.copy(playing = false))) // paused
+        assertTrue(NowPlaying.changed(bluey, bluey.copy(episode = 2))) // next episode
+        assertFalse(NowPlaying.changed(bluey, bluey.copy(positionMs = 25_000L, ts = t0 + 15_000L))) // position only
     }
 
     @Test
-    fun positionOnlyOncePerMinute() {
-        val later = bluey.copy(positionMs = 25_000L, ts = t0 + 15_000L)
-        assertFalse(NowPlaying.sendDue(bluey, t0, later, t0 + 15_000L))
-        assertFalse(NowPlaying.sendDue(bluey, t0, later, t0 + 59_999L))
-        assertTrue(NowPlaying.sendDue(bluey, t0, later, t0 + 60_000L))
-        assertTrue(NowPlaying.sendDue(bluey, t0 + 5_000L, later, t0)) // clock went back: send
+    fun atMostOncePerTenSeconds() {
+        assertEquals(0L, NowPlaying.waitMs(0L, t0)) // never sent
+        assertEquals(10_000L, NowPlaying.waitMs(t0, t0))
+        assertEquals(4_000L, NowPlaying.waitMs(t0, t0 + 6_000L))
+        assertEquals(0L, NowPlaying.waitMs(t0, t0 + 10_000L))
+        assertEquals(0L, NowPlaying.waitMs(t0 + 5_000L, t0)) // clock went back
     }
 
     @Test
