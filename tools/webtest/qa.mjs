@@ -205,6 +205,50 @@ for (const w of [390,1280]) {
     await ctx.close();
   }
 }
+// TV names, now playing and the TV picker: two TVs in "mcdtv_tvs" with device ids; "tv_status" messages on the house
+// topic (mocked, encrypted with the house key) show what each TV plays; the header pill opens the picker.
+{
+  const rb=(n)=>{ const a=new Uint8Array(n); globalThis.crypto.getRandomValues(a); return Buffer.from(a).toString('base64url'); };
+  const HID='qahouse'+Date.now().toString(36), HK=rb(32), house=HID+'.'+HK;
+  const LR={id:'livingroomaa22',key:rb(32)}, OF={id:'officetvbbb222',key:rb(32)};
+  let reply='';
+  const {ctx,p,errs}=await mk({width:390,height:844});
+  await ctx.route(/^https:\/\/ntfy\.sh\/mcdtv-/,r=>{ const q=r.request(), u=new URL(q.url());
+    if(q.method()==='POST') return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'},body:'{}'});
+    if(u.pathname.includes('-house/json')) return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/x-ndjson'},body:reply});
+    return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/x-ndjson'},body:''}); });
+  await p.goto(B);
+  await p.evaluate(([house,LR,OF])=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_profile','p1');
+    localStorage.setItem('mcdtv_web_init',JSON.stringify({tmdb_key:'x',house}));
+    localStorage.setItem('mcdtv_tvs',JSON.stringify([
+      {id:LR.id,key:LR.key,name:'Living Room TV',label:'Living Room TV',platform:'Google TV',version:'0.2.197',dev:'devlr',house,seen:Date.now()-3600e3},
+      {id:OF.id,key:OF.key,name:'Office TV',label:'Office TV',platform:'Fire TV',model:'AFTHY7ABBA',version:'0.2.197',dev:'devof',house,seen:Date.now()-7200e3}]));
+    localStorage.setItem('mcdtv_link',LR.id+'.'+LR.key); },[house,LR,OF]);
+  const t=Date.now();
+  reply=(await p.evaluate(async([HK,t])=>{ const k=await importKey(HK); const ev=async(o,i)=>JSON.stringify({id:'s'+i,time:Math.floor(t/1000),event:'message',topic:'x',message:await encrypt(o,k)});
+    return [await ev({type:'tv_status',from:'devof',name:'Office TV',now:{media:'tv',id:82728,name:'Bluey',season:1,episode:4,playing:false,position_ms:125000,duration_ms:420000,ts:t-60000},ts:t-60000},0),
+      await ev({type:'tv_status',from:'devof',name:'Office TV',now:null,ts:t-90000},1),
+      await ev({type:'tv_status',from:'devlr',name:'Living Room TV',now:{media:'live',id:0,name:'ESPN',playing:true,position_ms:0,duration_ms:0,ts:t-30000},ts:t-30000},2)].join('\n')+'\n'; },[HK,t]));
+  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(1500);
+  const txt=await p.$eval('#tvFound',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+  log('tv status',txt);
+  if(!/Living Room TV \(Google TV\)/.test(txt)||!/Office TV \(Fire TV\)/.test(txt)) fails.push(`tv status: names missing "${txt}"`);
+  if(!/Playing ESPN \(Live TV\)/.test(txt)) fails.push(`tv status: linked TV's live status missing "${txt}"`);
+  if(!/Paused Bluey S1 E4 · 2:05 \/ 7:00/.test(txt)) fails.push(`tv status: Office TV paused status missing or not the newest "${txt}"`);
+  if(!/Play on TV goes here/.test(txt)) fails.push('tv status: default target not marked');
+  const pill=await p.$eval('#tvlbl',e=>e.textContent); if(!/Living Room TV/.test(pill)) fails.push(`tv status: pill says "${pill}"`);
+  await p.click('#tvpill'); await p.waitForTimeout(300);
+  const pick=await p.$eval('#tvpick',e=>(e.classList.contains('hidden')?'HIDDEN ':'')+e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+  log('tv picker',pick);
+  if(/^HIDDEN/.test(pick)||!/Office TV \(Fire TV\)/.test(pick)||!/USE THIS TV/i.test(pick)) fails.push(`tv picker: "${pick}"`);
+  await p.click('#tvpick [data-act="usetv"]'); await p.waitForTimeout(600);
+  const sw=await p.evaluate(()=>({link:S.link&&S.link.id,stored:localStorage.mcdtv_link.split('.')[0],hidden:document.querySelector('#tvpick').classList.contains('hidden'),toast:document.querySelector('#toast').innerText}));
+  log('tv picker switch',JSON.stringify(sw));
+  if(sw.link!==OF.id||sw.stored!==OF.id||!sw.hidden) fails.push(`tv picker: switch failed ${JSON.stringify(sw)}`);
+  const h=await hsc(p); if(h.sw>h.iw) fails.push(`tv status: settings overflow ${h.sw}`);
+  if(errs.length) fails.push(...errs.map(e=>`tv status pageerror ${e}`));
+  await ctx.close();
+}
 // Real-Debrid budget: Best source over refused sources, a 429 pause, and the page-wide limiter. The relay's /rd/
 // routes, TMDB and one addon are mocked. The API token is a fake test value.
 {
