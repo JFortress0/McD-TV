@@ -129,7 +129,7 @@ fun PlayerScreen(
     var keepScreenOn by remember { mutableStateOf(true) }
     // Live: buffering right now (the stall watchdog below), and a short "Reconnecting" note.
     var buffering by remember { mutableStateOf(false) }
-    // Live: how this channel plays, for Settings > Live TV health.
+    // Live: how this channel plays, for Settings > Addons and Live TV.
     val stats = remember { if (live) com.mcd.tv.data.LiveStats.Recorder(title) else null }
     var liveNote by remember { mutableStateOf<String?>(null) }
 
@@ -228,6 +228,7 @@ fun PlayerScreen(
                     return
                 }
                 error = RdErrors.stream(http) ?: "${e.errorCodeName}\n${e.cause?.message ?: e.message ?: ""}"
+                com.mcd.tv.data.RecentErrors.note("Playback: ${title.ifBlank { "video" }}: ${RdErrors.stream(http) ?: e.errorCodeName}")
             }
         }
         player.addListener(listener)

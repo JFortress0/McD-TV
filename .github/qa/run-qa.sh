@@ -58,7 +58,8 @@ check_screen() { # name, expected text (case-insensitive regex)
     echo "      on screen: $(grep -o 'text="[^"]*"' "qa-out/ui-${1//:/-}.xml" 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-400)" | tee -a "$R"
   fi
 }
-check_screen settings "Phone &amp; Computer Setup|Phone & Computer Setup"
+check_screen settings "Check for updates"
+check_screen settings:sources "Phone &amp; Computer Setup|Phone & Computer Setup"
 check_screen phone "JARVIS CONTROL"
 check_screen genres "All years"
 check_screen services "Netflix"
@@ -77,15 +78,56 @@ check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
 
-# 4a) Settings tour: walk the page with the remote and capture each stop (before/after screenshots for reviews).
+# 4a) Settings with the remote: a screenshot of each category, a D-pad walk through its rows (the keyboard must
+# never open on focus), the edit dialog (opens on OK, one BACK closes it) and the update check in two presses.
+kb_shown() { adb shell dumpsys input_method | grep -q "mInputShown=true"; }
+dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "qa-out/$1.xml" >/dev/null 2>&1; }
+KB_FAIL=""
+for cat in updates tv profiles playback sources wall network about; do
+  adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "settings:$cat" >/dev/null
+  sleep 8
+  shot "settings-$cat"
+  adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+  for i in $(seq 1 10); do
+    adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+    kb_shown && KB_FAIL="$KB_FAIL $cat:$i"
+  done
+  shot "settings-$cat-walked"
+done
+if [ -z "$KB_FAIL" ]; then pass "Settings: D-pad never opens the keyboard"; else fail "Settings: D-pad never opens the keyboard (opened at$KB_FAIL)"; fi
+
+# Fresh open lands on App updates in the rail: RIGHT reaches Check for updates, OK checks.
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings >/dev/null
 sleep 9
-shot settings-tour-00
-for i in $(seq 1 12); do
-  for k in 1 2; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
-  shot "settings-tour-$(printf %02d "$i")"
-  adb shell dumpsys input_method | grep -q "mInputShown=true" && echo "      keyboard open at stop $i" | tee -a "$R"
-done
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 6
+shot settings-updates-checked
+dump ui-settings-updates-checked
+if grep -qiE "up to date|is ready|Checking|t check" qa-out/ui-settings-updates-checked.xml && grep -qi "Last checked" qa-out/ui-settings-updates-checked.xml; then
+  pass "Settings: update check in two presses"
+else
+  fail "Settings: update check in two presses"
+fi
+
+# Edit row: Profiles > RIGHT (Watching now) > DOWN (Profile 1) > OK opens the rename dialog; BACK closes it.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings:profiles >/dev/null
+sleep 8
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+kb_shown && fail "Settings: no keyboard on an edit row before OK" || pass "Settings: no keyboard on an edit row before OK"
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 3
+shot settings-edit-open
+dump ui-settings-edit-open
+grep -q "Rename Profile 1" qa-out/ui-settings-edit-open.xml && pass "Settings: OK on an edit row opens the editor" || fail "Settings: OK on an edit row opens the editor"
+kb_shown && echo "      keyboard is open in the editor" | tee -a "$R"
+adb shell input keyevent KEYCODE_BACK; sleep 2
+shot settings-edit-closed
+dump ui-settings-edit-closed
+if ! grep -q "Rename Profile 1" qa-out/ui-settings-edit-closed.xml && grep -q "Profile 1" qa-out/ui-settings-edit-closed.xml && ! kb_shown; then
+  pass "Settings: one BACK closes the keyboard and the editor"
+else
+  fail "Settings: one BACK closes the keyboard and the editor"
+fi
 
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
 mkdir -p qa-m3u

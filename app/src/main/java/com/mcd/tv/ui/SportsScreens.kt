@@ -43,7 +43,7 @@ fun SportsScreen(nav: Nav) {
             Text("WEBSITES", style = broadcastStyle(30.sp, McdColors.Accent))
         }
         if (unique.isEmpty()) {
-            StatusText("None yet. Add them in Jarvis Control (Settings > Phone & Computer Setup).", Modifier.padding(start = 48.dp))
+            StatusText("None yet. Add them in Jarvis Control (Settings > Addons and Live TV).", Modifier.padding(start = 48.dp))
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(220.dp),

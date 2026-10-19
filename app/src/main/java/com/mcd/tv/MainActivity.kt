@@ -144,6 +144,10 @@ class MainActivity : ComponentActivity() {
         } else if (screenExtra.startsWith("grid:")) {
             // "grid:top:movie", "grid:lang:ko", "grid:collection:2344"
             screenExtra.split(":").let { p -> Screen.BrowseGrid(p.getOrElse(1) { "trending" }, p.getOrElse(2) { "" }) }
+        } else if (screenExtra.startsWith("settings:")) {
+            // "settings:updates": Settings open on one category (QA screenshots of each).
+            com.mcd.tv.ui.SettingsLaunch.requested = com.mcd.tv.ui.SettingsCategory.fromId(screenExtra.substringAfter(":"))
+            Screen.Settings
         } else if (screenExtra.startsWith("person:")) {
             screenExtra.substringAfter(":").toIntOrNull()?.let { Screen.Person(it) }
         } else when (screenExtra) {

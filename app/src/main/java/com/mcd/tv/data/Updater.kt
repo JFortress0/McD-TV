@@ -55,6 +55,24 @@ object Updater {
 
     private var lastCheck = 0L
 
+    /** True while a check runs (Settings > App updates shows "Checking…"). */
+    var checking by mutableStateOf(false)
+        private set
+
+    /** Why the last check failed, or blank when it worked. */
+    var checkError by mutableStateOf("")
+        private set
+
+    /** The newest version on GitHub at the last good check ("0.2.201"), blank before the first one. */
+    var latestName by mutableStateOf(runCatching { JSONObject(Prefs.json(CHECK_KEY)).optString("latest") }.getOrDefault(""))
+        private set
+
+    /** When the last good check finished (ms), 0 before the first one. Kept on this TV only. */
+    var checkedAt by mutableStateOf(runCatching { JSONObject(Prefs.json(CHECK_KEY)).optLong("at") }.getOrDefault(0L))
+        private set
+
+    private const val CHECK_KEY = "update_check"
+
     @Suppress("DEPRECATION")
     fun installedCode(ctx: Context): Long = runCatching {
         val info = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
@@ -69,6 +87,7 @@ object Updater {
         val now = System.currentTimeMillis()
         if (!force && now - lastCheck < CHECK_EVERY_MS) return available
         lastCheck = now
+        checking = true
         return try {
             val o = JSONObject(Http.get(LATEST, mapOf("Accept" to "application/vnd.github+json"), timeoutMs = 15_000))
             val tag = o.optString("tag_name")
@@ -82,11 +101,22 @@ object Updater {
             }
             if (url.isBlank()) return available
             available = if (code > installedCode(ctx)) Release(code, tag.removePrefix("v"), url, bytes) else null
+            latestName = tag.removePrefix("v")
+            checkedAt = System.currentTimeMillis()
+            checkError = ""
+            if (status.startsWith("Couldn't check")) status = ""
+            runCatching { Prefs.putJson(CHECK_KEY, JSONObject().put("latest", latestName).put("at", checkedAt).toString()) }
             available
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            if (force) status = "Couldn't check for updates. Check the TV's internet and try again."
+            if (force) {
+                status = "Couldn't check for updates. Check the TV's internet and try again."
+                checkError = "Check the TV's internet and try again."
+                RecentErrors.note("Update check failed: ${e.message ?: "no answer"}")
+            }
             available
+        } finally {
+            checking = false
         }
     }
 
@@ -209,6 +239,7 @@ object Updater {
                 throw e
             }
             status = "Update failed: ${e.message ?: "unknown error"}. Try again, or install with Downloader."
+            RecentErrors.note(status)
         } finally {
             busy = false
         }

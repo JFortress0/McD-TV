@@ -8,7 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * How live channels played on this TV (Settings > Live TV health): time to the first picture, freezes and
+ * How live channels played on this TV (Settings > Addons and Live TV > Live TV health): time to the first picture, freezes and
  * how long they lasted, dropped frames, the stream's size and frame rate, the decoder and the speed.
  * Kept on this TV only (never synced), the last [KEEP] channels watched for more than 5 seconds.
  */

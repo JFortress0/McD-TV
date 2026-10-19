@@ -13,23 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -114,32 +105,5 @@ private fun ProfileCard(name: String, kids: Boolean, current: Boolean, onClick: 
                 color = McdColors.Muted, fontSize = 13.sp, maxLines = 1,
             )
         }
-    }
-}
-
-/** Settings: rename one profile. Select the field, press OK to type, then Save (or Done on the keyboard). */
-@Composable
-fun ProfileNameEditor(id: String, onSaved: (String) -> Unit) {
-    var text by remember { mutableStateOf(Prefs.profileName(id)) }
-    fun save() {
-        Prefs.setProfileName(id, text.trim())
-        text = Prefs.profileName(id)
-        onSaved(text)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(if (id == Prefs.KIDS_PROFILE) "Kids profile" else "Profile ${Prefs.PROFILE_IDS.indexOf(id) + 1}", color = McdColors.Muted, fontSize = 13.sp)
-        BasicTextField(
-            value = text,
-            onValueChange = { text = it.take(20) },
-            singleLine = true,
-            textStyle = TextStyle(color = McdColors.White, fontSize = 18.sp),
-            cursorBrush = SolidColor(McdColors.Accent),
-            // No keyboard just for moving focus onto the field; OK opens it.
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, showKeyboardOnFocus = false),
-            keyboardActions = KeyboardActions(onDone = { save() }),
-            modifier = Modifier.width(200.dp).background(McdColors.Card, HudShape)
-                .border(1.dp, McdColors.Accent.copy(alpha = 0.7f), HudShape).padding(12.dp),
-        )
-        ActionButton("Save", { save() })
     }
 }
