@@ -77,6 +77,16 @@ check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
 
+# 4a) Settings tour: walk the page with the remote and capture each stop (before/after screenshots for reviews).
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings >/dev/null
+sleep 9
+shot settings-tour-00
+for i in $(seq 1 12); do
+  for k in 1 2; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
+  shot "settings-tour-$(printf %02d "$i")"
+  adb shell dumpsys input_method | grep -q "mInputShown=true" && echo "      keyboard open at stop $i" | tee -a "$R"
+done
+
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
 mkdir -p qa-m3u
 cat > qa-m3u/test.m3u <<'M3U'
