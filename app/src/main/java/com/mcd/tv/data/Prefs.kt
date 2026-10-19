@@ -174,6 +174,17 @@ object Prefs {
         get() = str("tv_label")
         set(v) = put("tv_label", TvIdentity.cleanLabel(v))
 
+    // ---- Spotify (phase 1) ----
+    /** Spotify Client ID from the Control page (32 hex characters, "" = none). Configuration, not a secret. This TV only. */
+    var spotifyClientId: String
+        get() = str("spotify_client_id")
+        set(v) = put("spotify_client_id", SpotifyConfig.cleanClientId(v))
+
+    /** Name of the Spotify Connect device that is this TV, once J picked it ("" = pick it automatically). This TV only. */
+    var spotifyDevice: String
+        get() = str("spotify_device")
+        set(v) = put("spotify_device", v.take(80))
+
     /** Last calendar feed, shown at once after a restart or while offline. This TV only. */
     var wallCache: String
         get() = str("wall_cache")
@@ -370,7 +381,8 @@ object Prefs {
     /** Keys that belong to this TV only and never sync to the account. */
     private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key",
         "house_id", "house_key", "house_since", "house_stamp", "device_id", "active_profile", "sync_peers", "sync_budget", "sync_pause",
-        "tv_link_sig", "tv_link_at", "rd_last_add", "tv_label", "wall_mode", "wall_start", "wall_cache")
+        "tv_link_sig", "tv_link_at", "rd_last_add", "tv_label", "wall_mode", "wall_start", "wall_cache",
+        "spotify_client_id", "spotify_device")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String

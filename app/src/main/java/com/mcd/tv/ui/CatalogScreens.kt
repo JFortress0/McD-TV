@@ -66,6 +66,9 @@ private fun browseMenu(): List<MenuEntry> = buildList {
     }
     add(MenuEntry("Websites", "Sites you added on the Control page", Screen.Sports, section = "More"))
     add(MenuEntry("Background Noise", "Random episodes of your shows", Screen.Noise))
+    if (com.mcd.tv.data.SpotifyConfig.enabledFor(com.mcd.tv.data.Prefs.activeProfile)) {
+        add(MenuEntry("Spotify", "Your playlists, played on this TV", Screen.Spotify))
+    }
 }
 
 /** Catalog sheet: a plain vertical list (dark rows, hairline separators, focused row bright). */

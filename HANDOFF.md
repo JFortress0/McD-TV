@@ -2,7 +2,7 @@
 
 Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next.
 
-Last updated: 2026-10-18.
+Last updated: 2026-10-19.
 
 ## Names that must not change
 
@@ -45,6 +45,7 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 | `Jarvis.kt` | Ask Jarvis: model call, JSON parsing, TMDB lookup of each guess. |
 | `Relay.kt` | Encrypted link between the TV and the Control page / web app. |
 | `HouseSync.kt` | Shared settings between linked TVs. |
+| `SpotifyCore.kt`, `Spotify.kt`, `SpotifyVault.kt` | Spotify phase 1: links and URIs, sign-in, Web API, playback through the Spotify app on the TV, token vault. See "Spotify" below. |
 | `PhoneSetup.kt` | Home Wi-Fi fallback page on port 8642. Runs only while Phone & Computer Setup is open, or in a QA launch. |
 
 ### ui/ and player/
@@ -61,12 +62,42 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 - The TV makes a random link id and a 256-bit key and shows them as a QR code. The key sits after `#` in the link, so browsers never send it anywhere.
 - Messages go through ntfy.sh. The page posts to `mcdtv-<id>-in`; the TV answers on `mcdtv-<id>-out`.
 - Each message is `"v1:" + base64url(iv(12) || AES-256-GCM(deflate-raw(JSON)))`. The relay only sees random bytes.
-- Commands include `hello`, `set` (settings), `house_join`, `house_leave`, `magnet`, `web_init`, `rd_resolve`, `progress`, `ask`, `open`, `play` and `watchlist`.
+- Commands include `hello`, `set` (settings), `house_join`, `house_leave`, `magnet`, `web_init`, `rd_resolve`, `progress`, `ask`, `open`, `play`, `watchlist`, `wall_start`, `wall_stop`, `wall_mode`, `spotify_play`, `spotify_control` and `spotify_list`.
 - Browsers can't call the Real-Debrid API: it sends no CORS headers. The web app's Play here uses one of two routes. (1) The device signed in to Real-Debrid itself (Settings > Real-Debrid on this device). Its calls go through `rd-proxy/`, a Netlify function at `jarvis-rd.netlify.app` that adds CORS headers and stores nothing. (2) Otherwise it sends `rd_resolve` to the TV, the TV makes the RD calls and sends back playable links. The TV's RD token never leaves the TV.
 - "New link" in Phone & Computer Setup makes a new id and key, which disconnects old devices.
 - **Who each TV is (October 18, 2026):** every TV has a per-device name, pref `tv_label` (TV Settings > This TV, or the Control page > This TV; never a HouseSync shared key), and a platform from the real maker and model (`data/TvIdentity.kt`: a known-model table with real models only, else Amazon = "Fire TV", Google or Chromecast = "Google TV", else "Android TV"). `tv_link` on the house topic carries `label`, `platform`, `maker`, `model` and `version`; `state` and `web_init` carry `device_id`, `tv_label`, `platform`, `model`, `version` and `now_playing`. Phones keep every TV in `mcdtv_tvs` as `{id, key, name, house, dev, label, platform, model, version, seen}` (name = label, else platform). The web app's header pill names the linked TV and, with more than one TV known, opens a TV picker; Play on TV and Open on TV go to the linked TV's own topic and carry `to: <device id>`, which every other TV ignores. Nothing is ever broadcast.
 - **Now playing:** `data/NowPlaying.kt` is set by `PlayerScreen`; HouseSync posts `{"type":"tv_status","from","name","label","platform","now":{media,id,name,season,episode,playing,position_ms,duration_ms,ts}|null,"ts"}` on the house topic on play, pause, stop or a new title only, at most once per 10 s (a change inside the gap goes out when the gap ends). No position-only updates: phones count forward from the last event while it says playing. `state` and `web_init` also carry `now_playing`. The web app reads the house topic once (cached 60 s, newest per device id) when Settings or the TV picker opens. No polling loop.
 - **Jarvis Wall from the phone:** relay commands `wall_start`, `wall_stop` (optional `mode`) and `wall_mode`. Start pushes `Screen.Wall`, Stop pops it, and the mode (pref `wall_mode`, per TV: "" = photos and calendar, "photos" = photos only) applies live through `Wall.mode`. WallScreen had no wallpaper-only mode before; the photos-only branch is a 5-line addition. The Control page has Start, Stop and the mode for the linked TV, and Start and Stop for every other TV in its list (sent to that TV's topic with its key and `to`).
+
+- **Spotify (October 19, 2026):** relay commands `spotify_play {uri}`, `spotify_control {action: pause | resume | next | previous}` and `spotify_list {offset}`. Each one must name its TV with `to` (the web app also sends the same id as `tv`). The TV refuses a Spotify command with no target and ignores one for another TV. `spotify_list` answers with `{type: "spotify_list", playlists: [[name, uri, songs], ...], more, next_offset, music, note}`, cut to fit one relay message. `tv_status`, `state` and `web_init` carry `music: {source: "spotify", track, artist, playing, ts} | null`. `state` also carries `spotify_client_id` and `spotify_connected`.
+
+### Spotify (phase 1, branch `feature/spotify-in-jarvis`)
+
+Goal: J picks a Spotify playlist in Jarvis and it plays while Jarvis stays on screen. Spotify closed its mobile streaming SDKs in 2022, so Jarvis never streams audio. It tells the official Spotify app on the same TV what to play.
+
+- **Sign-in:** Spotify's Android Authorization Library (`com.spotify.android:auth:5.0.0`). Jarvis asks for a token. The library turns that into Authorization Code with PKCE: it makes the verifier, swaps the code and returns an access token and a refresh token. There is no client secret. Redirect URI: `jarvis-tv://spotify-callback` (`SpotifyConfig.REDIRECT_URI`, the manifest filter and a unit test must match).
+- **Scopes:** playlist-read-private, playlist-read-collaborative, user-library-read, user-read-playback-state, user-modify-playback-state, app-remote-control.
+- **Client ID:** configuration, not a secret, never committed. The Control page field (pref `spotify_client_id`, this TV only) wins. A local build can bake one in with `spotifyClientId=...` in `local.properties` or `~/.gradle/gradle.properties`, or the env var `SPOTIFY_CLIENT_ID`.
+- **Tokens:** only in `SpotifyVault` on the TV that signed in. AES-256-GCM with a key in the Android Keystore, in its own file `spotify_vault.xml`, which the backup rules (`res/xml`) leave out. Never in Prefs, HouseSync, the Control link, the relay, logs or git. `SpotifyTokens.toString()` hides them, and `SpotifyRedact` hides tokens, codes and Bearer values in every message Jarvis shows or sends. Release builds drop `Log.d` and `Log.v`, because the sign-in library logs the one-time code at debug level.
+- **Playback, two routes:** (1) App Remote (`app/libs/spotify-app-remote-release-0.8.0.aar`, Apache 2.0) when the phone build of Spotify (`com.spotify.music`) is on the TV. (2) Spotify Connect through the Web API player calls when only the Spotify TV app (`com.spotify.tv.android`) is there. App Remote binds only to the phone app (its manifest lists `com.spotify.music` only), so a Fire TV with the normal Spotify TV app uses Connect. Jarvis finds this TV's Connect device by the name J picked, else the only device of type TV, else a name that contains this TV's name or model. With more than one candidate, the screen asks J to pick one.
+- **Now playing:** App Remote sends live events. Connect has none, so the Spotify screen reads `/me/player` every 15 s while it is open, and once 1.5 s after each command. Music on another device (J's phone) does not count as this TV's music.
+- **Missing app or not signed in:** one plain message and one button (Get Spotify, Open Spotify or Connect Spotify). Jarvis never opens another app unless J presses that button.
+- **Profiles:** the Spotify tile (Home > More, Browse > More, web app Browse) shows on the Dad profile (p1) only. Other profiles are unchanged. A `spotify_play` from the phone plays on the TV whatever profile is open.
+- **Screens:** TV `ui/SpotifyScreen.kt` (QA screen `spotify`), web app `#/music`, Control page section "Spotify".
+- **CI on pull requests:** Build APK, QA and Web QA now run on pull requests too. Only `main` publishes a Release, so a pull request never updates the TVs. The pull request's APK is in the run's artifacts.
+
+#### Setup J must do once (real devices)
+
+1. Go to developer.spotify.com/dashboard and sign in with the Spotify account that will play the music. Spotify Premium is needed to choose what plays.
+2. Press **Create app**. Any name works (for example "Jarvis"). Under **Redirect URIs**, add exactly `jarvis-tv://spotify-callback`. Under **Which API/SDKs are you planning to use**, tick **Web API** and **Android**.
+3. For Android, Spotify asks for a package name and a SHA1 fingerprint. Package name: `com.mcd.tv`. Fingerprint: on the MacBook, in the `McD TV` folder, run `keytool -list -v -keystore keystore/mcdtv.jks -alias mcdtv` (the password is in `app/build.gradle.kts`) and copy the `SHA1:` line. Save the app.
+4. In the app's **User Management**, add the email of every Spotify account that will sign in (a new app is in Development mode).
+5. Copy the **Client ID** from the app's settings page. Do not copy the Client secret; Jarvis does not use it.
+6. On the gym TV: install **Spotify** from the TV's app store, open it, sign in and play any song once. Then press Home. This makes the TV show up as a Spotify Connect device.
+7. Check that the gym TV has a web browser (Fire TV: Silk Browser or Firefox from the Appstore). The Spotify sign-in page opens in it. A TV with the phone build of Spotify signs in through Spotify instead.
+8. On the phone or computer, open the gym TV's Control page, paste the Client ID in **Spotify**, and press **Save to TV**.
+9. On the gym TV, open Jarvis on the Dad profile. Go to Home > More > **Spotify** and press **Connect Spotify**. Sign in, press **Agree**, and the browser returns to Jarvis.
+10. Pick a playlist. If Jarvis asks which device is the gym TV, pick it once; Jarvis remembers it.
 
 ### HouseSync
 

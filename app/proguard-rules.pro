@@ -47,3 +47,17 @@
 
 # Java 9+ string concatenation in bytecode; D8/R8 desugar it, but some libraries still reference it.
 -dontwarn java.lang.invoke.StringConcatFactory
+
+# Spotify App Remote: its AAR ships keep rules for its protocol types. Gson reads them by reflection, so keep the
+# generic signatures Gson needs. Jackson is an optional mapper App Remote does not use here.
+-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
+-keep class com.spotify.protocol.types.** { *; }
+-dontwarn com.fasterxml.jackson.**
+-dontwarn com.spotify.base.annotations.**
+
+# Release builds drop debug and verbose logs. Spotify's sign-in library logs the one-time sign-in code at debug
+# level; with this rule that line never reaches logcat on a TV.
+-assumenosideeffects class android.util.Log {
+    public static int d(...);
+    public static int v(...);
+}

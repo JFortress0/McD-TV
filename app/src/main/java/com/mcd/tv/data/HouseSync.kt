@@ -206,28 +206,43 @@ object HouseSync {
             runCatching { announceLinkIfDue() }
         }
         NowPlaying.onChange { s -> onPlayback(s) }
+        MusicStatus.onChange { m -> onMusic(m) }
         ProfileSync.start()
     }
 
     private val statusLock = Any()
     private var statusLast: NowPlaying.State? = null
+    private var musicLast: MusicStatus.State? = null
     private var statusLastAt = 0L
     private var statusJob: Job? = null
 
     /**
-     * The player changed state. "tv_status" goes out on play, pause, stop or a new title only, at most once per
+     * The player changed state. "tv_status" goes out on play, pause, stop or a new title (or Spotify track) only, at most once per
      * 10 s: a change inside the gap is sent when the gap ends (the newest state at that time). Position updates
      * alone never send; phones take the position from the last event.
      */
     private fun onPlayback(s: NowPlaying.State?) {
         synchronized(statusLock) {
             if (!NowPlaying.changed(statusLast, s)) return
-            val wait = NowPlaying.waitMs(statusLastAt, System.currentTimeMillis())
-            statusJob?.cancel()
-            statusJob = scope.launch {
-                if (wait > 0) delay(wait)
-                runCatching { publishStatus() }
-            }
+            scheduleStatus()
+        }
+    }
+
+    /** Spotify on this TV changed track, or played or paused: same rules as video (one message per 10 s at most). */
+    private fun onMusic(m: MusicStatus.State?) {
+        synchronized(statusLock) {
+            if (!MusicStatus.changed(musicLast, m)) return
+            scheduleStatus()
+        }
+    }
+
+    /** Call with statusLock held. */
+    private fun scheduleStatus() {
+        val wait = NowPlaying.waitMs(statusLastAt, System.currentTimeMillis())
+        statusJob?.cancel()
+        statusJob = scope.launch {
+            if (wait > 0) delay(wait)
+            runCatching { publishStatus() }
         }
     }
 
@@ -235,8 +250,9 @@ object HouseSync {
     private suspend fun publishStatus() {
         if (Prefs.houseId.isBlank() || Prefs.houseKey.isBlank() || !linkAllowed() || !canPublish()) return
         val s = NowPlaying.current
+        val m = MusicStatus.current
         val now = System.currentTimeMillis()
-        synchronized(statusLock) { statusLast = s; statusLastAt = now }
+        synchronized(statusLock) { statusLast = s; musicLast = m; statusLastAt = now }
         post(
             JSONObject()
                 .put("type", "tv_status")
@@ -245,6 +261,8 @@ object HouseSync {
                 .put("label", Prefs.tvLabel)
                 .put("platform", platform())
                 .put("now", NowPlaying.json(s) ?: JSONObject.NULL)
+                // Spotify on this TV: {source, track, artist, playing, ts} or null. Never tokens or account details.
+                .put("music", MusicStatus.json(m) ?: JSONObject.NULL)
                 .put("ts", now),
         )
     }

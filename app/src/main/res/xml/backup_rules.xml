@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6 to 11 backups. Spotify tokens never leave this TV: their file is left out. Everything else is backed up as before. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="spotify_vault.xml" />
+</full-backup-content>

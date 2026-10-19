@@ -249,6 +249,94 @@ for (const w of [390,1280]) {
   if(errs.length) fails.push(...errs.map(e=>`tv status pageerror ${e}`));
   await ctx.close();
 }
+// Spotify on the TV (phase 1): the Music page asks the linked TV for its playlists ("spotify_list"), and every
+// command names that TV ("to" and "tv" = its device id). A TV with no device id gets nothing. The phone never sees a
+// token. "music" in tv_status shows what Spotify plays on each TV. The relay is mocked; replies go to onRelay().
+{
+  const rb=(n)=>{ const a=new Uint8Array(n); globalThis.crypto.getRandomValues(a); return Buffer.from(a).toString('base64url'); };
+  const HID='qasphouse'+Date.now().toString(36), HK=rb(32), house=HID+'.'+HK;
+  const LR={id:'livingroomsp22',key:rb(32)}, OF={id:'officetvsp2222',key:rb(32)};
+  const PL='37i9dQZF1DXcBWIGoYBM5M', P2='4uLU6hMCjMI75M1A2tKUQC';
+  let reply=''; const posts=[];
+  const {ctx,p,errs}=await mk({width:390,height:844});
+  await ctx.route(/^https:\/\/ntfy\.sh\/mcdtv-/,r=>{ const q=r.request(), u=new URL(q.url());
+    if(q.method()==='POST'){ posts.push({topic:u.pathname.slice(1),body:q.postData()||''}); return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'},body:'{}'}); }
+    if(u.pathname.includes('-house/json')) return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/x-ndjson'},body:reply});
+    return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/x-ndjson'},body:''}); });
+  await p.goto(B);
+  await p.evaluate(([house,LR,OF])=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_profile','p1');
+    localStorage.setItem('mcdtv_web_init',JSON.stringify({tmdb_key:'x',house}));
+    localStorage.setItem('mcdtv_tvs',JSON.stringify([
+      {id:LR.id,key:LR.key,name:'Gym TV',label:'Gym TV',platform:'Fire TV',version:'0.2.210',dev:'devgym',house,seen:Date.now()-60e3},
+      {id:OF.id,key:OF.key,name:'Office TV',label:'Office TV',platform:'Fire TV',version:'0.2.210',dev:'devof',house,seen:Date.now()-7200e3}]));
+    localStorage.setItem('mcdtv_link',LR.id+'.'+LR.key); },[house,LR,OF]);
+  // (a) link and URI parsing, same cases as SpotifyCoreTest on the TV
+  const parsed=await p.evaluate(([PL,P2])=>[
+    spotifyUri('spotify:playlist:'+PL), spotifyUri(' https://open.spotify.com/playlist/'+PL+'?si=abc '), spotifyUri('https://open.spotify.com/intl-de/playlist/'+PL),
+    spotifyUri('open.spotify.com/embed/album/'+PL+'#x'), spotifyUri('spotify:user:john:playlist:'+PL), spotifyUri('SPOTIFY:Track:'+P2),
+    spotifyUri('https://spotify.link/abc'), spotifyUri('https://evil.example/open.spotify.com/playlist/'+PL), spotifyUri('https://open.spotify.com.evil.example/playlist/'+PL),
+    spotifyUri('spotify:playlist:short'), spotifyUri('spotify:user:john:collection'), spotifyUri('javascript:alert(1)'), spotifyUri('')],[PL,P2]);
+  const want=['spotify:playlist:'+PL,'spotify:playlist:'+PL,'spotify:playlist:'+PL,'spotify:album:'+PL,'spotify:playlist:'+PL,'spotify:track:'+P2,'','','','','','',''];
+  log('spotify uri parse',JSON.stringify(parsed));
+  if(JSON.stringify(parsed)!==JSON.stringify(want)) fails.push(`spotify uri parse: ${JSON.stringify(parsed)}`);
+  // (b) the Browse tile shows on the Dad profile
+  await p.goto(B+'#/browse'); await p.reload(); await p.waitForTimeout(800);
+  if(!await p.$('a.tile[href="#/music"]')) fails.push('spotify: Browse tile missing on the Dad profile');
+  // (c) the Music page asks the linked TV, by device id, for its playlists
+  await p.goto(B+'#/music'); await p.reload(); await p.waitForTimeout(800);
+  await p.evaluate(()=>{ S.lastLive=Date.now(); setStatus('online'); });
+  await p.waitForFunction(()=>spWait.size>0,null,{timeout:10000}).catch(()=>{});
+  await p.evaluate(async([PL,P2])=>{ const req=[...spWait.keys()][0]; if(!req) return;
+    await onRelay(await encrypt({type:'spotify_list',req,ts:Date.now(),device_id:'devgym',offset:0,connected:true,
+      music:{source:'spotify',track:'Eye of the Tiger',artist:'Survivor',playing:true,ts:Date.now()},
+      playlists:[['Gym Mix','spotify:playlist:'+PL,42],['Cool Down','spotify:playlist:'+P2,12],['<b>bad</b>','https://evil.example',1]],more:false,next_offset:3},S.key),true); },[PL,P2]);
+  await p.waitForTimeout(400);
+  const page=await p.$eval('#view',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+  log('spotify page',page.slice(0,300));
+  if(!/Gym Mix/.test(page)||!/Cool Down/.test(page)) fails.push(`spotify page: playlists missing "${page.slice(0,200)}"`);
+  if(/<b>bad<\/b>|bad/.test(page)) fails.push('spotify page: a row with a bad URI was shown');
+  if(!/Spotify playing Eye of the Tiger by Survivor/.test(page)) fails.push(`spotify page: now playing missing "${page.slice(0,200)}"`);
+  const dec=async(i)=>p.evaluate(async([b,k])=>decrypt(b,await importKey(k)),[posts[i].body,LR.key]);
+  let list=null; for(let i=0;i<posts.length&&!list;i++){ if(posts[i].topic!==`mcdtv-${LR.id}-in`) continue; const c=await dec(i); if(c&&c.cmd==='spotify_list') list=c; }
+  log('spotify list cmd',JSON.stringify(list));
+  if(!list||list.cmd!=='spotify_list'||list.to!=='devgym'||list.tv!=='devgym') fails.push(`spotify list: not aimed at the TV ${JSON.stringify(list)}`);
+  // (d) Play on TV, a pasted link and a control: each one to this TV's topic, with its device id
+  const n0=posts.length;
+  await p.click('[data-act="spplay"]'); await p.waitForTimeout(300);
+  await p.fill('#spLink','https://open.spotify.com/playlist/'+P2+'?si=zz'); await p.click('[data-act="splink"]'); await p.waitForTimeout(300);
+  await p.click('[data-act="spctl"][data-a="pause"]'); await p.waitForTimeout(300);
+  const sent=[]; for(let i=n0;i<posts.length;i++) sent.push({topic:posts[i].topic,...await dec(i)});
+  log('spotify sent',JSON.stringify(sent.map(x=>[x.topic,x.cmd,x.uri||x.action,x.to,x.tv])));
+  const okc=(c,f)=>c&&c.topic===`mcdtv-${LR.id}-in`&&c.to==='devgym'&&c.tv==='devgym'&&f(c);
+  if(!okc(sent[0],c=>c.cmd==='spotify_play'&&c.uri==='spotify:playlist:'+PL)) fails.push(`spotify play: ${JSON.stringify(sent[0])}`);
+  if(!okc(sent[1],c=>c.cmd==='spotify_play'&&c.uri==='spotify:playlist:'+P2)) fails.push(`spotify link: ${JSON.stringify(sent[1])}`);
+  if(!okc(sent[2],c=>c.cmd==='spotify_control'&&c.action==='pause')) fails.push(`spotify control: ${JSON.stringify(sent[2])}`);
+  if(sent.length!==3) fails.push(`spotify: expected 3 commands, got ${sent.length}`);
+  // (e) not a Spotify link: nothing is sent
+  const n1=posts.length; await p.fill('#spLink','https://example.com/song'); await p.click('[data-act="splink"]'); await p.waitForTimeout(300);
+  const t1=await p.$eval('#toast',e=>e.innerText);
+  if(posts.length!==n1||!/not a Spotify link/.test(t1)) fails.push(`spotify bad link: sent ${posts.length-n1}, toast "${t1}"`);
+  // (f) a TV with no device id (old Jarvis): never sent without a target
+  await p.evaluate((LR)=>{ const a=JSON.parse(localStorage.mcdtv_tvs); a.find(t=>t.id===LR.id).dev=''; localStorage.mcdtv_tvs=JSON.stringify(a); },LR);
+  const n2=posts.length; await p.click('[data-act="spctl"][data-a="next"]'); await p.waitForTimeout(300);
+  const t2=await p.$eval('#toast',e=>e.innerText);
+  if(posts.length!==n2||!/Update Jarvis on this TV/.test(t2)) fails.push(`spotify no device id: sent ${posts.length-n2}, toast "${t2}"`);
+  const h=await hsc(p); if(h.sw>h.iw) fails.push(`spotify page overflow ${h.sw} ${h.wide}`);
+  // (g) "music" in tv_status on the house topic: the TV list says what Spotify plays on the other TV
+  const t=Date.now();
+  reply=(await p.evaluate(async([HK,t])=>{ const k=await importKey(HK); const ev=async(o,i)=>JSON.stringify({id:'m'+i,time:Math.floor(t/1000),event:'message',topic:'x',message:await encrypt(o,k)});
+    return [await ev({type:'tv_status',from:'devof',name:'Office TV',now:null,music:{source:'spotify',track:'Halo',artist:'Beyonce',playing:false,ts:t-20000},ts:t-20000},0)].join('\n')+'\n'; },[HK,t]));
+  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(1500);
+  const st=await p.$eval('#tvFound',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+  log('spotify tv status',st);
+  if(!/Spotify paused Halo by Beyonce/.test(st)) fails.push(`spotify tv status: music missing "${st}"`);
+  // (h) other profiles: no Spotify tile
+  await p.evaluate(()=>localStorage.setItem('mcdtv_web_profile','p3'));
+  await p.goto(B+'#/browse'); await p.reload(); await p.waitForTimeout(800);
+  if(await p.$('a.tile[href="#/music"]')) fails.push('spotify: Browse tile shown on a profile other than Dad');
+  if(errs.length) fails.push(...errs.map(e=>`spotify pageerror ${e}`));
+  await ctx.close();
+}
 // Real-Debrid budget: Best source over refused sources, a 429 pause, and the page-wide limiter. The relay's /rd/
 // routes, TMDB and one addon are mocked. The API token is a fake test value.
 {

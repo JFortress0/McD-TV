@@ -11,9 +11,23 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <!-- Spotify: Jarvis checks whether the Spotify app is on this TV (App Remote or Spotify Connect) and whether a
+         browser can show the Spotify sign-in. The Spotify libraries add their own entries too. -->
+    <queries>
+        <package android:name="com.spotify.music" />
+        <package android:name="com.spotify.tv.android" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <!-- usesCleartextTraffic: many user-supplied streams (IPTV, LAN servers) are plain http. -->
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -33,6 +47,21 @@
                 <!-- LEANBACK_LAUNCHER puts the app on the Fire TV / Android TV home screen. -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Spotify sign-in (Spotify's Android Authorization Library). The browser sends J back here after he signs in.
+             The scheme and host must match SpotifyConfig.REDIRECT_URI and the Redirect URI in the Spotify developer app. -->
+        <activity
+            android:name="com.spotify.sdk.android.auth.browser.RedirectUriReceiverActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="jarvis-tv"
+                    android:host="spotify-callback" />
             </intent-filter>
         </activity>
 

@@ -76,6 +76,8 @@ check_screen browse "Collections"
 check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
+# Spotify (phase 1): no Client ID in QA, so the screen asks for one (or names the Dad profile on another profile).
+check_screen spotify "Spotify Client ID|Spotify is on the"
 
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
 mkdir -p qa-m3u
