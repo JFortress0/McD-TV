@@ -164,6 +164,16 @@ object Prefs {
         get() = sp.getBoolean("wall_start", false)
         set(v) = sp.edit().putBoolean("wall_start", v).apply()
 
+    /** Wall view on this TV: "" = photos and calendar, "photos" = photos only (set from the Control page or Settings). This TV only. */
+    var wallMode: String
+        get() = str("wall_mode")
+        set(v) = put("wall_mode", if (v == "photos") "photos" else "")
+
+    /** The name J gave this TV ("Living Room TV", "The Wall"). This TV only, never shared through the house. */
+    var tvLabel: String
+        get() = str("tv_label")
+        set(v) = put("tv_label", TvIdentity.cleanLabel(v))
+
     /** Last calendar feed, shown at once after a restart or while offline. This TV only. */
     var wallCache: String
         get() = str("wall_cache")
@@ -360,7 +370,7 @@ object Prefs {
     /** Keys that belong to this TV only and never sync to the account. */
     private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key",
         "house_id", "house_key", "house_since", "house_stamp", "device_id", "active_profile", "sync_peers", "sync_budget", "sync_pause",
-        "tv_link_sig", "tv_link_at", "rd_last_add")
+        "tv_link_sig", "tv_link_at", "rd_last_add", "tv_label", "wall_mode", "wall_start", "wall_cache")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String

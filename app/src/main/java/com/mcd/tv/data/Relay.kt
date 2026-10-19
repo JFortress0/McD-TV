@@ -31,6 +31,8 @@ sealed interface RemoteNav {
     data class Open(val type: String, val id: Int) : RemoteNav
     /** The source list for [meta], picking the best source and playing it. */
     data class Play(val meta: PlayMeta, val imdbId: String) : RemoteNav
+    /** Jarvis Wall on or off (the Control page's Start Wall / Stop Wall). */
+    data class Wall(val start: Boolean) : RemoteNav
 }
 
 /**
@@ -100,7 +102,28 @@ object Relay {
         ensureLink()
         scope.launch { listen(generation) }
         scope.launch { runCatching { publishState("TV started") } }
+        NowPlaying.onChange { s -> scope.launch { runCatching { publishNow(s) } } }
         HouseSync.start()
+    }
+
+    private val nowLock = Any()
+    private var lastNow: NowPlaying.State? = null
+    private var lastNowAt = 0L
+
+    /** Tells phones what plays here: at once on start, pause, resume, stop or a new title; else once a minute. */
+    private suspend fun publishNow(s: NowPlaying.State?, force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        synchronized(nowLock) {
+            if (!force && !NowPlaying.sendDue(lastNow, lastNowAt, s, now)) return
+            lastNow = s
+            lastNowAt = now
+        }
+        val o = JSONObject()
+            .put("type", "now")
+            .put("now", NowPlaying.json(s) ?: JSONObject.NULL)
+            .put("from", Prefs.deviceId)
+            .put("ts", now)
+        Http.postText(BASE + outTopic, encrypt(o.toString()))
     }
 
     // ---------------- crypto: deflate, then AES-256-GCM; "v1:" + base64url(iv || ciphertext+tag) ----------------
@@ -184,8 +207,22 @@ object Relay {
     }
 
     private suspend fun handle(cmd: JSONObject) {
+        // A command aimed at one TV ("to": its device id) is ignored by every other TV. No "to": for this TV.
+        val to = cmd.optString("to")
+        if (to.isNotBlank() && to != Prefs.deviceId) return
         when (cmd.optString("cmd")) {
             "hello" -> publishState("Connected")
+            // Jarvis Wall on this TV: "start" or "stop" the screen, "mode" = "photos" (photos only) or "" (photos and calendar).
+            "wall" -> {
+                if (isStale(cmd)) return
+                if (cmd.has("mode")) Wall.setMode(cmd.optString("mode"))
+                when (cmd.optString("action")) {
+                    "start" -> { navChannel.trySend(RemoteNav.Wall(true)); publishAck(cmd, "Wall started on ${HouseSync.deviceName()}") }
+                    "stop" -> { navChannel.trySend(RemoteNav.Wall(false)); publishAck(cmd, "Wall stopped on ${HouseSync.deviceName()}") }
+                    else -> publishAck(cmd, "Wall shows " + if (Prefs.wallMode == "photos") "photos only" else "photos and calendar")
+                }
+                publishState(status)
+            }
             "set" -> {
                 apply(cmd.optJSONObject("data") ?: JSONObject())
                 status = "Saved changes from the Control page"
@@ -366,6 +403,12 @@ object Relay {
                 .put("ts", System.currentTimeMillis())
                 .put("profile", pid)
                 .put("profiles", profiles)
+                // Who this TV is, so the phone can name it and aim commands at it.
+                .put("device_id", Prefs.deviceId)
+                .put("tv_label", Prefs.tvLabel)
+                .put("platform", HouseSync.platform())
+                .put("version", com.mcd.tv.BuildConfig.VERSION_NAME)
+                .put("now_playing", NowPlaying.json(NowPlaying.current) ?: JSONObject.NULL)
                 .put("tmdb_key", Prefs.tmdbKey)
                 .put("mdblist_key", Prefs.mdblistKey)
                 .put("jarvis_key", Prefs.jarvisKey)
@@ -612,6 +655,12 @@ object Relay {
             if (v.isEmpty() || BabyCountdown.parse(v) != null) Prefs.wallDue = v
         }
         if (d.has("wall_baby")) Prefs.wallBaby = d.optString("wall_baby").trim().take(20)
+        if (d.has("wall_mode")) Wall.setMode(d.optString("wall_mode"))
+        // This TV's name. Per TV: not a shared setting, so the Control page sends it only to the TV it is linked to.
+        if (d.has("tv_label")) {
+            val label = TvIdentity.cleanLabel(d.optString("tv_label"))
+            if (label != Prefs.tvLabel) { Prefs.tvLabel = label; HouseSync.onLabelChanged() }
+        }
     }
 
     /** Sends the TV's current setup to the Control page (encrypted). */
@@ -642,6 +691,13 @@ object Relay {
             .put("rd_connected", RealDebrid.connected)
             .put("version", com.mcd.tv.BuildConfig.VERSION_NAME)
             .put("device_name", HouseSync.deviceName())
+            .put("device_id", Prefs.deviceId)
+            .put("tv_label", Prefs.tvLabel)
+            .put("platform", HouseSync.platform())
+            .put("maker", android.os.Build.MANUFACTURER.orEmpty())
+            .put("model", android.os.Build.MODEL.orEmpty())
+            .put("wall_mode", Prefs.wallMode)
+            .put("now_playing", NowPlaying.json(NowPlaying.current) ?: JSONObject.NULL)
             .put("profile", Prefs.activeProfileName)
             .put("house", HouseSync.houseLink())
             .put("house_joining", HouseSync.joining())

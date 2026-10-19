@@ -95,17 +95,20 @@ object HouseSync {
      */
     fun joining(): Boolean = Prefs.houseStamp <= 0L
 
-    /** A short name for the Control page. */
-    fun deviceName(): String {
-        val maker = Build.MANUFACTURER.orEmpty()
-        val model = Build.MODEL.orEmpty()
-        return when {
-            maker.equals("Amazon", ignoreCase = true) -> "Fire TV"
-            maker.equals("Google", ignoreCase = true) || model.contains("Chromecast", ignoreCase = true) -> "Google TV"
-            model.isNotBlank() -> model
-            else -> "TV"
-        }
-    }
+    /** The platform ("Fire TV", "Google TV"), from the real maker and model. */
+    fun platform(): String = TvIdentity.platform(Build.MANUFACTURER.orEmpty(), Build.MODEL.orEmpty())
+
+    /** What phones show for this TV: the label J gave it, else the platform. */
+    fun deviceName(): String = TvIdentity.displayName(Prefs.tvLabel, platform())
+
+    /** Who this TV is, for "tv_link" and "state". */
+    fun who(): TvLink.Who = TvLink.Who(
+        label = Prefs.tvLabel,
+        platform = platform(),
+        maker = Build.MANUFACTURER.orEmpty(),
+        model = Build.MODEL.orEmpty(),
+        version = com.mcd.tv.BuildConfig.VERSION_NAME,
+    )
 
     private fun randomId(): String {
         val alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
@@ -214,7 +217,7 @@ object HouseSync {
     private suspend fun announceLinkIfDue() {
         if (!linkAllowed() || !canPublish()) return
         val now = System.currentTimeMillis()
-        val sig = TvLink.signature(Prefs.relayId)
+        val sig = TvLink.signature(Prefs.relayId, Prefs.tvLabel)
         val lastAt = Prefs.json("tv_link_at").toLongOrNull() ?: 0L
         if (!TvLink.announceDue(sig, Prefs.json("tv_link_sig"), now, lastAt)) return
         publishLink()
@@ -229,15 +232,24 @@ object HouseSync {
         }
     }
 
-    /** Sends "tv_link" (this TV's setup link) to the house. Never logged: it holds the relay key. */
+    /** Called when J renames this TV (Settings or the Control page): phones learn the new name. */
+    fun onLabelChanged() {
+        if (!started || Prefs.houseId.isBlank() || Prefs.houseKey.isBlank()) return // start() announces it
+        scope.launch {
+            delay(2_000L)
+            if (linkAllowed() && canPublish()) runCatching { publishLink() }
+        }
+    }
+
+    /** Sends "tv_link" (this TV's setup link and who it is) to the house. Never logged: it holds the relay key. */
     private suspend fun publishLink(): Boolean {
         val id = Prefs.relayId
         val key = Prefs.relayKey
         if (id.isBlank() || key.isBlank()) return false
         val now = System.currentTimeMillis()
-        val ok = post(TvLink.message(Prefs.deviceId, deviceName(), id, key, now))
+        val ok = post(TvLink.message(Prefs.deviceId, deviceName(), id, key, now, who()))
         if (ok) {
-            Prefs.putJson("tv_link_sig", TvLink.signature(id))
+            Prefs.putJson("tv_link_sig", TvLink.signature(id, Prefs.tvLabel))
             Prefs.putJson("tv_link_at", now.toString())
         }
         return ok

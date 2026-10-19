@@ -78,6 +78,14 @@ object Wall {
 
     val configured: Boolean get() = Prefs.wallUrl.isNotBlank() && Prefs.wallKey.isNotBlank()
 
+    /** "" = photos and calendar, "photos" = photos only. Live, so a change from the phone shows at once. */
+    val mode = kotlinx.coroutines.flow.MutableStateFlow(Prefs.wallMode)
+
+    fun setMode(m: String) {
+        Prefs.wallMode = m
+        mode.value = Prefs.wallMode
+    }
+
     private fun base(): String = Prefs.wallUrl.trim().trimEnd('/').let { if (it.startsWith("http")) it else "https://$it" }
 
     /** Downloads the merged calendar. Saves a copy so the wall shows something at once after a restart or outage. */
