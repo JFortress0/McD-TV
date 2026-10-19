@@ -327,7 +327,7 @@ function fmtTime(ms) { const s = Math.max(0, Math.round(ms / 1000)), h = Math.fl
 /** Start, stop or set the mode of the Wall on this TV (or on another TV: pass its entry from the list). */
 async function wallCmd(action, t) {
   const msg = t ? $("findMsg") : $("wallMsg");
-  const cmd = { cmd: "wall", action, ts: Date.now() };
+  const cmd = { cmd: action === "start" ? "wall_start" : "wall_stop", ts: Date.now() };
   if (!t) cmd.mode = $("wallMode").value;
   try {
     if (t) {
