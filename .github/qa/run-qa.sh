@@ -145,6 +145,45 @@ else
   fail "Settings: one BACK closes the keyboard and the editor"
 fi
 
+# 4v) Wall rotation end to end: a mock wall server (photos and a feed), the TV set up through the encrypted relay
+# like the Control page does it, and the clock set just before a calendar minute. With the default wall_cycle
+# "30/1" the Wall shows photos, then the month calendar for one minute (at :29), then photos again.
+pip install -q pillow >/dev/null 2>&1
+python3 .github/qa/wall_mock.py 8766 >/dev/null 2>&1 < /dev/null &
+WALL_SERVER=$!
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings >/dev/null
+sleep 8
+LINK=$(curl -sf -m 10 http://127.0.0.1:8642/qa-relay)
+python3 .github/qa/relay_send.py "$LINK" '{"cmd":"set","data":{"wall_url":"http://10.0.2.2:8766","wall_key":"qa-wall-key","wall_mode":"","wall_cycle":"30/1"}}' | tee -a "$R" \
+  && pass "Wall: set up through the relay (address, key, default timing)" || fail "Wall: set up through the relay (address, key, default timing)"
+sleep 3
+# Root shell to set the clock (the emulator image allows it). Automatic time off, so it stays where we put it.
+adb root >/dev/null 2>&1; sleep 3; adb wait-for-device
+adb shell settings put global auto_time 0
+adb shell setprop persist.sys.timezone UTC
+adb shell date "$(date -u +%m%d)1028$(date -u +%Y).30" >/dev/null
+echo "      device clock set to: $(adb shell date)" | tee -a "$R"
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null
+view_now() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "qa-out/ui-$1.xml" >/dev/null 2>&1
+  if grep -q 'text="SUN"' "qa-out/ui-$1.xml" && grep -q 'text="SAT"' "qa-out/ui-$1.xml"; then echo month; else echo photos; fi; }
+sleep 12                     # about 10:28:42: photos
+shot wall-cycle-1-1028; V1=$(view_now wall-cycle-1)
+sleep 25                     # about 10:29:07: the month calendar's one minute
+shot wall-cycle-2-1029; V2=$(view_now wall-cycle-2)
+sleep 58                     # about 10:30:05: photos again
+shot wall-cycle-3-1030; V3=$(view_now wall-cycle-3)
+echo "      wall views: 10:28 $V1, 10:29 $V2, 10:30 $V3 (device clock now $(adb shell date +%H:%M:%S))" | tee -a "$R"
+[ "$V1" = photos ] && [ "$V2" = month ] && [ "$V3" = photos ] \
+  && pass "Wall rotation: photos, then the calendar for its one minute, then photos" \
+  || fail "Wall rotation: photos, then the calendar for its one minute, then photos ($V1 $V2 $V3)"
+grep -q "Soccer practice" qa-out/ui-wall-cycle-1.xml && pass "Wall: agenda shows the feed beside the photo" || fail "Wall: agenda shows the feed beside the photo"
+python3 .github/qa/thumbs.py qa-out/wall-cycle-1-1028.png qa-out/wall-cycle-2-1029.png qa-out/wall-cycle-3-1030.png
+# Put the clock back for the rest of the run.
+adb shell date "$(date -u +%m%d%H%M%Y.%S)" >/dev/null
+adb shell settings put global auto_time 1
+adb forward tcp:8642 tcp:8642 >/dev/null  # adb root restarted adbd, which dropped the forward the next steps use
+kill "$WALL_SERVER" 2>/dev/null
+
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
 mkdir -p qa-m3u
 cat > qa-m3u/test.m3u <<'M3U'
