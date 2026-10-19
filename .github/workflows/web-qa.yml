@@ -39,3 +39,11 @@ jobs:
           python3 srv.py &
           sleep 1
           node qa.mjs
+      - name: Throttled quality fallback test (real HLS, 6 Mbps 4K and 1.9 Mbps 1080p, Chrome network throttling)
+        working-directory: tools/webtest
+        run: |
+          command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+          bash mkstreams.sh
+          python3 srv.py &
+          sleep 1
+          node qf-net.mjs
