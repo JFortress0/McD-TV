@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,7 +17,7 @@ val keystoreFile = rootProject.file("keystore/mcdtv.jks")
 /** Spotify Client ID for local builds (see defaultConfig). Only 32 hex characters pass, so nothing else gets baked in. */
 fun spotifyClientId(): String {
     val local = rootProject.file("local.properties").takeIf { it.exists() }?.let { f ->
-        java.util.Properties().apply { f.inputStream().use { load(it) } }.getProperty("spotifyClientId")
+        Properties().apply { f.inputStream().use { load(it) } }.getProperty("spotifyClientId")
     }
     val raw = (findProperty("spotifyClientId") as String?) ?: local ?: System.getenv("SPOTIFY_CLIENT_ID") ?: ""
     return raw.trim().lowercase().takeIf { Regex("[0-9a-f]{32}").matches(it) } ?: ""
