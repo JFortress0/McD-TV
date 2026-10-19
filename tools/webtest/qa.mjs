@@ -180,7 +180,7 @@ for (const w of [390,1280]) {
     if(r.link!==NEW.id||r.stored!==NEW.id) fails.push(`find tvs (b): link not switched to the same-name TV (${r.link})`);
     if(!r.tvs.includes(NEW.id+':devfire:Fire TV')||!r.tvs.includes(GTV.id+':devgoogle:Google TV')) fails.push(`find tvs (b): mcdtv_tvs not updated ${r.tvs}`);
     if(!r.house) fails.push('find tvs (b): house link lost after relinking');
-    if(!/Found your Fire TV\. Linked again\./.test(r.toast)) fails.push(`find tvs (b): toast "${r.toast}"`);
+    if(!/Found your Fire TV( #\w+)?\. Linked again\./.test(r.toast)) fails.push(`find tvs (b): toast "${r.toast}"`);
     const leak=keysAll.find(k=>r.toast.includes(k)||r.errs.includes(k)); if(leak) fails.push('find tvs (b): a key shows in a toast or the error log');
     const who=await p.evaluate(async([HK,msgs])=>{ const k=await importKey(HK); const out=[]; for(const m of msgs){ const o=await decrypt(m,k); if(o) out.push(o.type+':'+typeof o.from+':'+typeof o.ts); } return out; },[HK,posts]);
     log('find tvs posts',who.join(',')); if(!who.length||!who.every(x=>x==='tv_who:string:number')) fails.push(`find tvs: tv_who post ${who}`);
@@ -248,6 +248,71 @@ for (const w of [390,1280]) {
   const h=await hsc(p); if(h.sw>h.iw) fails.push(`tv status: settings overflow ${h.sw}`);
   if(errs.length) fails.push(...errs.map(e=>`tv status pageerror ${e}`));
   await ctx.close();
+}
+// TVs with no name or the same name: the picker and Settings add the model, then the first letters of the device id,
+// and off TVs show when they were last seen. The Control page (served from docs/index.html) fills Your other TVs
+// from Find my TVs with the house link the web app saved, even when its own TV does not answer.
+{
+  const rb=(n)=>{ const a=new Uint8Array(n); globalThis.crypto.getRandomValues(a); return Buffer.from(a).toString('base64url'); };
+  const HID='qahouse'+Date.now().toString(36), HK=rb(32), house=HID+'.'+HK;
+  const LR={id:'livingroomaa22',key:rb(32)}, OF={id:'officetvbbb222',key:rb(32)}, W1={id:'wallstickcc222',key:rb(32)}, W2={id:'deckstickdd222',key:rb(32)};
+  const tvs=[
+    {id:LR.id,key:LR.key,name:'Living Room TV',label:'Living Room TV',platform:'Google TV',version:'0.2.199',dev:'devlrxx',house,seen:Date.now()-60e3},
+    {id:OF.id,key:OF.key,name:'Fire TV',label:'',platform:'Fire TV',model:'AFTHY7ABBA',version:'0.2.199',dev:'devofxx',house,seen:Date.now()-2*3600e3},
+    {id:W1.id,key:W1.key,name:'Fire TV',label:'',platform:'Fire TV',model:'AFTSS',version:'0.2.199',dev:'vat3xhaa',house,seen:Date.now()-3*3600e3},
+    {id:W2.id,key:W2.key,name:'Fire TV',label:'',platform:'Fire TV',model:'AFTSS',version:'0.2.198',dev:'cn7cwgbb',house,seen:Date.now()-4*3600e3}];
+  // (a) web app picker and Settings
+  {
+    const {ctx,p,errs}=await mk({width:390,height:844});
+    await ctx.route(/^https:\/\/ntfy\.sh\/mcdtv-/,r=>r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/x-ndjson'},body:r.request().method()==='POST'?'{}':''}));
+    await p.goto(B);
+    await p.evaluate(([house,tvs,LR])=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_profile','p1');
+      localStorage.setItem('mcdtv_web_init',JSON.stringify({tmdb_key:'x',house})); localStorage.setItem('mcdtv_tvs',JSON.stringify(tvs));
+      localStorage.setItem('mcdtv_link',LR.id+'.'+LR.key); },[house,tvs,LR]);
+    await p.goto(B+'#/settings/tvs'); await p.reload(); await p.waitForTimeout(1500);
+    await p.click('#tvpill'); await p.waitForTimeout(300);
+    const pick=await p.$eval('#tvpick',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+    log('tv names picker',pick);
+    for (const n of ['Living Room TV (Google TV)','Fire TV (AFTHY7ABBA)','Fire TV (AFTSS) #VAT3','Fire TV (AFTSS) #CN7C'])
+      if(!pick.includes(n)) fails.push(`tv names: picker misses "${n}": "${pick}"`);
+    if((pick.match(/Last seen/g)||[]).length<3) fails.push(`tv names: off TVs need last seen in the picker "${pick}"`);
+    const set=await p.$eval('#tvFound',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+    if(!set.includes('Fire TV (AFTSS) #VAT3')||!set.includes('Fire TV (AFTHY7ABBA)')) fails.push(`tv names: Settings list "${set}"`);
+    const h=await hsc(p); if(h.sw>h.iw) fails.push(`tv names: overflow ${h.sw} ${h.wide}`);
+    if(errs.length) fails.push(...errs.map(e=>`tv names pageerror ${e}`));
+    await ctx.close();
+  }
+  // (b) Control page: its TV is off; the web app's house link finds the other TVs.
+  {
+    const CTRL='http://127.0.0.1:8781/control.html';
+    const page=fs.readFileSync(new URL('../../docs/index.html',import.meta.url),'utf8');
+    const ME={id:'thispagetv2222',key:rb(32)};
+    let reply=''; const posts=[];
+    const {ctx,p,errs}=await mk({width:390,height:844});
+    await ctx.route(CTRL,r=>r.fulfill({status:200,headers:{'Content-Type':'text/html'},body:page}));
+    await ctx.route(/^https:\/\/ntfy\.sh\//,r=>{ const q=r.request(), u=new URL(q.url());
+      if(q.method()==='POST'){ if(u.pathname.endsWith('-house')) posts.push(q.postData()||''); return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'},body:'{}'}); }
+      if(u.pathname.includes('-house/json')) return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/x-ndjson'},body:reply});
+      return r.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'text/event-stream'},body:''}); });
+    await p.goto(CTRL);
+    reply=await p.evaluate(async([HK,tvs])=>{ const k=await crypto.subtle.importKey('raw',b64u.dec(HK),'AES-GCM',false,['encrypt','decrypt']); const t=Date.now();
+      const out=[]; let i=0;
+      for (const v of tvs) out.push(JSON.stringify({id:'l'+i,time:Math.floor(v.seen/1000),event:'message',topic:'x',message:await encrypt({type:'tv_link',from:v.dev,name:v.name,label:v.label,platform:v.platform,model:v.model||'',version:v.version,link:v.id+'.'+v.key,ts:v.seen},k)})), i++;
+      return out.join('\n')+'\n'; },[HK,tvs]);
+    await p.evaluate(([house,ME])=>{ localStorage.clear(); localStorage.setItem('mcdtv_web_init',JSON.stringify({house})); localStorage.setItem('mcdtv_link',ME.id+'.'+ME.key); },[house,ME]);
+    await p.goto('about:blank'); await p.goto(CTRL+'#'+ME.id+'.'+ME.key);
+    await p.waitForFunction(()=>(document.querySelector('#tvList')||{}).innerText?.includes('AFTHY7ABBA'),null,{timeout:25000}).catch(()=>{});
+    const txt=await p.$eval('#tvList',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
+    log('control page other tvs',txt);
+    for (const n of ['Living Room TV (Google TV)','Fire TV (AFTHY7ABBA)','Fire TV (AFTSS) #VAT3','Fire TV (AFTSS) #CN7C'])
+      if(!txt.includes(n)) fails.push(`control page: Your other TVs misses "${n}": "${txt}"`);
+    if(!/Last seen/.test(txt)) fails.push('control page: no last seen');
+    const who=await p.evaluate(async([HK,msgs])=>{ const k=await crypto.subtle.importKey('raw',b64u.dec(HK),'AES-GCM',false,['encrypt','decrypt']); const o=[]; for(const m of msgs){ const d=await decrypt(m,k); if(d) o.push(d.type); } return o; },[HK,posts]);
+    if(!who.includes('tv_who')) fails.push(`control page: no tv_who on the house topic (${who})`);
+    const h=await hsc(p); if(h.sw>h.iw) fails.push(`control page: overflow ${h.sw} ${h.wide}`);
+    if(errs.length) fails.push(...errs.map(e=>`control page pageerror ${e}`));
+    await ctx.close();
+  }
 }
 // Real-Debrid budget: Best source over refused sources, a 429 pause, and the page-wide limiter. The relay's /rd/
 // routes, TMDB and one addon are mocked. The API token is a fake test value.

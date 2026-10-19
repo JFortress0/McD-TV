@@ -180,7 +180,7 @@ a{color:var(--accent)}
   <h2>This link</h2>
   <div class="card row">
     <button onclick="copyLink()">Copy link (open on another device)</button>
-    <span class="hint">Anyone with this link can change your TV's setup. Make a new link on the TV to cut off old devices.</span>
+    <span class="hint">Anyone with this link can change your TV's setup. Make a new link on the TV to cut off old devices. Page version 2026-10-19.2.</span>
   </div>
 
   <h2>Your other TVs</h2>
@@ -272,7 +272,7 @@ async function connect() {
   const es = new EventSource(RELAY + "mcdtv-" + link.id + "-out/sse");
   es.onmessage = (e) => { try { const ev = JSON.parse(e.data); if (ev.event === "message") onMessage(ev.message); } catch {} };
   await send({ cmd: "hello" }).catch(() => {});
-  setTimeout(() => { if (!state) $("tvStatus").lastChild.textContent = "Waiting for the TV. Make sure Jarvis is open."; }, 8000);
+  setTimeout(() => { if (!state) { $("tvStatus").lastChild.textContent = "Waiting for the TV. Make sure Jarvis is open."; findTvs(false); } }, 8000);
 }
 
 // ---------- page ----------
@@ -402,12 +402,25 @@ function tvUpsert(t) {
   if (i >= 0) a[i] = { ...a[i], ...Object.fromEntries(Object.entries(t).filter(([k, v]) => v !== "" || k === "label")) }; else a.push(t);
   tvsSet(a);
 }
-/** "Office TV (Fire TV)"; a TV with no name shows its platform and the first letters of its link. */
-function tvLabel(t) {
-  const name = t.label || t.name || t.platform || "TV";
-  const plat = t.platform && t.label ? " (" + t.platform + ")" : "";
-  return name + plat + (t.label ? "" : " (" + t.id.slice(0, 4).toUpperCase() + ")");
+/**
+ * Names that tell the known TVs apart (same rule as the web app). A TV with its own name: "Office TV (Fire TV)".
+ * A TV with no name, or a name another TV also has, adds its model: "Fire TV (AFTHY7ABBA)". If two still match,
+ * the first 4 letters of the device id follow: "Fire TV (AFTSS) #VAT3".
+ */
+function tvNames(list) {
+  const head = (t) => t.label || t.name || t.platform || "TV";
+  const count = (f) => { const m = new Map(); for (const t of list) m.set(f(t), (m.get(f(t)) || 0) + 1); return m; };
+  const heads = count(head);
+  const mid = (t) => {
+    const x = [];
+    if (t.platform && t.platform !== head(t)) x.push(t.platform);
+    if (t.model && (!t.label || heads.get(head(t)) > 1)) x.push(t.model);
+    return head(t) + (x.length ? " (" + x.join(", ") + ")" : "");
+  };
+  const mids = count(mid);
+  return new Map(list.map((t) => [t.id, mid(t) + (mids.get(mid(t)) > 1 ? " #" + String(t.dev || t.id).slice(0, 4).toUpperCase() : "")]));
 }
+function tvLabel(t) { return tvNames(tvsGet()).get(t.id) || t.label || t.name || t.platform || "TV"; }
 let findStartedAt = 0;
 function seenText(t) {
   if (!t.seen) return "Not seen yet";
@@ -423,7 +436,7 @@ function renderShare() {
     const me = t.id === link.id;
     const shared = !me && mine && t.house && t.house === mine;
     const on = seenText(t) === "On now";
-    const sub = [t.version ? "Jarvis v" + t.version : "", seenText(t), me ? "This page" : shared ? "Shares settings with this TV" : "Separate settings"].filter(Boolean).join("  ·  ");
+    const sub = [t.version ? "Jarvis v" + t.version : "", seenText(t), me ? "This page" : !mine ? "" : shared ? "Shares settings with this TV" : "Separate settings"].filter(Boolean).join("  ·  ");
     return `<li style="flex-wrap:wrap"><span class="pill ${on ? "ok" : ""}">${on ? "ON" : "OFF"}</span><div class="grow"><div class="name">${esc(tvLabel(t))}</div><div class="sub">${esc(sub)}</div></div>` +
       (me ? "" : `<div class="row" style="width:100%;padding-left:4px"><button class="small" onclick="openTv('${t.id}')">Open</button>` +
         `<button class="small" onclick="wallCmd('start', tvsGet().find((x) => x.id === '${t.id}'))">Start Wall</button><button class="small" onclick="wallCmd('stop', tvsGet().find((x) => x.id === '${t.id}'))">Stop Wall</button>` +
@@ -439,10 +452,23 @@ const LINK_ID_RX = /^([a-z2-9]{10,40})\.([A-Za-z0-9_-]{40,50})$/;
  * name, platform, model and version. One POST and one read; the answers merge into mcdtv_tvs.
  */
 let finding = null;
+/**
+ * The house link: this TV's own, else one saved earlier here or by the web app (same site). So the list fills
+ * even when this page's TV is off.
+ */
+function knownHouse() {
+  if (state && LINK_RX.test(state.house || "")) return state.house;
+  const mine = tvsGet().find((t) => t.id === link.id);
+  const saved = [mine, ...tvsGet()].find((t) => t && LINK_RX.test(t.house || ""));
+  if (saved) return saved.house;
+  try { const w = JSON.parse(localStorageGet("mcdtv_web_init") || "{}"); if (LINK_RX.test(w.house || "")) return w.house; } catch {}
+  return "";
+}
 function findTvs(manual) {
   if (finding) return finding;
   const m = $("findMsg"), btn = $("findBtn");
-  const house = state && LINK_RX.exec(state.house || "");
+  const houseLink = knownHouse();
+  const house = LINK_RX.exec(houseLink);
   if (!house) { if (manual) { m.className = "err"; m.textContent = "Waiting for this TV first. Open Jarvis on it."; } return Promise.resolve(); }
   finding = (async () => {
     if (manual) { m.className = "msg"; m.textContent = "Asking your TVs. About 10 seconds…"; }
@@ -468,7 +494,7 @@ function findTvs(manual) {
         if (ts >= findStartedAt) answered++;
         // One entry per TV: a TV with a new link replaces its old entry.
         tvsSet(tvsGet().filter((x) => x.dev !== t.from && x.id !== lm[1]));
-        tvUpsert({ id: lm[1], key: lm[2], dev: t.from, name: String(t.name || ""), label: String(t.label || ""), platform: String(t.platform || ""), model: String(t.model || ""), version: String(t.version || ""), house: state.house, seen: ts });
+        tvUpsert({ id: lm[1], key: lm[2], dev: t.from, name: String(t.name || ""), label: String(t.label || ""), platform: String(t.platform || ""), model: String(t.model || ""), version: String(t.version || ""), house: houseLink, seen: ts });
       }
       renderShare();
       if (manual) { m.className = answered ? "good" : "msg"; m.textContent = answered ? answered + (answered === 1 ? " TV answered." : " TVs answered.") : "No TV answered. TVs need the newest Jarvis to answer here. Open Jarvis on a TV and try again."; }

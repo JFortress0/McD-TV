@@ -1239,8 +1239,26 @@ function tvRemember(t) {
 }
 /** "Office TV" (the name J gave it), else "Fire TV". */
 function tvName(t) { return (t && (t.label || t.name || t.platform)) || "TV"; }
-/** "Office TV (Fire TV)" for lists. */
-function tvListName(t) { return tvName(t) + (t.label && t.platform ? " (" + t.platform + ")" : ""); }
+/**
+ * Names that tell the known TVs apart. A TV with its own name: "Office TV (Fire TV)". A TV with no name, or a name
+ * another TV also has, adds its model: "Fire TV (AFTHY7ABBA)". If two still match, the first 4 letters of the
+ * device id follow: "Fire TV (AFTSS) #VAT3".
+ */
+function tvNames(list) {
+  const head = (t) => t.label || t.name || t.platform || "TV";
+  const count = (f) => { const m = new Map(); for (const t of list) m.set(f(t), (m.get(f(t)) || 0) + 1); return m; };
+  const heads = count(head);
+  const mid = (t) => {
+    const x = [];
+    if (t.platform && t.platform !== head(t)) x.push(t.platform);
+    if (t.model && (!t.label || heads.get(head(t)) > 1)) x.push(t.model);
+    return head(t) + (x.length ? " (" + x.join(", ") + ")" : "");
+  };
+  const mids = count(mid);
+  return new Map(list.map((t) => [t.id, mid(t) + (mids.get(mid(t)) > 1 ? " #" + String(t.dev || t.id).slice(0, 4).toUpperCase() : "")]));
+}
+/** "Office TV (Fire TV)" for lists, told apart from the other known TVs. */
+function tvListName(t) { return (t && tvNames(tvsRead()).get(t.id)) || tvName(t); }
 function linkedTv() { return S.link ? tvsRead().find((t) => t.id === S.link.id) : null; }
 /** "Fire TV · Jarvis v0.2.192" for the TV header line. */
 function tvDetail(t) { return t ? [t.label && t.platform ? t.platform : "", t.version ? "Jarvis v" + t.version : ""].filter(Boolean).join(" · ") : ""; }
@@ -1317,10 +1335,12 @@ function tvsAll() {
 }
 /** One row per TV: on or off, name and platform, version, last seen, what plays, and Use this TV. */
 function tvRowsHTML(list, compact) {
+  const names = tvNames(tvsRead());
   return list.map((t) => {
     const me = S.link && S.link.id === t.id, on = tvOn(t);
-    const sub = [me ? "Play on TV goes here" : "", t.version ? "v" + t.version : "", tvSeenText(t)].filter(Boolean).join(" · ");
-    return `<li><span class="pill ${on ? "ok" : "no"}">${on ? "ON" : "OFF"}</span><span style="flex:1;min-width:0"><b>${esc(tvListName(t))}</b><span class="muted">${esc(sub)}</span><br><span class="muted" data-now="${esc(t.id)}">${esc(nowText(t.id))}</span></span>${me ? "" : `<button class="btn small" data-act="usetv" data-id="${esc(t.id)}">Use this TV</button>`}</li>`;
+    // When it was last seen comes first, so it shows in the narrow picker too.
+    const sub = [tvSeenText(t), me ? "Play on TV goes here" : "", t.version ? "v" + t.version : ""].filter(Boolean).join(" · ");
+    return `<li><span class="pill ${on ? "ok" : "no"}">${on ? "ON" : "OFF"}</span><span style="flex:1;min-width:0"><b>${esc(names.get(t.id) || tvName(t))}</b><span class="muted">${esc(sub)}</span><br><span class="muted" data-now="${esc(t.id)}">${esc(nowText(t.id))}</span></span>${me ? "" : `<button class="btn small" data-act="usetv" data-id="${esc(t.id)}">Use this TV</button>`}</li>`;
   }).join("");
 }
 // ---------- TV picker (the pill in the header, when more than one TV is known) ----------
@@ -1404,9 +1424,9 @@ function findTvs() {
       switched = (cur && cur.dev && tvs.find((t) => t.dev === cur.dev)) || (!(cur && cur.dev) && sameName.length === 1 ? sameName[0] : null) || (S.link ? null : tvs[0]);
       if (switched) {
         await useTv(switched);
-        toast("Found your " + switched.name + ". Linked again.", "ok");
+        toast("Found your " + tvListName(switched) + ". Linked again.", "ok");
       } else if (S.status !== "online") {
-        toast("Your TV is not answering. On now: " + tvs.map((t) => t.name).join(", ") + ". Use one in Settings > Your TVs.", "warn");
+        toast("Your TV is not answering. On now: " + tvs.map((t) => tvListName(t)).join(", ") + ". Use one in Settings > Your TVs.", "warn");
       }
     }
     return { tvs, error: "", switched: switched ? switched.id : "" };
@@ -5239,7 +5259,7 @@ document.addEventListener("click", async (e) => {
     case "usetv": {
       const t = tvsRead().find((x) => x.id === d.id) || (tvFindLast && tvFindLast.tvs.find((x) => x.id === d.id));
       if (!t) break;
-      await useTv(t); toast("Play on TV now goes to " + tvName(t), "ok");
+      await useTv(t); toast("Play on TV now goes to " + tvListName(t), "ok");
       closeTvPicker();
       const ul = $("#tvFound"); if (ul) ul.innerHTML = tvFoundHTML(tvFindLast);
       break;
@@ -5374,7 +5394,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-19.1";
+const BUILD = "2026-10-19.2";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
