@@ -266,7 +266,9 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
 @Composable
 private fun MoreRow(nav: Nav, focus: FocusMemory) {
     val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val restoreAt = focus.restoreTarget("more", 5, rowState)
+    // Spotify (phase 1) shows on the Dad profile only; the other profiles keep their row as it was.
+    val spotify = com.mcd.tv.data.SpotifyConfig.enabledFor(com.mcd.tv.data.Prefs.activeProfile)
+    val restoreAt = focus.restoreTarget("more", if (spotify) 6 else 5, rowState)
     fun tile(i: Int) = focus.tileModifier("more", i, restoreAt)
     Column(Modifier.padding(top = 24.dp)) {
         RailHeader("More", Modifier.padding(start = 48.dp))
@@ -280,6 +282,7 @@ private fun MoreRow(nav: Nav, focus: FocusMemory) {
             item { CompactTile("Games", "Every NFL game this week", { nav.push(Screen.Games(com.mcd.tv.data.League.NFL)) }, tile(2)) }
             item { CompactTile("Websites", "Sites you added on the Control page", { nav.push(Screen.Sports) }, tile(3)) }
             item { CompactTile("Background Noise", "Random episodes of your shows", { nav.push(Screen.Noise) }, tile(4)) }
+            if (spotify) item { CompactTile("Spotify", "Your playlists on this TV", { nav.push(Screen.Spotify) }, tile(5)) }
         }
     }
 }

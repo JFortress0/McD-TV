@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -11,6 +13,15 @@ val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 // The signing key is NOT stored in git. CI rebuilds it from the KEYSTORE_BASE64 secret.
 // Same key every build = updates install over the old app without uninstalling.
 val keystoreFile = rootProject.file("keystore/mcdtv.jks")
+
+/** Spotify Client ID for local builds (see defaultConfig). Only 32 hex characters pass, so nothing else gets baked in. */
+fun spotifyClientId(): String {
+    val local = rootProject.file("local.properties").takeIf { it.exists() }?.let { f ->
+        Properties().apply { f.inputStream().use { load(it) } }.getProperty("spotifyClientId")
+    }
+    val raw = (findProperty("spotifyClientId") as String?) ?: local ?: System.getenv("SPOTIFY_CLIENT_ID") ?: ""
+    return raw.trim().lowercase().takeIf { Regex("[0-9a-f]{32}").matches(it) } ?: ""
+}
 
 android {
     namespace = "com.mcd.tv"
@@ -26,6 +37,10 @@ android {
         // so nobody has to enter it on the TV. A key saved in Phone setup still wins.
         buildConfigField("String", "TMDB_KEY", "\"${System.getenv("TMDB_API_KEY") ?: ""}\"")
         buildConfigField("String", "MDBLIST_KEY", "\"${System.getenv("MDBLIST_API_KEY") ?: ""}\"")
+        // Optional Spotify Client ID for a local build: spotifyClientId=... in ~/.gradle/gradle.properties or
+        // local.properties (both outside git), or the SPOTIFY_CLIENT_ID env var. Not a secret, but never committed.
+        // The Client ID saved on the Control page wins. Blank = set it on the Control page.
+        buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"${spotifyClientId()}\"")
     }
 
     signingConfigs {
@@ -92,6 +107,11 @@ dependencies {
     implementation(libs.zxing.core)
     // Installs the baseline profile (src/main/baseline-prof.txt) on sideloaded installs, where no app store does it.
     implementation(libs.androidx.profileinstaller)
+    // Spotify (phase 1): sign-in library from Maven Central, App Remote AAR from github.com/spotify/android-sdk
+    // (v0.8.0, Apache 2.0, sha256 b5a6dd880eaf01f63a871cba9ef7af77c341f8a94ffc8fdf2e9021f9a9d4c198).
+    implementation(libs.spotify.auth)
+    implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
+    implementation(libs.gson)
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)

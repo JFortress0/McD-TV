@@ -201,6 +201,12 @@ object Relay {
                 publishAck(cmd, (if (start) "Wall started on " else "Wall stopped on ") + HouseSync.deviceName())
                 publishState(status)
             }
+            // Spotify (phase 1). Always aimed at one TV ("to", or "tv"); a command with no target is refused.
+            // Only names and URIs travel here; Spotify tokens never leave the TV.
+            "spotify_play", "spotify_control", "spotify_list" -> {
+                val action = SpotifyCommand.route(cmd, Prefs.deviceId, System.currentTimeMillis()) ?: return
+                scope.launch { runCatching { handleSpotify(cmd, action) } }
+            }
             "wall_mode" -> {
                 Wall.setMode(cmd.optString("mode"))
                 publishAck(cmd, "Wall shows " + if (Prefs.wallMode == "photos") "photos only" else "photos and calendar")
@@ -331,6 +337,42 @@ object Relay {
         }
     }
 
+    private suspend fun handleSpotify(cmd: JSONObject, action: SpotifyCommand.Action) {
+        when (action) {
+            is SpotifyCommand.Reject -> publishAck(cmd, action.message)
+            is SpotifyCommand.Play -> publishAck(cmd, runCatching { Spotify.playNow(action.ref) }.getOrElse { Spotify.explain(it) })
+            is SpotifyCommand.Control -> publishAck(
+                cmd,
+                runCatching { Spotify.controlNow(action.action).ifEmpty { "Done on " + HouseSync.deviceName() } }.getOrElse { Spotify.explain(it) },
+            )
+            is SpotifyCommand.Playlists -> publishSpotifyList(cmd, action.offset)
+        }
+    }
+
+    /** "spotify_list": this TV's playlists for the phone, names and URIs only, sized to fit one relay message. */
+    private suspend fun publishSpotifyList(cmd: JSONObject, offset: Int) {
+        val o = JSONObject()
+            .put("type", "spotify_list")
+            .put("req", cmd.optString("req"))
+            .put("ts", System.currentTimeMillis())
+            .put("device_id", Prefs.deviceId)
+            .put("offset", offset)
+            .put("connected", Spotify.connected)
+            .put("music", MusicStatus.json(MusicStatus.current) ?: JSONObject.NULL)
+        if (!Spotify.connected) {
+            o.put("note", "Spotify is not connected on ${HouseSync.deviceName()}. Connect it there once.").put("playlists", JSONArray())
+        } else {
+            runCatching { Spotify.playlistsFor(offset) }.fold(
+                onSuccess = { page ->
+                    val (rows, n) = SpotifyMap.forPhone(page.items, 2_400)
+                    o.put("playlists", rows).put("more", page.next != null || n < page.items.size).put("next_offset", offset + n)
+                },
+                onFailure = { o.put("note", Spotify.explain(it)).put("playlists", JSONArray()) },
+            )
+        }
+        runCatching { Http.postText(BASE + outTopic, encrypt(o.toString())) }
+    }
+
     /** "open" and "play" sent more than 10 minutes ago (TV was off) are dropped, so the TV doesn't jump screens later. */
     private fun isStale(cmd: JSONObject): Boolean {
         val ts = cmd.optLong("ts", 0L)
@@ -392,6 +434,8 @@ object Relay {
                 .put("platform", HouseSync.platform())
                 .put("version", com.mcd.tv.BuildConfig.VERSION_NAME)
                 .put("now_playing", NowPlaying.json(NowPlaying.current) ?: JSONObject.NULL)
+                .put("spotify_connected", Spotify.connected)
+                .put("music", MusicStatus.json(MusicStatus.current) ?: JSONObject.NULL)
                 .put("tmdb_key", Prefs.tmdbKey)
                 .put("mdblist_key", Prefs.mdblistKey)
                 .put("jarvis_key", Prefs.jarvisKey)
@@ -639,6 +683,10 @@ object Relay {
         }
         if (d.has("wall_baby")) Prefs.wallBaby = d.optString("wall_baby").trim().take(20)
         if (d.has("wall_mode")) Wall.setMode(d.optString("wall_mode"))
+        // Spotify Client ID for this TV (configuration, not a secret). "" removes it; anything else must be a real one.
+        if (d.has("spotify_client_id")) d.optString("spotify_client_id").trim().let { v ->
+            if (v.isEmpty() || SpotifyConfig.cleanClientId(v).isNotEmpty()) Prefs.spotifyClientId = v
+        }
         // This TV's name. Per TV: not a shared setting, so the Control page sends it only to the TV it is linked to.
         if (d.has("tv_label")) {
             val label = TvIdentity.cleanLabel(d.optString("tv_label"))
@@ -681,6 +729,9 @@ object Relay {
             .put("model", android.os.Build.MODEL.orEmpty())
             .put("wall_mode", Prefs.wallMode)
             .put("now_playing", NowPlaying.json(NowPlaying.current) ?: JSONObject.NULL)
+            .put("spotify_client_id", Prefs.spotifyClientId)
+            .put("spotify_connected", Spotify.connected)
+            .put("music", MusicStatus.json(MusicStatus.current) ?: JSONObject.NULL)
             .put("profile", Prefs.activeProfileName)
             .put("house", HouseSync.houseLink())
             .put("house_joining", HouseSync.joining())

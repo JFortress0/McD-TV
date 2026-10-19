@@ -147,6 +147,14 @@ a{color:var(--accent)}
     <p class="hint">Photo frame and family calendar for a wall TV. Linked TVs share the address and key. "Opens in Wall mode", what the Wall shows and the Start and Stop buttons are for this TV only. Your other TVs below have their own Start and Stop.</p>
   </div>
 
+  <h2>Spotify</h2>
+  <div class="card"><span id="spotifyState"></span>
+    <label>Spotify Client ID (from your app at developer.spotify.com). 32 letters and numbers.</label>
+    <input id="spotifyClientId" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Paste your Client ID">
+    <p class="hint">For this TV only. The Client ID is not a password, and no Spotify password or token ever comes here. In your Spotify developer app, add this Redirect URI: <code>jarvis-tv://spotify-callback</code>. Then open Spotify in Jarvis on this TV (Dad profile) and press Connect Spotify.</p>
+    <p class="hint" id="musicNow"></p>
+  </div>
+
   <h2>Keys</h2>
   <div class="card"><span id="tmdbState"></span>
     <label>TMDB key (posters and info). Leave blank to keep the current one.</label><input id="tmdb" type="password" placeholder="Paste to replace">
@@ -284,6 +292,9 @@ function render() {
   $("tvInfo").textContent = [state.platform || state.device_name || "TV", state.model && !KNOWN_MODELS.includes(state.model.toUpperCase()) ? "model " + state.model : "", state.version ? "Jarvis v" + state.version : ""].filter(Boolean).join("  ·  ");
   $("wallMode").value = state.wall_mode === "photos" ? "photos" : "";
   $("wallUrl").value = state.wall_url || ""; $("wallStart").checked = !!state.wall_start; $("wallDue").value = state.wall_due || ""; $("wallBaby").value = state.wall_baby || "";
+  $("spotifyClientId").value = state.spotify_client_id || "";
+  $("spotifyState").innerHTML = state.spotify_connected ? '<span class="pill ok">Spotify connected on this TV</span>' : '<span class="pill no">Spotify not connected</span>';
+  drawMusic(state.music);
   $("jarvisState").innerHTML = state.jarvis_set ? '<span class="pill ok">Jarvis key set</span>' : '<span class="pill no">No Jarvis key</span>';
   $("m3u").value = state.m3u_url || ""; $("stream").value = state.custom_stream_url || "";
   $("origin").value = state.origin_filter || "no_asia";
@@ -313,7 +324,7 @@ function removeAddon(i) { addons.splice(i, 1); drawAddons(); dirty(true); save()
 function moveAddon(i, d) { const [a] = addons.splice(i, 1); addons.splice(i + d, 0, a); drawAddons(); dirty(true); save(); }
 function dirty(on) { dirtyFlag = on; $("saveBtn").disabled = !on; if (on) { $("saveMsg").className = "msg"; $("saveMsg").textContent = "Unsaved changes"; } }
 $("addonIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addAddon(); });
-["m3u", "stream", "tmdb", "mdb", "jarvisKey", "wallUrl", "wallKey", "wallBaby", "tvLabel"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
+["m3u", "stream", "tmdb", "mdb", "jarvisKey", "wallUrl", "wallKey", "wallBaby", "tvLabel", "spotifyClientId"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
 ["origin", "usOnly", "slow", "intro", "wallStart", "wallDue", "wallMode"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
 function pickLabel(name) { $("tvLabel").value = name; dirty(true); save(); }
 function drawNow(np) {
@@ -323,6 +334,13 @@ function drawNow(np) {
   const pos = np.duration_ms > 0 ? " · " + fmtTime(np.position_ms) + " / " + fmtTime(np.duration_ms) : "";
   el.textContent = (np.playing ? "Playing: " : "Paused: ") + np.name + ep + (np.media === "live" ? " (Live TV)" : "") + pos;
 }
+/** Spotify on this TV: track, artist, playing or paused (from the TV's state; never tokens). */
+function drawMusic(m) {
+  const el = $("musicNow"); if (!el) return;
+  el.textContent = m && m.track ? (m.playing ? "Spotify playing: " : "Spotify paused: ") + m.track + (m.artist ? " by " + m.artist : "") : "";
+}
+/** A Spotify Client ID: 32 hex characters ("" = none). Returns the clean value, or null when it is not one. */
+function cleanSpotifyId(v) { v = String(v || "").trim().toLowerCase(); return v === "" || /^[0-9a-f]{32}$/.test(v) ? v : null; }
 function fmtTime(ms) { const s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); }
 /** Start, stop or set the mode of the Wall on this TV (or on another TV: pass its entry from the list). */
 async function wallCmd(action, t) {
@@ -350,6 +368,9 @@ async function save() {
     wall_url: $("wallUrl").value.trim(), wall_start: $("wallStart").checked, wall_due: $("wallDue").value, wall_baby: $("wallBaby").value.trim(),
     wall_mode: $("wallMode").value, tv_label: $("tvLabel").value.trim().slice(0, 40),
   };
+  const sid = cleanSpotifyId($("spotifyClientId").value);
+  if (sid === null) { $("saveMsg").className = "err"; $("saveMsg").textContent = "That Spotify Client ID is not right. It has 32 letters and numbers."; return; }
+  data.spotify_client_id = sid;
   if ($("wallKey").value.trim()) data.wall_key = $("wallKey").value.trim();
   if ($("tmdb").value.trim()) data.tmdb_key = $("tmdb").value.trim();
   if ($("mdb").value.trim()) data.mdblist_key = $("mdb").value.trim();

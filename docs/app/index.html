@@ -1041,6 +1041,11 @@ async function onRelay(raw, live) {
     const w = askWait.get(m.req);
     if (w) w(m);
   }
+  else if (m.type === "spotify_list") {
+    if (S.link && "music" in m) musicSet(S.link.id, m.music, m.ts);
+    const w = spWait.get(m.req);
+    if (w) w(m);
+  }
   else if (m.type === "ack" && live) {
     const t = pending.get(m.req);
     if (t) { clearTimeout(t); pending.delete(m.req); toast(m.note || "Done on the TV", "ok"); }
@@ -1053,6 +1058,7 @@ function applyTvState(m) {
   if (!S.link) return;
   tvRemember({ id: S.link.id, key: S.link.key, dev: m.device_id || "", name: m.device_name || "", label: m.tv_label || "", platform: m.platform || "", model: m.model || "", version: m.version || "", seen: m.ts || Date.now() });
   if ("now_playing" in m) nowSet(S.link.id, m.now_playing, m.ts);
+  if ("music" in m) musicSet(S.link.id, m.music, m.ts);
   setStatus(S.status);
 }
 function applyInit(m) {
@@ -1060,6 +1066,7 @@ function applyInit(m) {
   if (S.link && (m.device_id || m.tv_label || m.platform)) {
     tvRemember({ id: S.link.id, key: S.link.key, dev: m.device_id || "", name: "", label: m.tv_label || "", platform: m.platform || "", version: m.version || "", seen: m.ts || Date.now() });
     if ("now_playing" in m) nowSet(S.link.id, m.now_playing, m.ts);
+    if ("music" in m) musicSet(S.link.id, m.music, m.ts);
     setStatus(S.status);
   }
   delete m.rd_token; delete m.rd_expires_at; // older TVs sent a token: never kept
@@ -1221,7 +1228,25 @@ function nowSet(id, now, ts) {
   nowBy.set(id, { now: now && now.name ? now : null, ts: ts || Date.now() });
   document.querySelectorAll(`[data-now="${id}"]`).forEach((el) => { el.textContent = nowText(id); });
 }
+// Spotify on each TV ("music" in tv_status, state and web_init): {source, track, artist, playing, ts} or null.
+const musicBy = new Map(); // link id -> {music, ts}
+function musicSet(id, music, ts) {
+  const prev = musicBy.get(id);
+  if (prev && (prev.ts || 0) > (ts || 0)) return;
+  musicBy.set(id, { music: music && music.track ? music : null, ts: ts || Date.now() });
+  document.querySelectorAll(`[data-now="${id}"]`).forEach((el) => { el.textContent = nowText(id); });
+  document.querySelectorAll(`[data-music="${id}"]`).forEach((el) => { el.textContent = musicText(id) || "Nothing playing on Spotify."; });
+}
+function musicText(id) {
+  const e = musicBy.get(id), m = e && e.music;
+  return m ? (m.playing ? "Spotify playing " : "Spotify paused ") + m.track + (m.artist ? " by " + m.artist : "") : "";
+}
 function nowText(id) {
+  const video = videoText(id), music = musicText(id);
+  if (music && (!video || video === "Nothing playing")) return music;
+  return video && music ? video + " · " + music : video;
+}
+function videoText(id) {
   const e = nowBy.get(id);
   if (!e) return "";
   if (!e.now) return "Nothing playing";
@@ -1257,12 +1282,13 @@ function nowFetchAll() {
         if (!m || m.type !== "tv_status" || typeof m.from !== "string" || !m.from) continue;
         const ts = +m.ts || (+e.time || 0) * 1000;
         const old = best.get(m.from);
-        if (!old || ts >= old.ts) best.set(m.from, { ts, now: m.now });
+        if (!old || ts >= old.ts) best.set(m.from, { ts, now: m.now, music: m.music || null });
       }
       const tvs = tvsRead();
       for (const [dev, b] of best) {
         const t = tvs.find((x) => x.dev === dev); if (!t) continue;
         nowSet(t.id, b.now, b.ts);
+        musicSet(t.id, b.music, b.ts);
         if (b.ts > (t.seen || 0)) tvRemember({ id: t.id, key: t.key, dev, seen: b.ts }); // a status is a sign of life too
       }
       for (const t of tvs) if (!nowBy.has(t.id)) nowSet(t.id, null, 1);
@@ -1697,7 +1723,7 @@ async function route() {
   document.body.classList.toggle("playmode", name === "play");
   setActive(name);
   if (name === "welcome") { renderWelcome(v); setActive("settings"); return; }
-  const needsKey = !["settings", "pair", "profiles", "live"].includes(name);
+  const needsKey = !["settings", "pair", "profiles", "live", "music"].includes(name);
   if (!S.link && !keys().tmdb && !["settings", "pair"].includes(name)) { renderPair(v); setActive("settings"); return; }
   window.scrollTo(0, 0);
   // "Who's watching?" on first open (and from the profile button in the header).
@@ -1719,11 +1745,103 @@ async function route() {
     case "list": renderList(v, tok, q.get("tab") || "watchlist"); break;
     case "settings": renderSettings(v); break;
     case "live": renderLive(v, tok, q); break;
+    case "music": renderMusic(v, tok); break;
     case "pair": renderPair(v); break;
     default: renderHome(v, tok);
   }
   const saved = scrollMem.get(curHash);
   if (saved) { setTimeout(() => { if (tok === routeTok) window.scrollTo(0, saved); }, 60); setTimeout(() => { if (tok === routeTok && window.scrollY < saved - 4) window.scrollTo(0, saved); }, 900); }
+}
+
+// ---------- Spotify on the TV (phase 1) ----------
+// The phone never signs in to Spotify and never sees a token. It asks the linked TV for its playlist names and
+// URIs ("spotify_list"), then tells that one TV what to play ("spotify_play") or how ("spotify_control"). Every
+// command names the TV ("to" and "tv" = its device id); without a device id nothing is sent. Nothing is broadcast.
+const spWait = new Map(); // "spotify_list" req id -> reply handler
+const SP_ID = /^[A-Za-z0-9]{22}$/, SP_KINDS = ["playlist", "album", "artist", "track", "episode", "show"];
+/** A Spotify link or URI as "spotify:<kind>:<id>", else "". Same rules as SpotifyUri.parse on the TV. */
+function spotifyUri(input) {
+  const s = String(input || "").trim();
+  if (!s || s.length > 300) return "";
+  const ok = (k, id) => (SP_KINDS.includes(String(k).toLowerCase()) && SP_ID.test(id) ? "spotify:" + String(k).toLowerCase() + ":" + id : "");
+  if (/^spotify:/i.test(s)) {
+    const p = s.split(":");
+    if (p.length === 3) return ok(p[1], p[2]);
+    if (p.length === 5 && /^user$/i.test(p[1]) && /^playlist$/i.test(p[3])) return ok("playlist", p[4]);
+    return "";
+  }
+  let rest = s.replace(/^https?:\/\//i, "");
+  if (rest === s && !/^open\.spotify\.com\//i.test(s)) return "";
+  const host = rest.split("/")[0];
+  if (host.toLowerCase() !== "open.spotify.com") return "";
+  const parts = rest.slice(host.length + 1).split(/[?#]/)[0].split("/").filter(Boolean);
+  while (parts.length && (/^intl-[a-z]{2}(-[a-z]{2})?$/i.test(parts[0]) || /^embed$/i.test(parts[0]))) parts.shift();
+  if (parts.length < 2) return "";
+  if (/^user$/i.test(parts[0]) && parts.length >= 4 && /^playlist$/i.test(parts[2])) return ok("playlist", parts[3]);
+  return ok(parts[0], parts[1]);
+}
+/** The linked TV's device id, or "" with a message (an old TV has none, and Spotify commands must name their TV). */
+function spotifyTarget() {
+  if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return ""; }
+  const t = linkedTv();
+  if (!t || !t.dev) { toast("Update Jarvis on this TV first, then try again.", "warn"); return ""; }
+  return t.dev;
+}
+function spotifySend(cmd, sending) {
+  const dev = spotifyTarget(); if (!dev) return false;
+  cmd.to = dev; cmd.tv = dev;
+  return remote(cmd, sending);
+}
+/** The linked TV's playlists from [offset]. Resolves with the TV's reply; rejects when the TV does not answer. */
+async function spotifyList(offset) {
+  const dev = spotifyTarget(); if (!dev) throw new Error("");
+  if (!S.key || !(await tvAlive())) throw new Error((linkedTvName() || "Your TV") + " is not answering. Turn it on and open Jarvis.");
+  const req = newReq();
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => { spWait.delete(req); reject(new Error("The TV did not send its playlists. Try again.")); }, 20000);
+    spWait.set(req, (m) => { clearTimeout(t); spWait.delete(req); resolve(m); });
+    relaySend({ cmd: "spotify_list", req, ts: Date.now(), offset: offset || 0, to: dev, tv: dev })
+      .catch(() => { clearTimeout(t); spWait.delete(req); reject(new Error("Couldn't reach the relay. Check your internet.")); });
+  });
+}
+function spRowsHTML(rows) {
+  return rows.map((r) => {
+    const name = String(r[0] || "Playlist"), uri = spotifyUri(r[1]), n = +r[2] || 0;
+    return uri ? `<li><span style="flex:1;min-width:0"><b>${esc(name)}</b><span class="muted">${n ? n + " songs" : ""}</span></span><button class="btn small primary" data-act="spplay" data-uri="${esc(uri)}" data-name="${esc(name)}">Play on TV</button></li>` : "";
+  }).join("");
+}
+async function spLoad(offset, tok) {
+  const box = $("#spList"); if (!box) return;
+  try {
+    const m = await spotifyList(offset);
+    if (tok !== routeTok) return;
+    const rows = Array.isArray(m.playlists) ? m.playlists : [];
+    const list = rows.length ? `<ul class="netlist">${spRowsHTML(rows)}</ul>` : "";
+    const note = m.note ? `<p class="muted">${esc(m.note)}</p>` : (!rows.length && !offset ? `<p class="muted">No playlists on this TV yet.</p>` : "");
+    const more = m.more && m.next_offset > offset ? `<button class="btn small" data-act="spmore" data-offset="${+m.next_offset}">More playlists</button>` : "";
+    if (offset) { const old = $("#spMore"); if (old) old.remove(); box.insertAdjacentHTML("beforeend", list + note + `<div id="spMore">${more}</div>`); }
+    else box.innerHTML = list + note + `<div id="spMore">${more}</div>`;
+  } catch (e) {
+    if (tok !== routeTok) return;
+    box.innerHTML = e.message ? `<p class="muted">${esc(e.message)}</p><button class="btn small" data-act="spretry">Try again</button>` : "";
+  }
+}
+function renderMusic(v, tok) {
+  const id = S.link ? S.link.id : "";
+  const tvn = linkedTvName() || "your TV";
+  v.innerHTML = `<div class="page"><h1>Spotify</h1>
+    <div class="panel"><h2>On ${esc(tvn)}</h2>
+      <p class="muted">Pick a playlist and the Spotify app on ${esc(tvn)} plays it. Jarvis stays on the screen. To use another TV, tap the TV name at the top.</p>
+      <p data-music="${esc(id)}">${esc(musicText(id) || "Nothing playing on Spotify.")}</p>
+      <div class="rowf"><button class="btn small" data-act="spctl" data-a="previous">Previous</button><button class="btn small" data-act="spctl" data-a="pause">Pause</button><button class="btn small" data-act="spctl" data-a="resume">Resume</button><button class="btn small" data-act="spctl" data-a="next">Next</button></div>
+      <label for="spLink">Play a Spotify link</label>
+      <div class="rowf"><input id="spLink" type="text" placeholder="https://open.spotify.com/playlist/…" autocomplete="off" spellcheck="false"><button class="btn small primary" data-act="splink">Play on TV</button></div>
+    </div>
+    <div class="section-h"><h2>Playlists on ${esc(tvn)}</h2></div>
+    <div id="spList"><div class="spinner"></div></div>
+  </div>`;
+  if (!S.link) { $("#spList").innerHTML = `<p class="muted">Link your TV first.</p><a class="btn small primary" href="#/settings">Settings</a>`; return; }
+  spLoad(0, tok);
 }
 
 // ---------- Home ----------
@@ -2003,6 +2121,7 @@ function renderBrowse(v) {
       ${tile("#/browse/genre?type=movie&v=28", "Genres", "Action, Comedy, Drama and more")}
       ${tile("#/browse/service?type=movie&v=8", "Streaming Services", "What's on each service")}
       ${tile("#/live", "Live TV", "Channels from your playlist")}
+      ${(S.profile || "p1") === "p1" ? tile("#/music", "Spotify", "Your playlists, played on the TV") : ""}
     </div>
     <div class="section-h"><h2>Streaming services</h2></div>
     <div class="tiles">${SERVICES.map(([id, n, c]) => `<a class="tile svc" href="#/browse/service?type=movie&v=${id}" style="background:linear-gradient(140deg,${c},#0b1220)">${esc(n)}<small style="color:#dfe6f3">Movies and shows</small></a>`).join("")}</div>
@@ -5034,6 +5153,16 @@ document.addEventListener("click", async (e) => {
       break;
     }
     case "open": remote({ cmd: "open", type, id, name: d.name || "" }, "Opening on your TV…"); break;
+    case "spplay": { const uri = spotifyUri(d.uri); if (uri) spotifySend({ cmd: "spotify_play", uri, name: d.name || "" }, "Sending to your TV…"); break; }
+    case "splink": {
+      const uri = spotifyUri(($("#spLink") || {}).value);
+      if (!uri) { toast("That is not a Spotify link. Copy it with Share > Copy link in Spotify.", "warn"); break; }
+      spotifySend({ cmd: "spotify_play", uri }, "Sending to your TV…");
+      break;
+    }
+    case "spctl": if (["pause", "resume", "next", "previous"].includes(d.a)) spotifySend({ cmd: "spotify_control", action: d.a }); break;
+    case "spmore": spLoad(+d.offset || 0, routeTok); break;
+    case "spretry": { const box = $("#spList"); if (box) box.innerHTML = `<div class="spinner"></div>`; spLoad(0, routeTok); break; }
     case "playhere": {
       const qs = d.season ? `?s=${+d.season}&e=${+d.episode}` : "";
       location.hash = `#/sources/${type}/${id}${qs}`;
@@ -5209,7 +5338,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-18.3";
+const BUILD = "2026-10-19.1";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;

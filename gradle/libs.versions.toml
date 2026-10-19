@@ -10,6 +10,8 @@ coil = "2.7.0"
 coroutines = "1.9.0"
 zxing = "3.5.3"
 profileinstaller = "1.3.1"
+spotifyAuth = "5.0.0"
+gson = "2.11.0"
 junit = "4.13.2"
 orgJson = "20240303"
 
@@ -28,6 +30,10 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
+# Spotify sign-in (Authorization Code with PKCE, browser flavor). App Remote is a local AAR in app/libs (not on Maven).
+spotify-auth = { group = "com.spotify.android", name = "auth", version.ref = "spotifyAuth" }
+# App Remote's JSON mapper uses Gson.
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 # JVM unit tests only (app/src/test). org.json: Android's copy is a stub in unit tests, so tests use the real one.
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }

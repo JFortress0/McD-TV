@@ -9,6 +9,9 @@ on:
     branches: [main]
     # Docs and web pages do not change the app, so they do not need a new build.
     paths-ignore: ["docs/**", "**/*.md", "wall/**", "rd-proxy/**", "tools/webtest/**", ".claude/**"]
+  # Pull requests build and test too (the APK is attached to the run), but never publish a Release.
+  pull_request:
+    paths-ignore: ["docs/**", "**/*.md", "wall/**", "rd-proxy/**", "tools/webtest/**", ".claude/**"]
   workflow_dispatch: # adds a "Run workflow" button in the Actions tab
 
 permissions:
@@ -91,7 +94,9 @@ jobs:
           name: McD-TV-v${{ env.VERSION }}
           path: McD-TV-v${{ env.VERSION }}.apk
 
+      # Only main publishes. A Release is what every TV installs as its next update.
       - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}

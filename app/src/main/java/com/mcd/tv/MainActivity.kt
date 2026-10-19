@@ -79,6 +79,8 @@ sealed interface Screen {
     data object ConnectPhone : Screen
     /** Jarvis Wall: photo frame and family calendar for a wall TV. */
     data object Wall : Screen
+    /** Spotify (phase 1, Dad profile): playlists, now playing and controls. The Spotify app plays; Jarvis stays here. */
+    data object Spotify : Screen
     data object PhoneSetup : Screen
     data object RdConnect : Screen
     data object RdCloud : Screen
@@ -126,6 +128,9 @@ class MainActivity : ComponentActivity() {
         Prefs.init(this)
         com.mcd.tv.data.IptvVod.init(this)
         com.mcd.tv.ui.AppImages.install(this)
+        // Spotify tokens load from the Keystore vault before the relay can ask for music.
+        com.mcd.tv.data.Spotify.init(this)
+        com.mcd.tv.data.Spotify.attach(this)
         if (intent?.getBooleanExtra("qa_mode", false) == true) { LocalWeb.qaMode = true; Prefs.qaMode = true }
         // Automated QA launch: no profile picker, the last used profile is used.
         com.mcd.tv.ui.ProfileStart.skip = intent?.hasExtra("qa") == true
@@ -162,6 +167,7 @@ class MainActivity : ComponentActivity() {
             "search" -> Screen.Search
             "ask" -> Screen.AskJarvis(askExtra)
             "wall" -> Screen.Wall
+            "spotify" -> Screen.Spotify
             else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
         }
         setContent { McdTheme { App(startScreen) } }
@@ -316,6 +322,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.JoinHouse -> com.mcd.tv.ui.JoinHouseScreen(nav)
         Screen.ConnectPhone -> com.mcd.tv.ui.ConnectPhoneScreen(nav)
         Screen.Wall -> com.mcd.tv.ui.WallScreen(nav)
+        Screen.Spotify -> com.mcd.tv.ui.SpotifyScreen(nav)
         Screen.PhoneSetup -> PhoneSetupScreen(nav)
         Screen.RdConnect -> RdConnectScreen(nav)
         Screen.RdCloud -> RdCloudScreen(nav)

@@ -47,6 +47,12 @@ object Http {
             request("POST", url, headers + ("Content-Type" to "application/json"), body, raw = true, timeoutMs = timeoutMs)
         }
 
+    /** PUT a JSON body ("" = no body). Spotify's player endpoints use it. */
+    suspend fun putJson(url: String, body: String, headers: Map<String, String> = emptyMap()): String =
+        withContext(Dispatchers.IO) {
+            request("PUT", url, headers + ("Content-Type" to "application/json"), body, raw = true)
+        }
+
     private fun request(
         method: String,
         url: String,

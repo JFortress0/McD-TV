@@ -9,6 +9,8 @@ on:
     branches: [main]
     # Docs and web pages do not change the app, so they do not need a new build.
     paths-ignore: ["docs/**", "**/*.md", "wall/**", "rd-proxy/**", "tools/webtest/**", ".claude/**"]
+  pull_request:
+    paths-ignore: ["docs/**", "**/*.md", "wall/**", "rd-proxy/**", "tools/webtest/**", ".claude/**"]
   workflow_dispatch:
 
 # A newer push replaces a run still in progress.
