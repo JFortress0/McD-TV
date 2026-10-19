@@ -82,7 +82,11 @@ object M3u {
 
     private var cacheUrl = ""
     private var cacheAt = 0L
-    private var cache: List<Channel> = emptyList()
+    @Volatile private var cache: List<Channel> = emptyList()
+
+    /** The last playlist loaded (even if older than 6 hours), or empty. Never downloads. */
+    val cached: List<Channel> get() = cache
+
     private val lock = kotlinx.coroutines.sync.Mutex()
 
     /** User agents tried for playlist servers, most widely accepted first. */

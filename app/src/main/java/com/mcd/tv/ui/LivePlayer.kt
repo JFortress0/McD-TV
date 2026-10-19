@@ -19,6 +19,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,8 +39,13 @@ import com.mcd.tv.data.LiveOrganizer
 import com.mcd.tv.data.M3u
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Programme
+import com.mcd.tv.data.QualityFallback
+import com.mcd.tv.data.QualityMode
 import com.mcd.tv.player.PlayerScreen
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 
@@ -50,6 +56,17 @@ import java.util.Date
 object LiveSession {
     var channels: List<Channel> = emptyList()
     var guide by mutableStateOf<Map<String, List<Programme>>>(emptyMap())
+}
+
+/**
+ * The 1080p version of [ch] (same guide key, see [QualityFallback.pickSibling]) in the whole playlist, else in the
+ * list the channel was opened from. Runs off the main thread; never downloads the playlist.
+ */
+private suspend fun sibling1080(ch: Channel): Channel? = withContext(Dispatchers.Default) {
+    val session = LiveSession.channels
+    val all = M3u.cached
+    (if (all.isNotEmpty()) QualityFallback.pickSibling(ch, all) else null)
+        ?: if (all !== session) QualityFallback.pickSibling(ch, session) else null
 }
 
 private val guideTimeFormat: DateFormat by lazy { DateFormat.getTimeInstance(DateFormat.SHORT) }
@@ -114,6 +131,28 @@ fun LivePlayerScreen(nav: Nav, index: Int) {
     }
 
     val playingChannel = channels[playing.coerceIn(0, count - 1)]
+    // Quality (Settings > Playback): the stream actually opened can be the channel's 1080p sibling.
+    // swap = (channel url, sibling); swapNotice = the switch came from struggling 4K playback.
+    val qualityMode = remember { Prefs.qualityMode }
+    val scope = rememberCoroutineScope()
+    var swap by remember { mutableStateOf<Pair<String, Channel>?>(null) }
+    var swapNotice by remember { mutableStateOf(false) }
+    // Max 1080p: a 4K channel plays its 1080p sibling when the playlist has one (looked up before it opens).
+    val preSwap = qualityMode == QualityMode.MAX_1080 && QualityFallback.is4kName(playingChannel.name)
+    var preSwapDone by remember(playingChannel.url) { mutableStateOf(!preSwap) }
+    LaunchedEffect(playingChannel.url) {
+        if (preSwap && swap?.first != playingChannel.url) {
+            val sib = sibling1080(playingChannel)
+            if (sib != null) {
+                swap = playingChannel.url to sib
+                swapNotice = false
+            }
+        }
+        preSwapDone = true
+    }
+    val streamChannel = swap?.takeIf { it.first == playingChannel.url }?.second ?: playingChannel
+    // The notice shows once, in the player that opened the sibling (it keeps its own copy).
+    LaunchedEffect(streamChannel.url) { swapNotice = false }
     LaunchedEffect(playingChannel.url) { Prefs.addLiveRecent(playingChannel.url) }
     // Minutes watched per channel feed Live TV > For You (counted while this screen is open).
     LaunchedEffect(playingChannel.url) {
@@ -156,15 +195,31 @@ fun LivePlayerScreen(nav: Nav, index: Int) {
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        key(playingChannel.url) {
+        if (preSwapDone) key(streamChannel.url) {
+            val forChannel = playingChannel
+            val swapped = streamChannel.url != forChannel.url
+            // Quality Auto: 4K keeps stalling and the stream has no lower track, so open the 1080p sibling.
+            // Only from the channel itself, so a sibling never switches again.
+            val findSibling: (Long) -> Unit = { _ ->
+                scope.launch {
+                    val sib = sibling1080(forChannel)
+                    if (sib != null && channels.getOrNull(playing) == forChannel) { // still on that channel
+                        swap = forChannel.url to sib
+                        swapNotice = true
+                    }
+                }
+            }
             PlayerScreen(
-                url = playingChannel.url,
-                title = LiveOrganizer.cleanName(playingChannel.name),
+                url = streamChannel.url,
+                title = LiveOrganizer.cleanName(streamChannel.name),
                 headers = mapOf("User-Agent" to M3u.userAgent),
                 onKeyEvent = onKey,
                 autoShowControls = false,
                 sleepTimerEnabled = false,
                 live = true,
+                qualityLabel = streamChannel.name,
+                onStepDown = if (swapped) null else findSibling,
+                startNotice = if (swapNotice && swapped) QualityFallback.NOTICE else null,
             )
         }
         if (overlayVisible) {

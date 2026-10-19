@@ -103,6 +103,10 @@ sealed interface Screen {
         val queue: Int = 0,
         /** Index of the playing source in that list. */
         val queuePos: Int = -1,
+        /** Start here (ms) instead of the saved resume position; -1 = resume as usual. */
+        val startMs: Long = -1L,
+        /** Opened by the quality fallback (4K to 1080p): show the notice, and do not step down again. */
+        val stepped: Boolean = false,
     ) : Screen
 }
 
@@ -337,17 +341,28 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
             androidx.compose.runtime.key(s.url, s.queuePos) {
                 // A failed stream offers "Try next source" from the list it was picked from.
                 val nextSource = com.mcd.tv.ui.rememberNextSource(nav, s)
+                // Quality fallback: the source's own name can say 4K; a struggling 4K file re-picks a 1080p source.
+                val label = androidx.compose.runtime.remember(s) {
+                    com.mcd.tv.data.SourceQueue.get(s.queue)?.getOrNull(s.queuePos)?.let { "${it.name} ${it.title}" } ?: s.title
+                }
+                val playerScope = androidx.compose.runtime.rememberCoroutineScope()
+                val reSource: (Long) -> Unit = { pos -> playerScope.launch { nextSource?.stepDown(pos) } }
+                val stepDown = if (nextSource == null || s.stepped) null else reSource
+                val notice = if (s.stepped) com.mcd.tv.data.QualityFallback.NOTICE else null
+                val startMs = s.startMs
                 if (m != null && next != null) {
                     // TV episode: "Up next" countdown card before rolling into the next episode.
                     com.mcd.tv.ui.UpNextPlayer(
                         url = s.url, title = s.title, meta = m, headers = s.headers,
                         onNext = next, onCancel = { nav.back() }, onSleep = { nav.back() },
                         nextSource = nextSource,
+                        qualityLabel = label, onStepDown = stepDown, startPositionMs = startMs, startNotice = notice,
                     )
                 } else {
                     PlayerScreen(
                         url = s.url, title = s.title, meta = m, onEnded = next, headers = s.headers, onSleep = { nav.back() },
                         nextSource = nextSource, onBack = { nav.back() },
+                        qualityLabel = label, onStepDown = stepDown, startPositionMs = startMs, startNotice = notice,
                     )
                 }
             }

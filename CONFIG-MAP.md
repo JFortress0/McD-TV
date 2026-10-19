@@ -27,6 +27,8 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 | Addons, this phone only | Web Settings > Addons | `mcdtv_web_addons_mine` | setup link, invite | maybe |
 | Websites | TV home Wi-Fi page | `websites` | HouseSync | no |
 | Titles, US release dates, slow connection, size limits, intro | TV Settings; Control page (not the size limits) | `origin_filter`, `us_only`, `slow_connection`, `max_movie_gb`, `max_episode_gb`, `play_intro` | HouseSync. The phone can override titles with `mcdtv_web_origin`. | no |
+| Quality (Auto, Prefer 4K, Max 1080p) | TV Settings > Playback > Quality | `quality_mode` = `auto` (default: steps down from 4K to 1080p when playback struggles), `4k` (never steps down) or `1080` (never above 1080p; Live TV opens a 4K channel's 1080p version) | this TV only, never synced, not per profile | no |
+| Quality on the phone (Auto, Prefer 4K, Max 1080p) | Web app Settings > Playback > Quality | `mcdtv_web_quality` = `auto` (default), `4k` or `1080` | this browser only; not in the setup link or invites | no |
 | My Stream link | Control page | `custom_stream_url` | HouseSync | maybe |
 | Real-Debrid, TVs | TV Settings > Playback > Connect (device code) | `rd_client_id`, `rd_client_secret`, `rd_access`, `rd_refresh`, `rd_expires`; `rd_last_add` is per TV | HouseSync: one sign-in for the whole house. Phones only see `rd_connected`. | yes |
 | Real-Debrid, phone sign-in | Web Settings > Real-Debrid > Connect (device code, through `jarvis-rd.netlify.app`) | `mcdtv_web_rdc` = `{id, secret, t, r, exp}` | setup link only | yes |
@@ -92,4 +94,4 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 
 ## What the Settings redesign (October 2026) changed in storage
 
-Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked). Later on October 19: TV `wall_cycle`.
+Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked). Later on October 19: TV `wall_cycle`, TV `quality_mode` and web `mcdtv_web_quality`.

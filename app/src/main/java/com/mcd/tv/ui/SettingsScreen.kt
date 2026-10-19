@@ -54,6 +54,7 @@ import com.mcd.tv.data.LiveStats
 import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.OriginFilter
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.QualityMode
 import com.mcd.tv.data.RealDebrid
 import com.mcd.tv.data.RecentErrors
 import com.mcd.tv.data.Relay
@@ -380,6 +381,20 @@ private fun PlaybackCategory(ctx: SettingsCtx, changed: () -> Unit) {
         SettingsDialog.Choice("Titles", origins.map { it.label }, origins.indexOf(Prefs.origin)) { i -> Prefs.origin = origins[i] }
     }
     ToggleRow(ctx.row(), "US release dates", "Lists use US releases and US streaming services.", Prefs.usOnly) { Prefs.usOnly = it }
+
+    SettingsSection("Video")
+    // Pref quality_mode, this TV only (see QualityFallback).
+    val qualities = QualityMode.ALL
+    DialogRow(ctx, ctx.row(), "Quality", QualityMode.label(Prefs.qualityMode), RowEnd.Change) {
+        SettingsDialog.Choice("Quality", qualities.map(QualityMode::label), qualities.indexOf(Prefs.qualityMode).coerceAtLeast(0)) { i -> Prefs.qualityMode = qualities[i] }
+    }
+    SettingsNote(
+        when (Prefs.qualityMode) {
+            QualityMode.PREFER_4K -> "Plays 4K when the stream has it. Never steps down."
+            QualityMode.MAX_1080 -> "Never plays above 1080p. Live TV opens the 1080p version of a 4K channel."
+            else -> "Plays 4K. Steps down to 1080p if 4K keeps freezing."
+        },
+    )
 
     SettingsSection("Source list")
     DialogRow(ctx, ctx.row(), "Movie size limit", sizeLimitLabel(Prefs.maxMovieGb), RowEnd.Change) {
