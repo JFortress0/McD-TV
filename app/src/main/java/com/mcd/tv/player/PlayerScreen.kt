@@ -53,6 +53,7 @@ import androidx.tv.material3.Text
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.NowPlaying
 import com.mcd.tv.data.PlayMeta
+import com.mcd.tv.data.PlaybackRescue
 import com.mcd.tv.data.RdErrors
 import com.mcd.tv.ui.ActionButton
 import com.mcd.tv.ui.McdColors
@@ -111,7 +112,11 @@ fun PlayerScreen(
     var controlsVisible by remember { mutableStateOf(autoShowControls) }
     var audioNote by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val progress = remember { ProgressSaver(meta) }
+    // Saved position for this title (this TV, another TV or a phone). Read once, before the player starts.
+    val resumeMs = remember { meta?.let { Library.resumePosition(it) } ?: 0L }
+    // Non-live: what to do when the video fails or stalls at one spot (see PlaybackRescue).
+    val rescue = remember { PlaybackRescue(if (live) 0L else resumeMs) { nextSource?.hasMore() == true } }
+    val progress = remember { ProgressSaver(meta) { rescue.keepSavedBelow } }
     // What this TV plays, for the web app ("now" on the relay). Cleared when the player leaves.
     val report = remember { NowReporter(title, meta, live) }
     @Suppress("DEPRECATION") // androidx.compose.ui.platform.LocalLifecycleOwner: always on the classpath with this BOM
@@ -132,6 +137,10 @@ fun PlayerScreen(
     // Live: how this channel plays, for Settings > Addons and Live TV.
     val stats = remember { if (live) com.mcd.tv.data.LiveStats.Recorder(title) else null }
     var liveNote by remember { mutableStateOf<String?>(null) }
+    // Non-live: a short note when playback had to recover (reconnect, start over, skip, next source).
+    var rescueNote by remember { mutableStateOf<String?>(null) }
+    var rescueNoteTick by remember { mutableIntStateOf(0) }
+    var rescueJob by remember { mutableStateOf<Job?>(null) }
 
     val player = remember {
         // Follow http->https redirects (common with debrid and CDN links).
@@ -156,11 +165,75 @@ fun PlayerScreen(
             .build()
             .apply {
                 if (live) setMediaSource(LiveTuning.mediaSource(dataSource, url)) else setMediaItem(mediaItemFor(url))
-                // Resume where you left off (Continue Watching).
-                meta?.let { m -> Library.resumePosition(m).takeIf { it > 0 }?.let { seekTo(it) } }
+                // Resume where you left off (Continue Watching), on this TV or another device.
+                if (resumeMs > 0) seekTo(resumeMs)
                 prepare()
                 playWhenReady = true
             }
+    }
+
+    fun showRescueNote(text: String) {
+        rescueNote = text
+        rescueNoteTick++
+    }
+
+    // Non-live video failed or stalled at the current position: ask PlaybackRescue what to do, and do it.
+    fun recover(retryable: Boolean, why: String) {
+        val pos = player.currentPosition.coerceAtLeast(0L)
+        val step = rescue.onFailure(pos, retryable)
+        val at = com.mcd.tv.data.SeekAccumulator.clock(pos)
+        if (step.action != PlaybackRescue.Action.RECONNECT) {
+            com.mcd.tv.data.RecentErrors.note("Playback: ${title.ifBlank { "video" }}: $why at $at, ${step.action.name.lowercase().replace('_', ' ')}")
+        }
+        rescueJob?.cancel()
+        when (step.action) {
+            PlaybackRescue.Action.RECONNECT -> {
+                showRescueNote("Reconnecting…")
+                rescueJob = scope.launch {
+                    delay(2_000)
+                    player.stop() // keeps the position; stops a load that hangs
+                    player.prepare()
+                }
+            }
+            PlaybackRescue.Action.FROM_START, PlaybackRescue.Action.SKIP_AHEAD -> {
+                step.note?.let { showRescueNote(it) }
+                player.stop()
+                player.seekTo(step.seekToMs.coerceAtLeast(0L))
+                player.prepare()
+                player.playWhenReady = true
+            }
+            PlaybackRescue.Action.NEXT_SOURCE -> {
+                val next = nextSource
+                if (next == null) {
+                    error = step.note
+                    return
+                }
+                step.note?.let { showRescueNote(it) }
+                player.stop()
+                // The next source resumes here.
+                progress.save(player, force = true)
+                rescueJob = scope.launch {
+                    val msg = next.tryNext() ?: return@launch // null: switching to the next source
+                    error = "This source stopped at $at. $msg"
+                }
+            }
+            PlaybackRescue.Action.GIVE_UP -> {
+                player.stop()
+                error = step.note
+            }
+        }
+    }
+
+    // The saved spot is past the end of this source (a shorter cut, or a length from another file): start at 0.
+    fun restartIfResumePastEnd(): Boolean {
+        val dur = player.duration
+        if (live || resumeMs <= 0 || dur <= 0 || !rescue.resumePending) return false
+        if (PlaybackRescue.resumeTarget(resumeMs, dur) != 0L || player.currentPosition < dur - 15_000) return false
+        rescue.onPlaying(0L)
+        player.seekTo(0L)
+        player.playWhenReady = true
+        showRescueNote("Your saved spot is past the end of this source. Playing from the start.")
+        return true
     }
 
     DisposableEffect(player) {
@@ -178,8 +251,11 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     networkRetries = 0 // playing again: reset the retry budget
                     liveNote = null
+                    if (rescueNote == "Reconnecting…") rescueNote = null
                     report.update(player)
+                    restartIfResumePastEnd()
                 }
+                if (state == Player.STATE_ENDED && restartIfResumePastEnd()) return
                 if (state == Player.STATE_ENDED) {
                     progress.save(player, force = true)
                     if (SLEEP_STEPS[sleepStep] == SLEEP_END_OF_VIDEO) {
@@ -212,6 +288,17 @@ fun PlayerScreen(
                 }
                 // HTTP status of a refused stream (403 and friends): retrying won't help, so say why at once.
                 val http = (e.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
+                // Video (not live): a source that fails at one spot (often the resume point from another device)
+                // is reconnected, started over, skipped past or swapped for the next source. Never a dead stop.
+                // Network (2xxx) and parsing (3xxx, e.g. a seek into a file the source can't serve right) errors.
+                // A decoder error counts only right after the resume seek; otherwise the format just can't play here.
+                if (!live && (http == null || http !in 400..499)) {
+                    val retryable = e.errorCode in 2000..3999
+                    if (retryable || rescue.resumePending) {
+                        recover(retryable, e.errorCodeName)
+                        return
+                    }
+                }
                 // Network hiccup (IO error codes 2000..2999): retry a few times before giving up.
                 // Live channels get more tries, further apart (2, 4, 8, 10 s...), and rejoin at the live edge.
                 val maxRetries = if (live) 8 else 3
@@ -272,6 +359,7 @@ fun PlayerScreen(
             stats?.finish()
             analytics?.let { player.removeAnalyticsListener(it) }
             retryJob?.cancel()
+            rescueJob?.cancel()
             progress.save(player, force = true)
             report.clear()
             player.removeListener(listener)
@@ -313,6 +401,34 @@ fun PlayerScreen(
         player.prepare()
     }
 
+    // Video (not live): buffering for PlaybackRescue.STALL_MS with no new data is a stall, e.g. a source
+    // that hangs after a seek to another device's resume point. Without this it spins forever.
+    LaunchedEffect(buffering, paused, live) {
+        if (live || !buffering || paused) return@LaunchedEffect
+        var loaded = player.bufferedPosition
+        var still = 0L
+        while (still < PlaybackRescue.STALL_MS) {
+            delay(5_000)
+            if (!player.playWhenReady || player.playbackState != Player.STATE_BUFFERING || error != null) return@LaunchedEffect
+            val b = player.bufferedPosition
+            if (b > loaded + 1_000) {
+                loaded = b
+                still = 0L
+            } else {
+                still += 5_000
+            }
+        }
+        recover(retryable = true, why = "stalled")
+    }
+
+    // Hide the recovery note after 8 seconds (a reconnect note goes when the picture is back).
+    LaunchedEffect(rescueNoteTick) {
+        if (rescueNote != null && rescueNote != "Reconnecting…") {
+            delay(8_000)
+            rescueNote = null
+        }
+    }
+
     // Keep the screen on while playing. Paused for 10 minutes: let it go, so the screensaver can run.
     LaunchedEffect(paused) {
         if (paused) {
@@ -327,6 +443,7 @@ fun PlayerScreen(
     LaunchedEffect(player) {
         while (true) {
             delay(15_000)
+            if (player.isPlaying) rescue.onPlaying(player.currentPosition)
             progress.save(player)
             report.update(player)
         }
@@ -450,6 +567,19 @@ fun PlayerScreen(
             )
         }
 
+        if (error == null && !live) rescueNote?.let { note ->
+            Text(
+                text = note,
+                color = McdColors.White,
+                fontSize = 16.sp,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 28.dp, start = 40.dp, end = 40.dp)
+                    .background(McdColors.Card.copy(alpha = 0.9f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
         if (error == null) seekLabel?.let { label ->
             Text(
                 text = label,
@@ -530,8 +660,11 @@ private class NowReporter(private val title: String, private val meta: PlayMeta?
     fun clear() = NowPlaying.clear()
 }
 
-/** Writes the resume position, skipping writes when the position moved 5 s or less since the last one. */
-private class ProgressSaver(private val meta: PlayMeta?) {
+/**
+ * Writes the resume position, skipping writes when the position moved 5 s or less since the last one.
+ * Positions below [keepBelow] are not written: after a resume that failed, the saved spot stays until passed.
+ */
+private class ProgressSaver(private val meta: PlayMeta?, private val keepBelow: () -> Long = { 0L }) {
     private var lastSavedMs = -1L
 
     fun save(player: Player, force: Boolean = false) {
@@ -539,6 +672,7 @@ private class ProgressSaver(private val meta: PlayMeta?) {
         val dur = player.duration
         if (dur <= 0) return // C.TIME_UNSET is negative too
         val pos = player.currentPosition
+        if (pos < keepBelow()) return
         if (!force && lastSavedMs >= 0 && kotlin.math.abs(pos - lastSavedMs) <= 5_000) return
         if (force && pos == lastSavedMs) return
         lastSavedMs = pos
