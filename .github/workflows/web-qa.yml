@@ -28,6 +28,8 @@ jobs:
             python3 -c "import re,sys; s=open(sys.argv[1]).read(); open('/tmp/x.js','w').write('\n'.join(re.findall(r'<script>(.*?)</script>', s, re.S)))" "$f"
             node --check /tmp/x.js && echo "ok $f"
           done
+      - name: Quality fallback unit tests
+        run: node tools/webtest/qf-test.mjs
       - name: Install Playwright Chromium
         working-directory: tools/webtest
         run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium

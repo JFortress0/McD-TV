@@ -515,6 +515,12 @@ for (const w of [390,1280]) {
     await p.goto(B+'#/settings/keys'); await p.reload(); await p.waitForTimeout(500);
     const ky=await p.$eval('.spane-body',e=>e.innerText.replace(/\s+/g,' '));
     if(!/Saved on this device/.test(ky)||!/Replace key/i.test(ky)) fails.push(`${w} settings keys status: "${ky.slice(0,160)}"`);
+    // Quality (auto step down): the setting shows Auto by default; the live 1080p copy uses the real guide key.
+    await p.goto(B+'#/settings/playback'); await p.reload(); await p.waitForTimeout(400);
+    const q=await p.$eval('#qualitySel',e=>e.value+'|'+[...e.options].map(o=>o.text).join(',')).catch(()=>'missing');
+    if(q!=='auto|Auto,Prefer 4K,Max 1080p') fails.push(`${w} settings playback quality: ${q}`);
+    const sib=await p.evaluate(()=>{ const L=[{raw:'US| ESPN 4K',url:'a'},{raw:'US| ESPN',url:'b'},{raw:'US| ESPN 2 FHD',url:'d'},{raw:'US| ESPN FHD',url:'c'},{raw:'US| ESPN UHD',url:'e'}]; return QF.liveSibling(L,L[0],LV.gkey,()=>true); });
+    if(sib!==3) fails.push(`${w} live 1080p copy of ESPN 4K: index ${sib}`);
     if(w===390){ await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(400);
       const rows=await p.$$eval('.slist .srow',a=>a.length); if(rows!==8) fails.push(`settings overview rows ${rows}`);
       if(await p.$('.spane-body')) fails.push('settings overview on a phone shows a category too'); }
