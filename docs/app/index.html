@@ -1030,7 +1030,7 @@ async function onRelay(raw, live) {
   if (!m || typeof m !== "object") return;
   if (live) { S.lastLive = Date.now(); setStatus("online"); clearTimeout(S.initTimer); }
   if (m.type === "web_init") applyInit(m);
-  else if (m.type === "state" || m.type === "now") applyTvState(m);
+  else if (m.type === "state") applyTvState(m);
   else if (m.type === "addons") applyAddons(m);
   else if (m.type === "web_list") applyWebList(m);
   else if (m.type === "rd_resolve") {
@@ -1048,14 +1048,12 @@ async function onRelay(raw, live) {
   }
 }
 
-/** "state" (answer to hello) and "now" (playback changes) from the linked TV: its name, version and what plays. */
+/** "state" (the TV's answer to hello) from the linked TV: its name, version and what plays. */
 function applyTvState(m) {
   if (!S.link) return;
-  if (m.type === "state") {
-    tvRemember({ id: S.link.id, key: S.link.key, dev: m.device_id || "", name: m.device_name || "", label: m.tv_label || "", platform: m.platform || "", model: m.model || "", version: m.version || "", seen: m.ts || Date.now() });
-    if ("now_playing" in m) nowSet(S.link.id, m.now_playing, m.ts);
-    setStatus(S.status);
-  } else if ("now" in m) nowSet(S.link.id, m.now, m.ts);
+  tvRemember({ id: S.link.id, key: S.link.key, dev: m.device_id || "", name: m.device_name || "", label: m.tv_label || "", platform: m.platform || "", model: m.model || "", version: m.version || "", seen: m.ts || Date.now() });
+  if ("now_playing" in m) nowSet(S.link.id, m.now_playing, m.ts);
+  setStatus(S.status);
 }
 function applyInit(m) {
   const prev = S.init || {};
@@ -1228,33 +1226,49 @@ function nowText(id) {
   if (!e) return "";
   if (!e.now) return "Nothing playing";
   const n = e.now, ep = n.media === "tv" && n.season > 0 ? ` S${n.season} E${n.episode}` : "";
-  const pos = n.duration_ms > 0 ? ` · ${fmtClock(n.position_ms)} / ${fmtClock(n.duration_ms)}` : "";
+  // The position is as of the last play or pause event; while playing, count forward from it.
+  const posMs = n.playing && n.ts ? Math.min(n.position_ms + Math.max(0, Date.now() - n.ts), n.duration_ms || Infinity) : n.position_ms;
+  const pos = n.duration_ms > 0 ? ` · ${fmtClock(posMs)} / ${fmtClock(n.duration_ms)}` : "";
   return (n.playing ? "Playing " : "Paused ") + n.name + ep + (n.media === "live" ? " (Live TV)" : "") + pos;
 }
 function fmtClock(ms) { const s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); }
-/** Reads a TV's newest "now" or "state" from its own topic (one request, cached 60 s). The linked TV is heard live. */
-const nowAsked = new Map();
-async function nowFetch(t) {
-  if (!t || !t.id || !t.key) return;
-  if (Date.now() - (nowAsked.get(t.id) || 0) < 60000) return;
-  nowAsked.set(t.id, Date.now());
-  try {
-    const key = await importKey(t.key);
-    const r = await fetch(RELAY + "mcdtv-" + t.id + "-out/json?poll=1&since=3h", { cache: "no-store" });
-    if (!r.ok) return;
-    let best = null;
-    for (const line of (await r.text()).split("\n")) {
-      let e; try { e = JSON.parse(line); } catch { continue; }
-      if (!e || e.event !== "message" || typeof e.message !== "string") continue;
-      const m = await decrypt(e.message, key);
-      if (!m || (m.type !== "now" && m.type !== "state")) continue;
-      const ts = +m.ts || (+e.time || 0) * 1000;
-      if (!best || ts >= best.ts) best = { ts, now: m.type === "now" ? m.now : m.now_playing };
-      if (m.type === "state") tvRemember({ id: t.id, key: t.key, dev: m.device_id || "", name: m.device_name || "", label: m.tv_label || "", platform: m.platform || "", version: m.version || "", seen: Math.max(t.seen || 0, ts) });
-    }
-    if (best) nowSet(t.id, best.now, best.ts);
-    else if (!nowBy.has(t.id)) nowSet(t.id, null, 1);
-  } catch {}
+/**
+ * What every TV plays: TVs post "tv_status" on the house topic on play, pause and stop (at most once per 10 s).
+ * One read of the topic, cached 60 s, newest per TV. No polling loop. The linked TV's "state" is heard live too.
+ */
+let statusAt = 0, statusRun = null;
+function nowFetchAll() {
+  if (statusRun) return statusRun;
+  if (Date.now() - statusAt < 60000) return Promise.resolve();
+  const house = String((S.init && S.init.house) || "");
+  if (!HOUSE_RX.test(house)) return Promise.resolve();
+  statusAt = Date.now();
+  statusRun = (async () => {
+    try {
+      const [hid, hk] = house.split(".");
+      const key = await importKey(hk);
+      const r = await fetch(RELAY + "mcdtv-" + hid + "-house/json?poll=1&since=12h", { cache: "no-store" });
+      if (!r.ok) return;
+      const best = new Map(); // device id -> {ts, now}
+      for (const line of (await r.text()).split("\n")) {
+        let e; try { e = JSON.parse(line); } catch { continue; }
+        if (!e || e.event !== "message" || typeof e.message !== "string") continue;
+        const m = await decrypt(e.message, key);
+        if (!m || m.type !== "tv_status" || typeof m.from !== "string" || !m.from) continue;
+        const ts = +m.ts || (+e.time || 0) * 1000;
+        const old = best.get(m.from);
+        if (!old || ts >= old.ts) best.set(m.from, { ts, now: m.now });
+      }
+      const tvs = tvsRead();
+      for (const [dev, b] of best) {
+        const t = tvs.find((x) => x.dev === dev); if (!t) continue;
+        nowSet(t.id, b.now, b.ts);
+        if (b.ts > (t.seen || 0)) tvRemember({ id: t.id, key: t.key, dev, seen: b.ts }); // a status is a sign of life too
+      }
+      for (const t of tvs) if (!nowBy.has(t.id)) nowSet(t.id, null, 1);
+    } catch {}
+  })().finally(() => { statusRun = null; });
+  return statusRun;
 }
 /** Every TV known here, the linked one first, then the ones seen most recently. */
 function tvsAll() {
@@ -1279,7 +1293,7 @@ function tvPickerHTML() {
 function openTvPicker() {
   const p = $("#tvpick"); if (!p) return;
   p.innerHTML = tvPickerHTML(); p.classList.remove("hidden");
-  tvsAll().forEach((t) => { if (!(S.link && t.id === S.link.id)) nowFetch(t); });
+  nowFetchAll();
 }
 function closeTvPicker() { const p = $("#tvpick"); if (p) p.classList.add("hidden"); }
 document.addEventListener("click", (e) => {
@@ -4790,8 +4804,8 @@ function renderSettings(v) {
   $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
   $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
   drawErrs();
-  // What the other TVs play: one read of each TV's topic, cached a minute. The linked TV is heard live.
-  tvsAll().forEach((t) => { if (!(S.link && t.id === S.link.id)) nowFetch(t); });
+  // What every TV plays: one read of the house topic, cached a minute. The linked TV is heard live too.
+  nowFetchAll();
 }
 function drawErrs() {
   const ul = $("#errList"), btn = $("#errClear"); if (!ul) return;
@@ -5057,7 +5071,7 @@ document.addEventListener("click", async (e) => {
       if (ul) ul.innerHTML = `<li><span class="pill">…</span><span>Asking your TVs. This takes about 10 seconds.</span></li>`;
       const r = await findTvs();
       const ul2 = $("#tvFound"), btn2 = $("#findTvBtn");
-      if (ul2) { ul2.innerHTML = tvFoundHTML(r); tvsAll().forEach((t) => { if (!(S.link && t.id === S.link.id)) nowFetch(t); }); }
+      if (ul2) { ul2.innerHTML = tvFoundHTML(r); statusAt = 0; nowFetchAll(); }
       if (btn2) btn2.disabled = false;
       const p = $("#tvpick"); if (p && !p.classList.contains("hidden")) openTvPicker();
       if (!r.error && !r.tvs.length) toast(NO_TV, "warn");
@@ -5195,7 +5209,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-18.2";
+const BUILD = "2026-10-18.3";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
