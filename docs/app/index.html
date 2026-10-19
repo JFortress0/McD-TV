@@ -56,6 +56,8 @@ nav.links a.on{color:#fff;background:rgba(255,255,255,.08)}
 .iconbtn:hover{color:#fff;background:rgba(255,255,255,.08)}
 @media (min-width:900px){nav.links{display:flex}.iconbtn{display:flex}}
 @media (max-width:420px){.tvpill .lbl{display:none}}
+#tvpick{position:fixed;right:12px;top:calc(var(--hdr) + env(safe-area-inset-top) + 6px);z-index:80;width:min(92vw,380px);background:#061722;border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+#tvpick.hidden{display:none}#tvpick h3{margin:0 0 6px;font-size:14px}#tvpick ul{max-height:60vh;overflow:auto}#tvpick .netlist li{align-items:center}#tvpick .netlist li>span:nth-child(2){flex:1;min-width:0}
 
 /* ---------- bottom tab bar (phones) ---------- */
 nav.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;justify-content:space-around;
@@ -583,6 +585,7 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
   <a href="#/list" data-nav="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z"/></svg>My List</a>
 </nav>
 
+<div id="tvpick" class="hidden" role="dialog" aria-label="Choose a TV"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -988,7 +991,8 @@ function setStatus(s) {
   if (s === "offline" && was !== "offline") autoFindTvs(); // the linked TV is quiet: ask the house which TVs are on
   const dot = $("#tvdot"), lbl = $("#tvlbl");
   dot.className = "dot " + s;
-  lbl.textContent = { none: "Not linked", connecting: "Connecting", online: "TV online", offline: "TV offline" }[s] || s;
+  const nm = linkedTvName();
+  lbl.textContent = nm ? nm + ({ connecting: " · connecting", offline: " · off" }[s] || "") : ({ none: "Not linked", connecting: "Connecting", online: "TV online", offline: "TV offline" }[s] || s);
   if (s === "online") { const b = $("#lvStale"); if (b) b.remove(); }
   const st = $("#setStatus"); if (st) st.innerHTML = statusHTML();
   // "Getting set up with your TV" spinner: swap it for the offline help once the TV fails to answer.
@@ -1026,6 +1030,7 @@ async function onRelay(raw, live) {
   if (!m || typeof m !== "object") return;
   if (live) { S.lastLive = Date.now(); setStatus("online"); clearTimeout(S.initTimer); }
   if (m.type === "web_init") applyInit(m);
+  else if (m.type === "state" || m.type === "now") applyTvState(m);
   else if (m.type === "addons") applyAddons(m);
   else if (m.type === "web_list") applyWebList(m);
   else if (m.type === "rd_resolve") {
@@ -1043,8 +1048,22 @@ async function onRelay(raw, live) {
   }
 }
 
+/** "state" (answer to hello) and "now" (playback changes) from the linked TV: its name, version and what plays. */
+function applyTvState(m) {
+  if (!S.link) return;
+  if (m.type === "state") {
+    tvRemember({ id: S.link.id, key: S.link.key, dev: m.device_id || "", name: m.device_name || "", label: m.tv_label || "", platform: m.platform || "", model: m.model || "", version: m.version || "", seen: m.ts || Date.now() });
+    if ("now_playing" in m) nowSet(S.link.id, m.now_playing, m.ts);
+    setStatus(S.status);
+  } else if ("now" in m) nowSet(S.link.id, m.now, m.ts);
+}
 function applyInit(m) {
   const prev = S.init || {};
+  if (S.link && (m.device_id || m.tv_label || m.platform)) {
+    tvRemember({ id: S.link.id, key: S.link.key, dev: m.device_id || "", name: "", label: m.tv_label || "", platform: m.platform || "", version: m.version || "", seen: m.ts || Date.now() });
+    if ("now_playing" in m) nowSet(S.link.id, m.now_playing, m.ts);
+    setStatus(S.status);
+  }
   delete m.rd_token; delete m.rd_expires_at; // older TVs sent a token: never kept
   // The Jarvis key is kept apart too: saved on this device only while "Use Jarvis on this device" is on.
   const hasJk = Object.prototype.hasOwnProperty.call(m, "jarvis_key");
@@ -1167,6 +1186,108 @@ async function connectWithCode(code) {
 const TVS_KEY = "mcdtv_tvs";
 const HOUSE_RX = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{20,}$/;
 function tvsRead() { const a = readJSON(TVS_KEY); return Array.isArray(a) ? a.filter((t) => t && typeof t === "object" && t.id && t.key) : []; }
+/**
+ * Saves what a TV said about itself. One entry per TV (device id) and per link id, the last 10. Empty values
+ * keep what is stored, except the label: a name removed on the TV goes away here too.
+ */
+function tvRemember(t) {
+  let a = tvsRead();
+  const i = a.findIndex((x) => x.id === t.id || (t.dev && x.dev === t.dev));
+  if (i >= 0) {
+    const keep = a[i];
+    a = a.filter((x, j) => j !== i && x.id !== t.id && !(t.dev && x.dev === t.dev));
+    a.push({ ...keep, ...Object.fromEntries(Object.entries(t).filter(([k, v]) => (v !== "" && v != null) || k === "label")) });
+  } else a.push(t);
+  LS.set(TVS_KEY, JSON.stringify(a.slice(-10)));
+}
+/** "Office TV" (the name J gave it), else "Fire TV". */
+function tvName(t) { return (t && (t.label || t.name || t.platform)) || "TV"; }
+/** "Office TV (Fire TV)" for lists. */
+function tvListName(t) { return tvName(t) + (t.label && t.platform ? " (" + t.platform + ")" : ""); }
+function linkedTv() { return S.link ? tvsRead().find((t) => t.id === S.link.id) : null; }
+/** "Fire TV · Jarvis v0.2.192" for the TV header line. */
+function tvDetail(t) { return t ? [t.label && t.platform ? t.platform : "", t.version ? "Jarvis v" + t.version : ""].filter(Boolean).join(" · ") : ""; }
+function linkedTvName() { const t = linkedTv(); return t && (t.label || t.name || t.platform) ? tvName(t) : (S.init && S.init.tv_label) || ""; }
+function tvOn(t) { return !!(t && t.seen && ((tvFindAt && t.seen >= tvFindAt) || Date.now() - t.seen < 90000)) || (S.link && t && t.id === S.link.id && S.status === "online"); }
+function tvSeenText(t) {
+  if (tvOn(t)) return "On now";
+  if (!t.seen) return "Not seen yet";
+  const d = new Date(t.seen), today = new Date().toDateString() === d.toDateString();
+  return "Last seen " + (today ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+}
+// ---------- now playing, per TV ----------
+const nowBy = new Map(); // link id -> {now, ts}
+function nowSet(id, now, ts) {
+  const prev = nowBy.get(id);
+  if (prev && (prev.ts || 0) > (ts || 0)) return;
+  nowBy.set(id, { now: now && now.name ? now : null, ts: ts || Date.now() });
+  document.querySelectorAll(`[data-now="${id}"]`).forEach((el) => { el.textContent = nowText(id); });
+}
+function nowText(id) {
+  const e = nowBy.get(id);
+  if (!e) return "";
+  if (!e.now) return "Nothing playing";
+  const n = e.now, ep = n.media === "tv" && n.season > 0 ? ` S${n.season} E${n.episode}` : "";
+  const pos = n.duration_ms > 0 ? ` · ${fmtClock(n.position_ms)} / ${fmtClock(n.duration_ms)}` : "";
+  return (n.playing ? "Playing " : "Paused ") + n.name + ep + (n.media === "live" ? " (Live TV)" : "") + pos;
+}
+function fmtClock(ms) { const s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); }
+/** Reads a TV's newest "now" or "state" from its own topic (one request, cached 60 s). The linked TV is heard live. */
+const nowAsked = new Map();
+async function nowFetch(t) {
+  if (!t || !t.id || !t.key) return;
+  if (Date.now() - (nowAsked.get(t.id) || 0) < 60000) return;
+  nowAsked.set(t.id, Date.now());
+  try {
+    const key = await importKey(t.key);
+    const r = await fetch(RELAY + "mcdtv-" + t.id + "-out/json?poll=1&since=3h", { cache: "no-store" });
+    if (!r.ok) return;
+    let best = null;
+    for (const line of (await r.text()).split("\n")) {
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      if (!e || e.event !== "message" || typeof e.message !== "string") continue;
+      const m = await decrypt(e.message, key);
+      if (!m || (m.type !== "now" && m.type !== "state")) continue;
+      const ts = +m.ts || (+e.time || 0) * 1000;
+      if (!best || ts >= best.ts) best = { ts, now: m.type === "now" ? m.now : m.now_playing };
+      if (m.type === "state") tvRemember({ id: t.id, key: t.key, dev: m.device_id || "", name: m.device_name || "", label: m.tv_label || "", platform: m.platform || "", version: m.version || "", seen: Math.max(t.seen || 0, ts) });
+    }
+    if (best) nowSet(t.id, best.now, best.ts);
+    else if (!nowBy.has(t.id)) nowSet(t.id, null, 1);
+  } catch {}
+}
+/** Every TV known here, the linked one first, then the ones seen most recently. */
+function tvsAll() {
+  const a = tvsRead().slice();
+  a.sort((x, y) => (S.link && x.id === S.link.id ? -1 : S.link && y.id === S.link.id ? 1 : (y.seen || 0) - (x.seen || 0)));
+  return a;
+}
+/** One row per TV: on or off, name and platform, version, last seen, what plays, and Use this TV. */
+function tvRowsHTML(list, compact) {
+  return list.map((t) => {
+    const me = S.link && S.link.id === t.id, on = tvOn(t);
+    const sub = [me ? "Play on TV goes here" : "", t.version ? "v" + t.version : "", tvSeenText(t)].filter(Boolean).join(" · ");
+    return `<li><span class="pill ${on ? "ok" : "no"}">${on ? "ON" : "OFF"}</span><span style="flex:1;min-width:0"><b>${esc(tvListName(t))}</b><span class="muted">${esc(sub)}</span><br><span class="muted" data-now="${esc(t.id)}">${esc(nowText(t.id))}</span></span>${me ? "" : `<button class="btn small" data-act="usetv" data-id="${esc(t.id)}">Use this TV</button>`}</li>`;
+  }).join("");
+}
+// ---------- TV picker (the pill in the header, when more than one TV is known) ----------
+function tvPickerHTML() {
+  const list = tvsAll();
+  return `<h3>Play on TV and Open on TV go to</h3><ul class="netlist">${tvRowsHTML(list, true)}</ul>
+    <div class="rowf" style="margin-top:10px;justify-content:space-between"><button class="btn small" data-act="findtvs">Find my TVs</button><a class="btn small" href="#/settings" data-act="closepick">Settings</a></div>`;
+}
+function openTvPicker() {
+  const p = $("#tvpick"); if (!p) return;
+  p.innerHTML = tvPickerHTML(); p.classList.remove("hidden");
+  tvsAll().forEach((t) => { if (!(S.link && t.id === S.link.id)) nowFetch(t); });
+}
+function closeTvPicker() { const p = $("#tvpick"); if (p) p.classList.add("hidden"); }
+document.addEventListener("click", (e) => {
+  const pill = e.target.closest("#tvpill");
+  if (pill) { if (tvsRead().length > 1) { e.preventDefault(); const p = $("#tvpick"); if (p && !p.classList.contains("hidden")) closeTvPicker(); else openTvPicker(); } return; }
+  if (!e.target.closest("#tvpick")) closeTvPicker();
+}, true);
+window.addEventListener("hashchange", closeTvPicker);
 /** No house link yet (no TV init, no code): take the one the Control page saved. A later TV init still wins. */
 function adoptHouse() {
   if (S.init && S.init.house) return false;
@@ -1212,18 +1333,15 @@ function findTvs() {
       const ts = +m.ts || (+e.time || 0) * 1000;
       const dev = m.from.slice(0, 64), old = by.get(dev);
       if (old && old.ts >= ts) continue;
-      by.set(dev, { dev, id: lm[1], key: lm[2], name: String(m.name || "TV").replace(/\s+/g, " ").trim().slice(0, 40) || "TV", ts });
+      const clean = (v, n) => String(v || "").replace(/\s+/g, " ").trim().slice(0, n);
+      const label = clean(m.label, 40), platform = clean(m.platform, 40);
+      by.set(dev, { dev, id: lm[1], key: lm[2], name: label || clean(m.name, 40) || platform || "TV", label, platform, model: clean(m.model, 40), version: clean(m.version, 20), ts });
     }
     const tvs = [...by.values()].sort((a, b) => b.ts - a.ts);
+    const cur = S.link && tvsRead().find((t) => t.id === S.link.id);
     if (!tvs.length) return { tvs, error: "" };
-    // Shared with the Control page: same shape, plus "dev". One entry per link id and per TV, the last 10.
-    const before = tvsRead(), cur = S.link && before.find((t) => t.id === S.link.id);
-    let a = before;
-    for (const t of tvs.slice().reverse()) {
-      a = a.filter((x) => x.id !== t.id && x.dev !== t.dev);
-      a.push({ id: t.id, key: t.key, name: t.name, house, dev: t.dev });
-    }
-    LS.set(TVS_KEY, JSON.stringify(a.slice(-10)));
+    // Shared with the Control page: same shape (id, key, name, house, dev, label, platform, model, version, seen).
+    for (const t of tvs.slice().reverse()) tvRemember({ id: t.id, key: t.key, name: t.name, house, dev: t.dev, label: t.label, platform: t.platform, model: t.model, version: t.version, seen: t.ts });
     let switched = null;
     if (!(S.link && tvs.some((t) => t.id === S.link.id))) {
       // Same TV with a new link, or no TV linked yet: link it. A different TV that is on only shows in the list,
@@ -1254,12 +1372,15 @@ function autoFindTvs() {
   tvAutoFind = true;
   findTvs().catch(() => {});
 }
+/** Settings > Your TVs: every TV known here, plus the result of the last Find my TVs. */
 function tvFoundHTML(r) {
-  if (!r) return "";
-  if (r.error === "nohouse") return `<li><span class="pill no">!</span><span>Connect this phone to your house first: use Connect with a code below.</span></li>`;
-  if (r.error) return `<li><span class="pill no">!</span><span>Couldn't reach the TV link. Check your internet and try again.</span></li>`;
-  if (!r.tvs.length) return `<li><span class="pill no">!</span><span>${esc(NO_TV)}</span></li>`;
-  return r.tvs.map((t) => `<li><span class="pill ${S.link && S.link.id === t.id ? "ok" : ""}">TV</span><span style="flex:1"><b>${esc(t.name)}</b>${S.link && S.link.id === t.id ? `<span class="muted">Linked now</span>` : ""}</span>${S.link && S.link.id === t.id ? "" : `<button class="btn small" data-act="usetv" data-id="${esc(t.id)}">Use this TV</button>`}</li>`).join("");
+  let note = "";
+  if (r && r.error === "nohouse") note = `<li><span class="pill no">!</span><span>Connect this phone to your house first: use Connect with a code below.</span></li>`;
+  else if (r && r.error) note = `<li><span class="pill no">!</span><span>Couldn't reach the TV link. Check your internet and try again.</span></li>`;
+  else if (r && !r.tvs.length) note = `<li><span class="pill no">!</span><span>${esc(NO_TV)}</span></li>`;
+  const list = tvsAll();
+  if (!list.length) return note || `<li><span class="pill">?</span><span>No TVs known here yet. Tap Find my TVs.</span></li>`;
+  return note + tvRowsHTML(list, false);
 }
 async function askInit() {
   if (!S.link) return;
@@ -1296,10 +1417,12 @@ async function remote(cmd, sending) {
   if (!S.link) { toast("Link your TV first: open Settings in this app.", "warn"); return false; }
   const req = newReq();
   cmd.req = req; cmd.ts = Date.now();
+  // The target TV, by name: the command goes to that TV's own topic, and "to" makes every other TV ignore it.
+  const target = linkedTv(); if (target && target.dev) cmd.to = target.dev;
   // Known to be off: say so sooner. The command still goes out in case the TV just came back.
   const wait = S.status === "offline" ? 5000 : 8000;
-  pending.set(req, setTimeout(() => { pending.delete(req); toast("Your TV is not answering. Turn it on and open Jarvis.", "warn"); }, wait));
-  if (sending) toast(sending);
+  pending.set(req, setTimeout(() => { pending.delete(req); toast((linkedTvName() || "Your TV") + " is not answering. Turn it on and open Jarvis.", "warn"); }, wait));
+  if (sending) toast(linkedTvName() ? sending.replace("your TV", linkedTvName()) : sending);
   try { await relaySend(cmd); return true; }
   catch (e) { clearTimeout(pending.get(req)); pending.delete(req); toast("Couldn't reach the relay. Check your internet.", "warn"); return false; }
 }
@@ -4579,6 +4702,7 @@ function renderProfiles(v, next) {
 function statusHTML() {
   if (!S.link) return `<span class="pill no">Not linked</span>`;
   const m = { online: ["ok", "TV online"], connecting: ["", "Connecting"], offline: ["no", "TV not answering"], none: ["no", "Not linked"] }[S.status] || ["", S.status];
+  if (linkedTvName()) m[1] = m[1].replace("TV", "").trim().replace(/^./, (c) => c.toUpperCase()) || "Online";
   return `<span class="pill ${m[0]}">${m[1]}</span>`;
 }
 function renderSettings(v) {
@@ -4587,8 +4711,9 @@ function renderSettings(v) {
   const oname = { no_asia: "Hide Asian-made titles", us: "Made in the US only", all: "All countries" };
   v.innerHTML = `<div class="page"><h1>Settings</h1>
     <div class="panel"><h2>Your TV</h2>
-      <p><span id="setStatus">${statusHTML()}</span></p>
-      ${S.link ? `<p class="muted">This browser is linked to your Jarvis TV. Play on TV, Open on TV and Watchlist are sent to the TV encrypted, through the same relay as the Control page.</p>
+      <p><span id="setStatus">${statusHTML()}</span>${linkedTvName() ? ` <b>${esc(linkedTvName())}</b> <span class="muted">${esc(tvDetail(linkedTv()))}</span>` : ""}</p>
+      ${S.link ? `<p class="muted" data-now="${esc(S.link.id)}">${esc(nowText(S.link.id))}</p>
+        <p class="muted">Play on TV, Open on TV and Watchlist go to this TV, encrypted, through the same relay as the Control page. Name each TV in its Settings or on the Control page, then pick one below or from the TV pill at the top.</p>
         <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="retry">Refresh from TV</button><a class="btn small" href="../#${S.link.id}.${S.link.key}">Control page</a><button class="btn small" data-act="copylink">Copy link</button><button class="btn small" data-act="unpair">Unlink this browser</button></div>`
       : `<p class="muted">Not linked. <a href="#/pair" style="color:var(--bright)">How to link your TV</a></p>`}
       <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="findtvs" id="findTvBtn">Find my TVs</button></div>
@@ -4665,6 +4790,8 @@ function renderSettings(v) {
   $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
   $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
   drawErrs();
+  // What the other TVs play: one read of each TV's topic, cached a minute. The linked TV is heard live.
+  tvsAll().forEach((t) => { if (!(S.link && t.id === S.link.id)) nowFetch(t); });
 }
 function drawErrs() {
   const ul = $("#errList"), btn = $("#errClear"); if (!ul) return;
@@ -4930,18 +5057,21 @@ document.addEventListener("click", async (e) => {
       if (ul) ul.innerHTML = `<li><span class="pill">…</span><span>Asking your TVs. This takes about 10 seconds.</span></li>`;
       const r = await findTvs();
       const ul2 = $("#tvFound"), btn2 = $("#findTvBtn");
-      if (ul2) ul2.innerHTML = tvFoundHTML(r);
+      if (ul2) { ul2.innerHTML = tvFoundHTML(r); tvsAll().forEach((t) => { if (!(S.link && t.id === S.link.id)) nowFetch(t); }); }
       if (btn2) btn2.disabled = false;
+      const p = $("#tvpick"); if (p && !p.classList.contains("hidden")) openTvPicker();
       if (!r.error && !r.tvs.length) toast(NO_TV, "warn");
       break;
     }
     case "usetv": {
-      const t = tvFindLast && tvFindLast.tvs.find((x) => x.id === d.id);
+      const t = tvsRead().find((x) => x.id === d.id) || (tvFindLast && tvFindLast.tvs.find((x) => x.id === d.id));
       if (!t) break;
-      await useTv(t); toast("Linked to your " + t.name, "ok");
+      await useTv(t); toast("Play on TV now goes to " + tvName(t), "ok");
+      closeTvPicker();
       const ul = $("#tvFound"); if (ul) ul.innerHTML = tvFoundHTML(tvFindLast);
       break;
     }
+    case "closepick": closeTvPicker(); break;
     case "paircode": {
       const inp = $("#pairCode");
       const code = String((inp && inp.value) || "").replace(/\D/g, "");
@@ -5065,7 +5195,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-18.1";
+const BUILD = "2026-10-18.2";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
