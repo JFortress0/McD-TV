@@ -51,6 +51,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.mcd.tv.data.Library
+import com.mcd.tv.data.NowPlaying
 import com.mcd.tv.data.PlayMeta
 import com.mcd.tv.data.RdErrors
 import com.mcd.tv.ui.ActionButton
@@ -111,6 +112,8 @@ fun PlayerScreen(
     var audioNote by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val progress = remember { ProgressSaver(meta) }
+    // What this TV plays, for the web app ("now" on the relay). Cleared when the player leaves.
+    val report = remember { NowReporter(title, meta, live) }
     @Suppress("DEPRECATION") // androidx.compose.ui.platform.LocalLifecycleOwner: always on the classpath with this BOM
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnSleep by rememberUpdatedState(onSleep)
@@ -166,6 +169,7 @@ fun PlayerScreen(
         val listener = object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 paused = !playWhenReady
+                report.update(player)
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -174,6 +178,7 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     networkRetries = 0 // playing again: reset the retry budget
                     liveNote = null
+                    report.update(player)
                 }
                 if (state == Player.STATE_ENDED) {
                     progress.save(player, force = true)
@@ -267,6 +272,7 @@ fun PlayerScreen(
             analytics?.let { player.removeAnalyticsListener(it) }
             retryJob?.cancel()
             progress.save(player, force = true)
+            report.clear()
             player.removeListener(listener)
             player.release() // frees the hardware decoder; important on low-RAM Fire Sticks
         }
@@ -321,6 +327,7 @@ fun PlayerScreen(
         while (true) {
             delay(15_000)
             progress.save(player)
+            report.update(player)
         }
     }
 
@@ -499,6 +506,28 @@ private val SLEEP_STEPS = intArrayOf(0, 30, 60, 90, SLEEP_END_OF_VIDEO)
 
 /** How long the screen stays on while the player is paused. */
 private const val SCREEN_ON_WHILE_PAUSED_MS = 10 * 60_000L
+
+/** Keeps [NowPlaying] current for this player: title, play or pause, position. Relay decides when to send it. */
+private class NowReporter(private val title: String, private val meta: PlayMeta?, private val live: Boolean) {
+    fun update(player: Player) {
+        val dur = player.duration
+        NowPlaying.set(
+            NowPlaying.State(
+                media = if (live) "live" else meta?.type ?: "video",
+                id = meta?.tmdbId ?: 0,
+                name = meta?.name?.ifBlank { null } ?: title,
+                season = meta?.season ?: 0,
+                episode = meta?.episode ?: 0,
+                playing = player.playWhenReady && player.playbackState != Player.STATE_ENDED,
+                positionMs = player.currentPosition.coerceAtLeast(0L),
+                durationMs = if (dur > 0) dur else 0L,
+                ts = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    fun clear() = NowPlaying.clear()
+}
 
 /** Writes the resume position, skipping writes when the position moved 5 s or less since the last one. */
 private class ProgressSaver(private val meta: PlayMeta?) {
