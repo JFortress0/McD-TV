@@ -82,17 +82,26 @@ check_screen "person:6384" "Keanu"
 # never open on focus), the edit dialog (opens on OK, one BACK closes it) and the update check in two presses.
 kb_shown() { adb shell dumpsys input_method | grep -q "mInputShown=true"; }
 dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "qa-out/$1.xml" >/dev/null 2>&1; }
+# Writes what has focus and the visible text to the log (screenshots are in the artifact; this is for log readers).
+describe() {
+  dump "ui-$1"
+  echo "      [$1] focused: $(grep -o '<node [^>]*focused="true"[^>]*>' "qa-out/ui-$1.xml" 2>/dev/null | grep -o 'text="[^"]*"\|content-desc="[^"]*"\|bounds="[^"]*"' | tr '\n' ' ' | cut -c1-300)"
+  echo "      [$1] text: $(grep -o 'text="[^"]\+"' "qa-out/ui-$1.xml" 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-700)"
+}
 KB_FAIL=""
 for cat in updates tv profiles playback sources wall network about; do
   adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "settings:$cat" >/dev/null
   sleep 8
   shot "settings-$cat"
+  describe "settings-$cat"
   adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+  describe "settings-$cat-right"
   for i in $(seq 1 10); do
     adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
     kb_shown && KB_FAIL="$KB_FAIL $cat:$i"
   done
   shot "settings-$cat-walked"
+  describe "settings-$cat-walked"
 done
 if [ -z "$KB_FAIL" ]; then pass "Settings: D-pad never opens the keyboard"; else fail "Settings: D-pad never opens the keyboard (opened at$KB_FAIL)"; fi
 
@@ -102,7 +111,7 @@ sleep 9
 adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
 adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 6
 shot settings-updates-checked
-dump ui-settings-updates-checked
+describe settings-updates-checked
 if grep -qiE "up to date|is ready|Checking|t check" qa-out/ui-settings-updates-checked.xml && grep -qi "Last checked" qa-out/ui-settings-updates-checked.xml; then
   pass "Settings: update check in two presses"
 else
@@ -117,12 +126,12 @@ adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
 kb_shown && fail "Settings: no keyboard on an edit row before OK" || pass "Settings: no keyboard on an edit row before OK"
 adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 3
 shot settings-edit-open
-dump ui-settings-edit-open
+describe settings-edit-open
 grep -q "Rename Profile 1" qa-out/ui-settings-edit-open.xml && pass "Settings: OK on an edit row opens the editor" || fail "Settings: OK on an edit row opens the editor"
 kb_shown && echo "      keyboard is open in the editor" | tee -a "$R"
 adb shell input keyevent KEYCODE_BACK; sleep 2
 shot settings-edit-closed
-dump ui-settings-edit-closed
+describe settings-edit-closed
 if ! grep -q "Rename Profile 1" qa-out/ui-settings-edit-closed.xml && grep -q "Profile 1" qa-out/ui-settings-edit-closed.xml && ! kb_shown; then
   pass "Settings: one BACK closes the keyboard and the editor"
 else
