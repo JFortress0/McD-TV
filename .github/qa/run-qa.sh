@@ -89,6 +89,7 @@ describe() {
   echo "      [$1] text: $(grep -o 'text="[^"]\+"' "qa-out/ui-$1.xml" 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-700)"
 }
 KB_FAIL=""
+NAV_FAIL=""
 for cat in updates tv profiles playback sources wall network about; do
   adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "settings:$cat" >/dev/null
   sleep 8
@@ -96,6 +97,7 @@ for cat in updates tv profiles playback sources wall network about; do
   describe "settings-$cat"
   adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
   describe "settings-$cat-right"
+  grep -q '<node [^>]*focused="true"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,\([2-9][0-9][0-9]\|1[0-9][0-9][0-9]\)\]' "qa-out/ui-settings-$cat-right.xml" || NAV_FAIL="$NAV_FAIL $cat"
   for i in $(seq 1 10); do
     adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
     kb_shown && KB_FAIL="$KB_FAIL $cat:$i"
@@ -103,6 +105,8 @@ for cat in updates tv profiles playback sources wall network about; do
   shot "settings-$cat-walked"
   describe "settings-$cat-walked"
 done
+# RIGHT from the rail must stay in the page, never jump to the top bar (focus starts on the rail).
+if [ -z "$NAV_FAIL" ]; then pass "Settings: opens with focus in the page"; else fail "Settings: opens with focus in the page (top bar or nothing at:$NAV_FAIL)"; fi
 if [ -z "$KB_FAIL" ]; then pass "Settings: D-pad never opens the keyboard"; else fail "Settings: D-pad never opens the keyboard (opened at$KB_FAIL)"; fi
 
 # Fresh open lands on App updates in the rail: RIGHT reaches Check for updates, OK checks.
