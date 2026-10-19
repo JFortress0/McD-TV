@@ -115,6 +115,12 @@ class SettingsModelTest {
     }
 
     @Test
+    fun possessives() {
+        assertEquals("Dad's", possessive("Dad"))
+        assertEquals("Kids'", possessive("Kids"))
+    }
+
+    @Test
     fun sizeLimits() {
         assertEquals("No limit", sizeLimitLabel(0))
         assertEquals("40 GB", sizeLimitLabel(40))

@@ -86,7 +86,7 @@ fun updateView(installed: String, available: String?, checking: Boolean, error: 
     available != null -> UpdateView("Version $available is ready", "Your settings and profiles stay.", "Update now", ready = true, busy = false)
     checking -> UpdateView("Checking for updates…", "This takes a few seconds.", "Checking…", ready = false, busy = true)
     error.isNotBlank() -> UpdateView("Couldn't check", error, "Try again", ready = false, busy = false)
-    checkedAt <= 0L -> UpdateView("Version $installed", "Jarvis also checks by itself every 6 hours.", "Check for updates", ready = false, busy = false)
+    checkedAt <= 0L -> UpdateView("Version $installed", "Press the button to check now.", "Check for updates", ready = false, busy = false)
     else -> UpdateView("You're up to date", "Version $installed is the latest.", "Check for updates", ready = false, busy = false)
 }
 
@@ -110,3 +110,6 @@ val EPISODE_LIMITS = listOf(4, 8, 12, 20, 0)
 fun sizeLimitLabel(gb: Int) = if (gb <= 0) "No limit" else "$gb GB"
 
 fun onOff(on: Boolean) = if (on) "On" else "Off"
+
+/** "Dad's", "Kids'". */
+fun possessive(name: String) = if (name.endsWith("s", ignoreCase = true)) "$name'" else "$name's"

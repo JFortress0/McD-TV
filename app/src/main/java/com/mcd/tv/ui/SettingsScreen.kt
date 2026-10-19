@@ -139,10 +139,16 @@ fun SettingsScreen(nav: Nav) {
         runCatching { rowReq(focus.category, r).requestFocus() }
     }
 
-    // Put focus where Settings opens: the saved row on a return, else the rail.
+    // Put focus where Settings opens: the saved row on a return, else the rail. A request made before the
+    // window has focus can be lost on a cold start, so try again for a short while until the page holds focus.
+    var pageHasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        withFrameNanos { }
-        if (focus.inContent) focusContent() else focusRail()
+        repeat(8) {
+            withFrameNanos { }
+            if (pageHasFocus) return@LaunchedEffect
+            if (focus.inContent) focusContent() else focusRail()
+            delay(250)
+        }
     }
     // Back to the row that opened a dialog.
     LaunchedEffect(dialog) {
@@ -158,7 +164,7 @@ fun SettingsScreen(nav: Nav) {
     BackHandler(enabled = focus.inContent && dialog == null) { focusRail() }
 
     TabPage(nav, NavTab.Settings, autoFocus = false) {
-        Row(Modifier.fillMaxSize().padding(start = Space.XXL, end = Space.XXL, top = Space.S)) {
+        Row(Modifier.fillMaxSize().onFocusChanged { pageHasFocus = it.hasFocus }.padding(start = Space.XXL, end = Space.XXL, top = Space.S)) {
             // ---- Rail
             Column(
                 Modifier.width(260.dp).fillMaxHeight().verticalScroll(rememberScrollState())
@@ -343,7 +349,7 @@ private fun ProfilesCategory(ctx: SettingsCtx, changed: () -> Unit) {
     }
     SettingsSection("Taste")
     Prefs.PROFILE_IDS.forEach { id ->
-        SettingsRow("${Prefs.profileName(id)}'s taste", { ctx.nav.push(Screen.Taste(id)) }, ctx.row().modifier, value = "Genres and topics to like or skip.")
+        SettingsRow(possessive(Prefs.profileName(id)) + " taste", { ctx.nav.push(Screen.Taste(id)) }, ctx.row().modifier, value = "Genres and topics to like or skip.")
     }
     SettingsNote(
         "Each profile has its own history, Continue Watching, My List, favorites and Live TV favorites. " +
