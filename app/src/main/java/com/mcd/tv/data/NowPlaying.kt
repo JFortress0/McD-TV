@@ -4,12 +4,12 @@ import org.json.JSONObject
 
 /**
  * What this TV is playing right now, for the web app ("what's on the living room TV?"). The player sets it;
- * Relay sends it on the TV's own topic as {"type":"now","now":{...}|null,"ts"} and inside every "state".
- * Pure logic (no Android). Tests in NowPlayingTest.
+ * HouseSync posts it on the house topic as "tv_status" on play, pause and stop only, at most once per 10 s, and
+ * Relay puts it inside every "state" and "web_init" as "now_playing". Pure logic (no Android). Tests in NowPlayingTest.
  */
 object NowPlaying {
-    /** Position updates go out at most this often while nothing else changes. */
-    const val POSITION_MS = 60_000L
+    /** "tv_status" goes out at most this often. A change inside the gap is sent when the gap ends. */
+    const val MIN_GAP_MS = 10_000L
 
     /** [media]: "movie", "tv", "live" or "video". [id]: TMDB id, 0 when unknown. */
     data class State(
@@ -55,14 +55,16 @@ object NowPlaying {
             .put("ts", it.ts)
     }
 
-    /**
-     * Should a message go out for [next] after [last] went out at [lastAt]? Yes when playback started, stopped,
-     * paused or changed title; else only when [POSITION_MS] passed (a position update).
-     */
-    fun sendDue(last: State?, lastAt: Long, next: State?, now: Long): Boolean {
+    /** True when [next] differs from the last sent [last] in a way phones must hear: play, pause, stop or a new title. */
+    fun changed(last: State?, next: State?): Boolean {
         if (last == null && next == null) return false
         if (last == null || next == null) return true
-        if (last.key != next.key) return true
-        return now - lastAt >= POSITION_MS || now < lastAt
+        return last.key != next.key
+    }
+
+    /** How long to wait before sending, given the last send at [lastAt] (0 = never): 0 when the gap has passed. */
+    fun waitMs(lastAt: Long, now: Long): Long {
+        if (lastAt <= 0L || now < lastAt) return 0L
+        return (MIN_GAP_MS - (now - lastAt)).coerceAtLeast(0L)
     }
 }

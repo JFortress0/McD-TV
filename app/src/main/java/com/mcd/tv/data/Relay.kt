@@ -102,29 +102,9 @@ object Relay {
         ensureLink()
         scope.launch { listen(generation) }
         scope.launch { runCatching { publishState("TV started") } }
-        NowPlaying.onChange { s -> scope.launch { runCatching { publishNow(s) } } }
         HouseSync.start()
     }
 
-    private val nowLock = Any()
-    private var lastNow: NowPlaying.State? = null
-    private var lastNowAt = 0L
-
-    /** Tells phones what plays here: at once on start, pause, resume, stop or a new title; else once a minute. */
-    private suspend fun publishNow(s: NowPlaying.State?, force: Boolean = false) {
-        val now = System.currentTimeMillis()
-        synchronized(nowLock) {
-            if (!force && !NowPlaying.sendDue(lastNow, lastNowAt, s, now)) return
-            lastNow = s
-            lastNowAt = now
-        }
-        val o = JSONObject()
-            .put("type", "now")
-            .put("now", NowPlaying.json(s) ?: JSONObject.NULL)
-            .put("from", Prefs.deviceId)
-            .put("ts", now)
-        Http.postText(BASE + outTopic, encrypt(o.toString()))
-    }
 
     // ---------------- crypto: deflate, then AES-256-GCM; "v1:" + base64url(iv || ciphertext+tag) ----------------
 
@@ -212,15 +192,18 @@ object Relay {
         if (to.isNotBlank() && to != Prefs.deviceId) return
         when (cmd.optString("cmd")) {
             "hello" -> publishState("Connected")
-            // Jarvis Wall on this TV: "start" or "stop" the screen, "mode" = "photos" (photos only) or "" (photos and calendar).
-            "wall" -> {
+            // Jarvis Wall on this TV, from the Control page. An optional "mode": "photos" (photos only) or "" (photos and calendar).
+            "wall_start", "wall_stop" -> {
                 if (isStale(cmd)) return
                 if (cmd.has("mode")) Wall.setMode(cmd.optString("mode"))
-                when (cmd.optString("action")) {
-                    "start" -> { navChannel.trySend(RemoteNav.Wall(true)); publishAck(cmd, "Wall started on ${HouseSync.deviceName()}") }
-                    "stop" -> { navChannel.trySend(RemoteNav.Wall(false)); publishAck(cmd, "Wall stopped on ${HouseSync.deviceName()}") }
-                    else -> publishAck(cmd, "Wall shows " + if (Prefs.wallMode == "photos") "photos only" else "photos and calendar")
-                }
+                val start = cmd.optString("cmd") == "wall_start"
+                navChannel.trySend(RemoteNav.Wall(start))
+                publishAck(cmd, (if (start) "Wall started on " else "Wall stopped on ") + HouseSync.deviceName())
+                publishState(status)
+            }
+            "wall_mode" -> {
+                Wall.setMode(cmd.optString("mode"))
+                publishAck(cmd, "Wall shows " + if (Prefs.wallMode == "photos") "photos only" else "photos and calendar")
                 publishState(status)
             }
             "set" -> {

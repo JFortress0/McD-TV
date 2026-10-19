@@ -7,6 +7,7 @@ import com.mcd.tv.data.sync.Backoff
 import com.mcd.tv.data.sync.ProfileSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -204,7 +205,48 @@ object HouseSync {
             delay(LINK_ANNOUNCE_DELAY_MS) // after the start-up sync_req, so the house's burst limit is not hit
             runCatching { announceLinkIfDue() }
         }
+        NowPlaying.onChange { s -> onPlayback(s) }
         ProfileSync.start()
+    }
+
+    private val statusLock = Any()
+    private var statusLast: NowPlaying.State? = null
+    private var statusLastAt = 0L
+    private var statusJob: Job? = null
+
+    /**
+     * The player changed state. "tv_status" goes out on play, pause, stop or a new title only, at most once per
+     * 10 s: a change inside the gap is sent when the gap ends (the newest state at that time). Position updates
+     * alone never send; phones take the position from the last event.
+     */
+    private fun onPlayback(s: NowPlaying.State?) {
+        synchronized(statusLock) {
+            if (!NowPlaying.changed(statusLast, s)) return
+            val wait = NowPlaying.waitMs(statusLastAt, System.currentTimeMillis())
+            statusJob?.cancel()
+            statusJob = scope.launch {
+                if (wait > 0) delay(wait)
+                runCatching { publishStatus() }
+            }
+        }
+    }
+
+    /** Posts this TV's playback state to the house. Phones read the newest one per TV. */
+    private suspend fun publishStatus() {
+        if (Prefs.houseId.isBlank() || Prefs.houseKey.isBlank() || !linkAllowed() || !canPublish()) return
+        val s = NowPlaying.current
+        val now = System.currentTimeMillis()
+        synchronized(statusLock) { statusLast = s; statusLastAt = now }
+        post(
+            JSONObject()
+                .put("type", "tv_status")
+                .put("from", Prefs.deviceId)
+                .put("name", deviceName())
+                .put("label", Prefs.tvLabel)
+                .put("platform", platform())
+                .put("now", NowPlaying.json(s) ?: JSONObject.NULL)
+                .put("ts", now),
+        )
     }
 
     /** Wait after start before announcing this TV's link. */
@@ -417,8 +459,8 @@ object HouseSync {
         val from = m.optString("from")
         if (from == Prefs.deviceId) return
         when (m.optString("type")) {
-            // Phones and TVs finding each other's setup link. Not peers for profile sync, never applied.
-            "tv_link" -> return
+            // Phones and TVs finding each other's setup link, and playback state. Not peers for profile sync, never applied.
+            "tv_link", "tv_status" -> return
             "tv_who" -> {
                 if (!linkAllowed()) return
                 val now = System.currentTimeMillis()
