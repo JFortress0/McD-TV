@@ -222,11 +222,13 @@ class MainActivity : ComponentActivity() {
             "search" -> Screen.Search
             "ask" -> Screen.AskJarvis(askExtra)
             "wall" -> Screen.Wall
-            else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra)
-                else if (savedInstanceState?.getBoolean(WALL_UP) == true) Screen.Wall.also { ScreenAwake.log("Wall reopened after the app was rebuilt") }
-                else null
+            else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
         }
-        setContent { McdTheme { App(startScreen) } }
+        // Rebuilt while the Wall was up: open the Wall again. This wins over a deep link, because a rebuilt
+        // activity gets its first launch intent again, which is old news by then.
+        val wallWasUp = savedInstanceState?.getBoolean(WALL_UP) == true
+        if (wallWasUp) ScreenAwake.log("Wall reopened after the app was rebuilt")
+        setContent { McdTheme { App(if (wallWasUp) Screen.Wall else startScreen) } }
     }
 
     private companion object {
