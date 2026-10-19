@@ -42,6 +42,8 @@ li:last-child{border-bottom:0}
 .msg{color:var(--muted)}.err{color:#ff6b6b}.good{color:#5fd38a}
 .hint{color:var(--muted);font-size:13px}
 .hidden{display:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.sub{color:var(--muted);font-size:12px}
 a.btnlink{display:inline-block;background:#fff;color:#05070D;border-radius:999px;padding:10px 16px;font-weight:700;font-size:14px;text-decoration:none}
 a.btnlink:hover{box-shadow:0 0 0 2px var(--accent2),0 0 16px rgba(110,160,255,.35)}a.btnlink:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
 
@@ -100,6 +102,15 @@ a{color:var(--accent)}
     <div class="grow"><div class="name">Browse on your phone or computer</div><div class="hint">Posters, trailers and cast. Tap Play on TV and the TV starts it.</div></div>
     <a class="btnlink" id="webAppLink" href="app/">Open Jarvis web app</a>
   </div>
+  <h2>This TV</h2>
+  <div class="card">
+    <label>Name this TV (shown on your phone and in every TV list)</label>
+    <div class="row"><input id="tvLabel" maxlength="40" autocomplete="off" placeholder="Living Room TV, Office TV, The Wall"></div>
+    <div class="chips"><button class="small" onclick="pickLabel('Living Room TV')">Living Room TV</button><button class="small" onclick="pickLabel('Office TV')">Office TV</button><button class="small" onclick="pickLabel('The Wall')">The Wall</button></div>
+    <p class="hint" id="tvInfo"></p>
+    <p class="hint" id="nowPlaying"></p>
+  </div>
+
   <p class="hint">Adding or removing an addon saves to the TV right away. For the other boxes, tap <b>Save to TV</b>. Changes are sent to your TV over the internet, encrypted end to end. Jarvis must be open on the TV to receive them, or they apply the next time it opens (within 12 hours).</p>
 
   <h2>Addons (sources)</h2>
@@ -129,8 +140,11 @@ a{color:var(--accent)}
     <label>Wall key (WALL_KEY on Netlify). Leave blank to keep the current one.</label><input id="wallKey" type="password" placeholder="Paste to replace" autocomplete="off">
     <label>Baby due date (the Wall counts down to it). Leave blank to hide.</label><input id="wallDue" type="date">
     <label>Baby's first name (optional, shown on the Wall)</label><input id="wallBaby" maxlength="20" autocomplete="off">
+    <label>What the Wall shows on this TV</label>
+    <select id="wallMode"><option value="">Photos and calendar</option><option value="photos">Photos only</option></select>
     <label><input type="checkbox" id="wallStart" style="width:auto"> This TV opens in Wall mode</label>
-    <p class="hint">Photo frame and family calendar for a wall TV. Linked TVs share the address and key. "Opens in Wall mode" is for this TV only.</p>
+    <div class="row" style="margin-top:10px"><button class="primary" onclick="wallCmd('start')">Start Wall on this TV</button><button onclick="wallCmd('stop')">Stop Wall</button><span class="msg" id="wallMsg"></span></div>
+    <p class="hint">Photo frame and family calendar for a wall TV. Linked TVs share the address and key. "Opens in Wall mode", what the Wall shows and the Start and Stop buttons are for this TV only. Your other TVs below have their own Start and Stop.</p>
   </div>
 
   <h2>Keys</h2>
@@ -164,7 +178,8 @@ a{color:var(--accent)}
 
   <h2>Your other TVs</h2>
   <div class="card">
-    <p class="hint"><b>Copy once</b> gives another TV (a friend's, say) a one-time copy of your setup without your Real-Debrid, and the TVs don't stay linked. TVs that share settings stay the same: change a key, an addon or the playlist on one, and the others update within seconds. Watch history and Continue Watching stay separate on each TV.</p>
+    <p class="hint">Every TV in your house, with its name, platform, Jarvis version and when it was last seen. <b>Find my TVs</b> asks them to report in (about 10 seconds). <b>Open</b> switches this page to that TV. <b>Copy once</b> gives another TV (a friend's, say) a one-time copy of your setup without your Real-Debrid, and the TVs don't stay linked. TVs that share settings stay the same: change a key, an addon or the playlist on one, and the others update within seconds. Watch history and Continue Watching stay separate on each TV.</p>
+    <div class="row" style="margin-bottom:8px"><button id="findBtn" onclick="findTvs(true)">Find my TVs</button><span class="msg" id="findMsg"></span></div>
     <ul id="tvList"></ul>
     <label>Add another TV: open this page once from that TV's QR code, or paste its link here</label>
     <div class="row"><input id="otherLink" placeholder="https://jfortress0.github.io/McD-TV/#…"><button onclick="addOther()">Add</button></div>
@@ -232,8 +247,10 @@ async function onMessage(m) {
   const fresh = !state;
   state = s;
   $("dot").classList.add("on");
-  $("tvStatus").lastChild.textContent = "TV " + (s.version ? "v" + s.version + " " : "") + "• " + (s.note || "online") + " • " + new Date(lastNoteTs).toLocaleTimeString();
-  tvUpsert({ id: link.id, key: link.key, name: s.device_name || "", house: s.house || "" });
+  $("tvStatus").lastChild.textContent = (s.tv_label || s.device_name || "TV") + (s.platform ? " · " + s.platform : "") + (s.version ? " v" + s.version : "") + " • " + (s.note || "online") + " • " + new Date(lastNoteTs).toLocaleTimeString();
+  tvUpsert({ id: link.id, key: link.key, name: s.device_name || "", house: s.house || "", dev: s.device_id || "", label: s.tv_label || "", platform: s.platform || "", model: s.model || "", version: s.version || "", seen: s.ts || Date.now() });
+  if (fresh) setTimeout(() => findTvs(false), 1500); // once per page open: the other TVs' names and versions
+  drawNow(s.now_playing);
   if (fresh || !dirtyFlag) render();
   renderShare();
   if (/Saved/.test(s.note || "")) { $("saveMsg").className = "good"; $("saveMsg").textContent = "Saved on the TV ✓"; }
@@ -253,6 +270,8 @@ async function connect() {
 
 // ---------- page ----------
 let dirtyFlag = false;
+// Models the TV app already labels (TvIdentity.kt). Others show their model, so they can be added there.
+const KNOWN_MODELS = ["AFTHY7ABBA"];
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 function render() {
   addons = (state.addon_urls || []).map((u) => ({ url: u, name: (state.addon_names || {})[u] || "" }));
@@ -261,6 +280,9 @@ function render() {
   $("tmdbState").innerHTML = state.tmdb_set ? '<span class="pill ok">TMDB key set</span>' : '<span class="pill no">No TMDB key</span>';
   $("mdbState").innerHTML = state.mdblist_set ? '<span class="pill ok">MDBList key set</span>' : '<span class="pill no">No MDBList key</span>';
   $("wallState").innerHTML = state.wall_key_set ? '<span class="pill ok">Wall key set</span>' : '<span class="pill no">No wall key</span>';
+  $("tvLabel").value = state.tv_label || "";
+  $("tvInfo").textContent = [state.platform || state.device_name || "TV", state.model && !KNOWN_MODELS.includes(state.model.toUpperCase()) ? "model " + state.model : "", state.version ? "Jarvis v" + state.version : ""].filter(Boolean).join("  ·  ");
+  $("wallMode").value = state.wall_mode === "photos" ? "photos" : "";
   $("wallUrl").value = state.wall_url || ""; $("wallStart").checked = !!state.wall_start; $("wallDue").value = state.wall_due || ""; $("wallBaby").value = state.wall_baby || "";
   $("jarvisState").innerHTML = state.jarvis_set ? '<span class="pill ok">Jarvis key set</span>' : '<span class="pill no">No Jarvis key</span>';
   $("m3u").value = state.m3u_url || ""; $("stream").value = state.custom_stream_url || "";
@@ -291,8 +313,32 @@ function removeAddon(i) { addons.splice(i, 1); drawAddons(); dirty(true); save()
 function moveAddon(i, d) { const [a] = addons.splice(i, 1); addons.splice(i + d, 0, a); drawAddons(); dirty(true); save(); }
 function dirty(on) { dirtyFlag = on; $("saveBtn").disabled = !on; if (on) { $("saveMsg").className = "msg"; $("saveMsg").textContent = "Unsaved changes"; } }
 $("addonIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addAddon(); });
-["m3u", "stream", "tmdb", "mdb", "jarvisKey", "wallUrl", "wallKey", "wallBaby"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
-["origin", "usOnly", "slow", "intro", "wallStart", "wallDue"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
+["m3u", "stream", "tmdb", "mdb", "jarvisKey", "wallUrl", "wallKey", "wallBaby", "tvLabel"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
+["origin", "usOnly", "slow", "intro", "wallStart", "wallDue", "wallMode"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
+function pickLabel(name) { $("tvLabel").value = name; dirty(true); save(); }
+function drawNow(np) {
+  const el = $("nowPlaying"); if (!el) return;
+  if (!np || !np.name) { el.textContent = "Nothing playing on this TV."; return; }
+  const ep = np.media === "tv" && np.season > 0 ? " S" + np.season + " E" + np.episode : "";
+  const pos = np.duration_ms > 0 ? " · " + fmtTime(np.position_ms) + " / " + fmtTime(np.duration_ms) : "";
+  el.textContent = (np.playing ? "Playing: " : "Paused: ") + np.name + ep + (np.media === "live" ? " (Live TV)" : "") + pos;
+}
+function fmtTime(ms) { const s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); }
+/** Start, stop or set the mode of the Wall on this TV (or on another TV: pass its entry from the list). */
+async function wallCmd(action, t) {
+  const msg = t ? $("findMsg") : $("wallMsg");
+  const cmd = { cmd: "wall", action, ts: Date.now() };
+  if (!t) cmd.mode = $("wallMode").value;
+  try {
+    if (t) {
+      const k = await crypto.subtle.importKey("raw", b64u.dec(t.key), "AES-GCM", false, ["encrypt", "decrypt"]);
+      if (t.dev) cmd.to = t.dev;
+      const r = await fetch(RELAY + "mcdtv-" + t.id + "-in", { method: "POST", body: await encrypt(cmd, k) });
+      if (!r.ok) throw new Error("Relay error " + r.status);
+    } else await send(cmd);
+    msg.className = "good"; msg.textContent = (action === "start" ? "Starting the Wall on " : "Stopping the Wall on ") + (t ? tvLabel(t) : "this TV") + ". Jarvis must be open there.";
+  } catch (e) { msg.className = "err"; msg.textContent = e.message; }
+}
 
 async function save() {
   if ($("addonIn").value.trim()) { addAddon(); return; }
@@ -302,6 +348,7 @@ async function save() {
     m3u_url: $("m3u").value.trim(), custom_stream_url: $("stream").value.trim(),
     origin_filter: $("origin").value, us_only: $("usOnly").checked, slow_connection: $("slow").checked, play_intro: $("intro").checked,
     wall_url: $("wallUrl").value.trim(), wall_start: $("wallStart").checked, wall_due: $("wallDue").value, wall_baby: $("wallBaby").value.trim(),
+    wall_mode: $("wallMode").value, tv_label: $("tvLabel").value.trim().slice(0, 40),
   };
   if ($("wallKey").value.trim()) data.wall_key = $("wallKey").value.trim();
   if ($("tmdb").value.trim()) data.tmdb_key = $("tmdb").value.trim();
@@ -324,20 +371,84 @@ function tvsGet() { try { return JSON.parse(localStorageGet("mcdtv_tvs") || "[]"
 function tvsSet(a) { localStorageSet("mcdtv_tvs", JSON.stringify(a.slice(-10))); }
 function tvUpsert(t) {
   const a = tvsGet(); const i = a.findIndex((x) => x.id === t.id);
-  if (i >= 0) a[i] = { ...a[i], ...Object.fromEntries(Object.entries(t).filter(([, v]) => v !== "")) }; else a.push(t);
+  // Empty values keep what is stored, except the label: a name removed on the TV is removed here too.
+  if (i >= 0) a[i] = { ...a[i], ...Object.fromEntries(Object.entries(t).filter(([k, v]) => v !== "" || k === "label")) }; else a.push(t);
   tvsSet(a);
 }
-function tvLabel(t) { return (t.name || "TV") + " (" + t.id.slice(0, 4).toUpperCase() + ")"; }
+/** "Office TV (Fire TV)"; a TV with no name shows its platform and the first letters of its link. */
+function tvLabel(t) {
+  const name = t.label || t.name || t.platform || "TV";
+  const plat = t.platform && t.label ? " (" + t.platform + ")" : "";
+  return name + plat + (t.label ? "" : " (" + t.id.slice(0, 4).toUpperCase() + ")");
+}
+let findStartedAt = 0;
+function seenText(t) {
+  if (!t.seen) return "Not seen yet";
+  if (findStartedAt && t.seen >= findStartedAt) return "On now";
+  if (Date.now() - t.seen < 90000) return "On now";
+  const d = new Date(t.seen), today = new Date().toDateString() === d.toDateString();
+  return "Last seen " + (today ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+}
 function renderShare() {
-  const others = tvsGet().filter((t) => t.id !== link.id);
+  const all = tvsGet().slice().sort((a, b) => (a.id === link.id ? -1 : b.id === link.id ? 1 : (b.seen || 0) - (a.seen || 0)));
   const mine = state && state.house;
-  $("tvList").innerHTML = others.length ? others.map((t) => {
-    const shared = mine && t.house && t.house === mine;
-    return `<li><div class="grow"><div class="name">${esc(tvLabel(t))}</div><div class="url">${shared ? "Shares settings with this TV" : "Separate settings"}</div></div>` +
-      (shared ? `<button class="small" onclick="leaveHouse()">Stop sharing</button>` : `<button class="small primary" onclick="joinOther('${t.id}')">Use its settings here</button><button class="small" onclick="joinOther('${t.id}', true)">Copy once</button>`) +
-      `<button class="small" onclick="forgetOther('${t.id}')">Forget</button></li>`;
-  }).join("") : '<li class="hint">No other TVs yet. Open this page from each TV\'s QR code once, and they show up here.</li>';
+  $("tvList").innerHTML = all.length ? all.map((t) => {
+    const me = t.id === link.id;
+    const shared = !me && mine && t.house && t.house === mine;
+    const on = seenText(t) === "On now";
+    const sub = [t.version ? "Jarvis v" + t.version : "", seenText(t), me ? "This page" : shared ? "Shares settings with this TV" : "Separate settings"].filter(Boolean).join("  ·  ");
+    return `<li style="flex-wrap:wrap"><span class="pill ${on ? "ok" : ""}">${on ? "ON" : "OFF"}</span><div class="grow"><div class="name">${esc(tvLabel(t))}</div><div class="sub">${esc(sub)}</div></div>` +
+      (me ? "" : `<div class="row" style="width:100%;padding-left:4px"><button class="small" onclick="openTv('${t.id}')">Open</button>` +
+        `<button class="small" onclick="wallCmd('start', tvsGet().find((x) => x.id === '${t.id}'))">Start Wall</button><button class="small" onclick="wallCmd('stop', tvsGet().find((x) => x.id === '${t.id}'))">Stop Wall</button>` +
+        (shared ? `<button class="small" onclick="leaveHouse()">Stop sharing</button>` : `<button class="small primary" onclick="joinOther('${t.id}')">Use its settings here</button><button class="small" onclick="joinOther('${t.id}', true)">Copy once</button>`) +
+        `<button class="small" onclick="forgetOther('${t.id}')">Forget</button></div>`) + `</li>`;
+  }).join("") : '<li class="hint">No TVs yet. Open this page from each TV\'s QR code once, or tap Find my TVs.</li>';
   if (state && state.house_joining) { $("shareMsg").className = "msg"; $("shareMsg").textContent = "Waiting for the settings from your other TV. Open Jarvis on that TV."; }
+}
+function openTv(id) { const t = tvsGet().find((x) => x.id === id); if (t) { location.hash = t.id + "." + t.key; location.reload(); } }
+const LINK_ID_RX = /^([a-z2-9]{10,40})\.([A-Za-z0-9_-]{40,50})$/;
+/**
+ * Asks every TV in the house to report in ("tv_who" on the house topic). Each TV answers "tv_link" with its link,
+ * name, platform, model and version. One POST and one read; the answers merge into mcdtv_tvs.
+ */
+let finding = null;
+function findTvs(manual) {
+  if (finding) return finding;
+  const m = $("findMsg"), btn = $("findBtn");
+  const house = state && LINK_RX.exec(state.house || "");
+  if (!house) { if (manual) { m.className = "err"; m.textContent = "Waiting for this TV first. Open Jarvis on it."; } return Promise.resolve(); }
+  finding = (async () => {
+    if (manual) { m.className = "msg"; m.textContent = "Asking your TVs. About 10 seconds…"; }
+    btn.disabled = true;
+    findStartedAt = Date.now();
+    try {
+      const k = await crypto.subtle.importKey("raw", b64u.dec(house[2]), "AES-GCM", false, ["encrypt", "decrypt"]);
+      const topic = RELAY + "mcdtv-" + house[1] + "-house";
+      const r = await fetch(topic, { method: "POST", body: await encrypt({ type: "tv_who", from: "ctrl" + link.id.slice(0, 12), ts: Date.now() }, k) });
+      if (!r.ok) throw new Error("Relay error " + r.status);
+      await new Promise((res) => setTimeout(res, 8000));
+      const txt = await (await fetch(topic + "/json?poll=1&since=12h", { cache: "no-store" })).text();
+      let answered = 0;
+      for (const line of txt.split("\n")) {
+        let e; try { e = JSON.parse(line); } catch { continue; }
+        if (!e || e.event !== "message" || typeof e.message !== "string") continue;
+        const t = await decrypt(e.message, k);
+        if (!t || t.type !== "tv_link" || !t.from) continue;
+        const lm = LINK_ID_RX.exec(String(t.link || "")); if (!lm) continue;
+        const ts = +t.ts || (+e.time || 0) * 1000;
+        const prev = tvsGet().find((x) => x.dev === t.from || x.id === lm[1]);
+        if (prev && (prev.seen || 0) > ts) continue;
+        if (ts >= findStartedAt) answered++;
+        // One entry per TV: a TV with a new link replaces its old entry.
+        tvsSet(tvsGet().filter((x) => x.dev !== t.from && x.id !== lm[1]));
+        tvUpsert({ id: lm[1], key: lm[2], dev: t.from, name: String(t.name || ""), label: String(t.label || ""), platform: String(t.platform || ""), model: String(t.model || ""), version: String(t.version || ""), house: state.house, seen: ts });
+      }
+      renderShare();
+      if (manual) { m.className = answered ? "good" : "msg"; m.textContent = answered ? answered + (answered === 1 ? " TV answered." : " TVs answered.") : "No TV answered. TVs need the newest Jarvis to answer here. Open Jarvis on a TV and try again."; }
+    } catch (e) { if (manual) { m.className = "err"; m.textContent = e.message; } }
+    btn.disabled = false;
+  })().finally(() => { finding = null; });
+  return finding;
 }
 async function fetchHouse(t) {
   const k = await crypto.subtle.importKey("raw", b64u.dec(t.key), "AES-GCM", false, ["encrypt", "decrypt"]);
@@ -358,7 +469,7 @@ async function fetchHouse(t) {
   let s = null;
   for (let i = 0; i < 6 && !s; i++) { await new Promise((r) => setTimeout(r, i ? 2500 : 1500)); s = await look(); }
   if (!s) return "";
-  tvUpsert({ id: t.id, name: s.device_name || "", house: s.house });
+  tvUpsert({ id: t.id, name: s.device_name || "", house: s.house, dev: s.device_id || "", label: s.tv_label || "", platform: s.platform || "", model: s.model || "", version: s.version || "", seen: s.ts || Date.now() });
   return s.house;
 }
 async function joinOther(id, once = false) {
