@@ -2,7 +2,7 @@
 
 Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next.
 
-Last updated: 2026-10-10.
+Last updated: 2026-10-18.
 
 ## Names that must not change
 
@@ -64,6 +64,9 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 - Commands include `hello`, `set` (settings), `house_join`, `house_leave`, `magnet`, `web_init`, `rd_resolve`, `progress`, `ask`, `open`, `play` and `watchlist`.
 - Browsers can't call the Real-Debrid API: it sends no CORS headers. The web app's Play here uses one of two routes. (1) The device signed in to Real-Debrid itself (Settings > Real-Debrid on this device). Its calls go through `rd-proxy/`, a Netlify function at `jarvis-rd.netlify.app` that adds CORS headers and stores nothing. (2) Otherwise it sends `rd_resolve` to the TV, the TV makes the RD calls and sends back playable links. The TV's RD token never leaves the TV.
 - "New link" in Phone & Computer Setup makes a new id and key, which disconnects old devices.
+- **Who each TV is (October 18, 2026):** every TV has a per-device name, pref `tv_label` (TV Settings > This TV, or the Control page > This TV; never a HouseSync shared key), and a platform from the real maker and model (`data/TvIdentity.kt`: a known-model table with real models only, else Amazon = "Fire TV", Google or Chromecast = "Google TV", else "Android TV"). `tv_link` on the house topic carries `label`, `platform`, `maker`, `model` and `version`; `state` and `web_init` carry `device_id`, `tv_label`, `platform`, `model`, `version` and `now_playing`. Phones keep every TV in `mcdtv_tvs` as `{id, key, name, house, dev, label, platform, model, version, seen}` (name = label, else platform). The web app's header pill names the linked TV and, with more than one TV known, opens a TV picker; Play on TV and Open on TV go to the linked TV's own topic and carry `to: <device id>`, which every other TV ignores. Nothing is ever broadcast.
+- **Now playing:** `data/NowPlaying.kt` is set by `PlayerScreen`; the TV posts `{"type":"now","now":{media,id,name,season,episode,playing,position_ms,duration_ms,ts}|null}` on its out topic at start, pause, resume, stop or a new title, else once a minute. Phones read other TVs' newest `now` or `state` from their topics (one request, cached 60 s).
+- **Jarvis Wall from the phone:** relay command `{"cmd":"wall","action":"start"|"stop","mode":"photos"|""}`. Start pushes `Screen.Wall`, Stop pops it, and the mode (pref `wall_mode`, per TV: "" = photos and calendar, "photos" = photos only) applies live through `Wall.mode`. The Control page has Start, Stop and the mode for the linked TV, and Start and Stop for every other TV in its list (sent to that TV's topic with its key).
 
 ### HouseSync
 

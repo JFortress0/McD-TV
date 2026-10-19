@@ -2,6 +2,10 @@
 
 Ranked upgrades from the October 2026 review by the four focus agents (.claude/agents). Effort: S small, M medium, L large. "Relay" marks items that need a Netlify deploy (15 credits each; batch them, see CLAUDE.md). Everything else is free to ship.
 
+## Done October 18 (device identity, JARVIS integration spec)
+
+- Every TV has a name (pref `tv_label`, TV Settings > This TV or Control page > This TV, prefill Living Room TV / Office TV / The Wall) and a platform from the real maker and model (`TvIdentity.kt`; known models only: AFTHY7ABBA = Fire TV, the Office TV). `tv_link` carries label, platform, maker, model and version. The Control page lists every TV in the house (Find my TVs on the house topic) with name, platform, version, on or off and last seen, and can open that TV's page or start and stop its Wall. The web app names the linked TV in the header pill, lists every TV under Settings > Your TV with what it plays, and (with more than one TV) the pill opens a picker; Play on TV and Open on TV carry `to: <device id>`. Now playing per TV (`NowPlaying.kt`, relay "now"). Wall start, stop and mode (photos only, or photos and calendar) from the Control page. Open: the Wall stick's real model is not known yet; when it posts `tv_link`, read its `model` from the Control page (shown next to the platform) and add it to `TvIdentity.KNOWN_MODELS` as "Fire TV Stick". Old `mcdtv_tvs` entries with no device id stay until Forget.
+
 ## Done October 16
 
 - Real-Debrid name filter: RD refuses names with WEB-DL, WEB.x264, WEB.H264, HDTV.x264 or HDTV.XviD (exact case, rule of October 14, 2026) with error 35. Those sources sort last and show "May be blocked" (`RdFilter`, TV and web). A source RD refused is skipped for 6 hours. Play best source tries 8 and does not stop early: RD refuses more names than the published tags. The rule changes often: update `RdFilter.TAGS` and `RD_TAGS` together.
