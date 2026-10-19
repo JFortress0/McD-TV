@@ -152,9 +152,14 @@ wake() { adb shell dumpsys power | grep -o 'mWakefulness=[A-Za-z]*' | head -1 | 
 keep_flag() { adb shell dumpsys window windows | grep -A40 'com.mcd.tv/com.mcd.tv.MainActivity' | grep -q KEEP_SCREEN_ON; }
 wall_shown() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml qa-out/ui-wall-now.xml >/dev/null 2>&1; grep -q "JARVIS WALL\|Not set up yet" qa-out/ui-wall-now.xml; }
 adb shell settings put system screen_off_timeout 15000
+# Emulators often stay awake while "plugged in": turn that off so the idle timeout can act.
+adb shell settings put global stay_on_while_plugged_in 0
+adb shell svc power stayon false
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen browse >/dev/null
 sleep 35
 CTRL=$(wake); echo "      control (Browse, no hold) after 35 s: $CTRL" | tee -a "$R"
+keep_flag && echo "      control: the Browse window has KEEP_SCREEN_ON" | tee -a "$R"
+adb shell dumpsys power | grep -E "mStayOn|mScreenOffTimeoutSetting|mUserActivityTimeoutOverride|mWakeLockSummary|SCREEN_BRIGHT|FULL_WAKE|mHoldingDisplaySuspendBlocker" | head -12 | sed 's/^/      power: /' | tee -a "$R"
 [ "$CTRL" != "Awake" ] && pass "Wall test control: a screen with no hold goes to sleep" || fail "Wall test control: a screen with no hold goes to sleep (still $CTRL)"
 adb shell input keyevent KEYCODE_WAKEUP; sleep 2
 # Open the Wall the way a person does (Settings > Jarvis Wall > Open Wall), not with "--es screen wall": a re-created
