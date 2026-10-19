@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
@@ -17,6 +18,7 @@ import com.mcd.tv.data.RemoteNav
 import com.mcd.tv.data.PlayMeta
 import kotlinx.coroutines.launch
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.ScreenAwake
 import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
 import com.mcd.tv.ui.AskJarvisScreen
@@ -121,8 +123,35 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    /** FLAG_KEEP_SCREEN_ON on the window while any ScreenAwake hold is on (Jarvis Wall, Phone Setup). */
+    private val applyKeepAwake: (Boolean) -> Unit = { on ->
+        runOnUiThread {
+            if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applyKeepAwake(ScreenAwake.holds.on)
+    }
+
+    // The window can be rebuilt (a display change, or Android restoring the app). The back stack starts over
+    // then, so remember that the Wall was up and open it again.
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(WALL_UP, ScreenAwake.holds.has(ScreenAwake.WALL))
+    }
+
+    override fun onDestroy() {
+        if (ScreenAwake.holds.listener === applyKeepAwake) ScreenAwake.holds.listener = null
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ScreenAwake.holds.listener = applyKeepAwake
+        applyKeepAwake(ScreenAwake.holds.on)
         Prefs.init(this)
         com.mcd.tv.data.IptvVod.init(this)
         com.mcd.tv.ui.AppImages.install(this)
@@ -166,11 +195,16 @@ class MainActivity : ComponentActivity() {
             "search" -> Screen.Search
             "ask" -> Screen.AskJarvis(askExtra)
             "wall" -> Screen.Wall
-            else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
+            else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra)
+                else if (savedInstanceState?.getBoolean(WALL_UP) == true) Screen.Wall
+                else null
         }
         setContent { McdTheme { App(startScreen) } }
     }
 
+    private companion object {
+        const val WALL_UP = "wall_up"
+    }
 }
 
 @Composable
@@ -213,6 +247,14 @@ private fun App(startScreen: Screen? = null) {
     }
 
     BackHandler(enabled = stack.size > 1) { pop() }
+
+    // Wall mode: the screen stays on for as long as the Wall is anywhere in the back stack, also while a title
+    // opened from the phone plays on top of it. Held here, not in WallScreen, so no other screen can clear it.
+    val wallUp = stack.contains(Screen.Wall)
+    DisposableEffect(wallUp) {
+        ScreenAwake.holds.set(ScreenAwake.WALL, wallUp)
+        onDispose { ScreenAwake.holds.set(ScreenAwake.WALL, false) }
+    }
 
     // A new version is out: open "Update Jarvis" once per launch, on the Home screen (never mid-movie).
     // Skipped in the automated QA run, which drives screens itself.
