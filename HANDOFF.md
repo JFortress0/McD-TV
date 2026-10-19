@@ -1,6 +1,6 @@
 # Jarvis: handoff notes
 
-Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next.
+Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next. `CONFIG-MAP.md` lists every setting: where it is entered, stored and synced.
 
 Last updated: 2026-10-18.
 
@@ -86,6 +86,8 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 - Baby countdown: a light blue card under the weather. The date comes from "Baby due date" on the Control page (pref `wall_due`, shared with linked TVs), else an all-day calendar event called "Due date" or with "baby" and "due" in its title. The label and headline use "Baby's first name" from the Control page (pref `wall_baby`), never stored in the repo. Logic in `data/BabyCountdown.kt`. It hides 3 weeks after the date.
 
 ### Web pages (`docs/`, GitHub Pages)
+
+- **Web Settings (October 19, 2026):** an overview list with a status line per category (Your TVs, Profile, Real-Debrid, Playback, Addons, Keys, House and devices, Help); each opens `#/settings/<id>`. Wide screens keep the list on the left. Saved keys and tokens show as status (Connected, Set, last worked); a box to paste a new one opens only after Replace or Add. Destructive actions sit in a red group and ask first. No storage key changed.
 
 - `docs/index.html`: the Control page (QR link target).
 - `docs/app/`: the Jarvis web app (PWA with a service worker).

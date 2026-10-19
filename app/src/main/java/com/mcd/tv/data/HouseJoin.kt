@@ -9,7 +9,7 @@ import java.security.SecureRandom
 
 /**
  * "Join my other TVs" with an 8-digit code. A new TV shows the code; on a phone already set up, Jarvis >
- * Settings > Add a TV takes the code and sends this house's link to the TV (docs/app/index.html, addTv).
+ * Settings > House and devices > Add a TV takes the code and sends this house's link to the TV (docs/app/index.html, addTv).
  * The TV then joins the house (HouseSync.join): settings, Real-Debrid and every profile arrive within a minute.
  *
  *  - topic = "mcdtv-join-" + first 24 hex characters of SHA-256("jarvis-join|" + code), on ntfy.sh
