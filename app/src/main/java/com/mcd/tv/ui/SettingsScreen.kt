@@ -60,6 +60,7 @@ import com.mcd.tv.data.Relay
 import com.mcd.tv.data.TvIdentity
 import com.mcd.tv.data.Updater
 import com.mcd.tv.data.Wall
+import com.mcd.tv.data.WallCycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -465,6 +466,25 @@ private fun WallCategory(ctx: SettingsCtx, changed: () -> Unit) {
         SettingsDialog.Choice("Wall shows", modes.map { it.second }, modes.indexOfFirst { it.first == Prefs.wallMode }.coerceAtLeast(0)) { i ->
             Wall.setMode(modes[i].first)
         }
+    }
+    // How often the month calendar replaces the photos (pref wall_cycle, see WallCycle). Photos lead by default.
+    if (Prefs.wallMode != "photos") {
+        val cycle = WallCycle.parse(Prefs.wallCycle)
+        fun everyLabel(e: Int) = when (e) { 0 -> "Never (OK on the remote still shows it)"; 60 -> "Every hour"; else -> "Every $e minutes" }
+        DialogRow(ctx, ctx.row(), "Show the full calendar", everyLabel(cycle.every), RowEnd.Change) {
+            SettingsDialog.Choice("Show the full calendar", WallCycle.EVERY.map(::everyLabel), WallCycle.EVERY.indexOf(cycle.every)) { i ->
+                Wall.setCycle("${WallCycle.EVERY[i]}/${cycle.stays.coerceAtLeast(1)}")
+            }
+        }
+        if (cycle.every > 0) {
+            val stays = WallCycle.STAYS.filter { it <= cycle.every / 2 }
+            DialogRow(ctx, ctx.row(), "The calendar stays for", "${cycle.stays} min", RowEnd.Change) {
+                SettingsDialog.Choice("The calendar stays for", stays.map { if (it == 1) "1 minute" else "$it minutes" }, stays.indexOf(cycle.stays)) { i ->
+                    Wall.setCycle("${cycle.every}/${stays[i]}")
+                }
+            }
+        }
+        SettingsNote(WallCycle.label(cycle) + ". Photos show the rest of the time.")
     }
 }
 

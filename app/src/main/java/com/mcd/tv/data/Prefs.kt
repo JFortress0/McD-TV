@@ -169,6 +169,11 @@ object Prefs {
         get() = str("wall_mode")
         set(v) = put("wall_mode", if (v == "photos") "photos" else "")
 
+    /** How often the Wall shows the month calendar, as "every/stays" minutes ("30/1"; "0/0" = never). This TV only. */
+    var wallCycle: String
+        get() = WallCycle.clean(str("wall_cycle"))
+        set(v) = put("wall_cycle", WallCycle.clean(v))
+
     /** The name J gave this TV ("Living Room TV", "The Wall"). This TV only, never shared through the house. */
     var tvLabel: String
         get() = str("tv_label")
@@ -370,7 +375,7 @@ object Prefs {
     /** Keys that belong to this TV only and never sync to the account. */
     private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key",
         "house_id", "house_key", "house_since", "house_stamp", "device_id", "active_profile", "sync_peers", "sync_budget", "sync_pause",
-        "tv_link_sig", "tv_link_at", "rd_last_add", "tv_label", "wall_mode", "wall_start", "wall_cache",
+        "tv_link_sig", "tv_link_at", "rd_last_add", "tv_label", "wall_mode", "wall_cycle", "wall_start", "wall_cache",
         "update_check", "recent_errors")
 
     // ---- Internet setup link (ntfy relay) ----

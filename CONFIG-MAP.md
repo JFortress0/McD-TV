@@ -63,6 +63,7 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 | Wall key (read only) | Control page; equals Netlify `WALL_KEY` | `wall_key` | HouseSync | yes |
 | Baby due date, baby's first name | Control page | `wall_due`, `wall_baby` | HouseSync | the name is private |
 | Open in Wall on start, Wall shows | TV Settings > Jarvis Wall; Control page | `wall_start`, `wall_mode` | this TV only | no |
+| How often the full calendar shows | TV Settings > Jarvis Wall; Control page (Show the full calendar, The calendar stays for); `set`, `wall_start`, `wall_mode` (`cycle`) | `wall_cycle` = "every/stays" minutes, default "30/1" (photos 97% of the time; "0/0" = never) | this TV only | no |
 | Calendars | Netlify env `WALL_CALENDARS`, or the wall phone page | Netlify env and Blobs `wall-config` | never leaves Netlify | yes |
 | Upload code | Netlify env `UPLOAD_CODE`; the wall phone page keeps it in `wall_code` | Netlify | none | yes |
 
@@ -91,4 +92,4 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 
 ## What the Settings redesign (October 2026) changed in storage
 
-Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked).
+Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked). Later on October 19: TV `wall_cycle`.

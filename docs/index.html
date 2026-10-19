@@ -142,9 +142,16 @@ a{color:var(--accent)}
     <label>Baby's first name (optional, shown on the Wall)</label><input id="wallBaby" maxlength="20" autocomplete="off">
     <label>What the Wall shows on this TV</label>
     <select id="wallMode"><option value="">Photos and calendar</option><option value="photos">Photos only</option></select>
+    <div id="wallCycleBox">
+      <label>Show the full calendar</label>
+      <select id="wallEvery"><option value="10">Every 10 minutes</option><option value="15">Every 15 minutes</option><option value="30" selected>Every 30 minutes</option><option value="60">Every hour</option><option value="0">Never (OK on the remote still shows it)</option></select>
+      <label>The calendar stays for</label>
+      <select id="wallStays"><option value="1">1 minute</option><option value="2">2 minutes</option><option value="5">5 minutes</option></select>
+      <p class="hint" id="wallCycleHint"></p>
+    </div>
     <label><input type="checkbox" id="wallStart" style="width:auto"> This TV opens in Wall mode</label>
     <div class="row" style="margin-top:10px"><button class="primary" onclick="wallCmd('start')">Start Wall on this TV</button><button onclick="wallCmd('stop')">Stop Wall</button><span class="msg" id="wallMsg"></span></div>
-    <p class="hint">Photo frame and family calendar for a wall TV. Linked TVs share the address and key. "Opens in Wall mode", what the Wall shows and the Start and Stop buttons are for this TV only. Your other TVs below have their own Start and Stop.</p>
+    <p class="hint">Photo frame and family calendar for a wall TV. Linked TVs share the address and key. "Opens in Wall mode", what the Wall shows, how often the calendar shows and the Start and Stop buttons are for this TV only. To change another TV, open it from Your other TVs. Your other TVs below have their own Start and Stop.</p>
   </div>
 
   <h2>Keys</h2>
@@ -283,6 +290,10 @@ function render() {
   $("tvLabel").value = state.tv_label || "";
   $("tvInfo").textContent = [state.platform || state.device_name || "TV", state.model && !KNOWN_MODELS.includes(state.model.toUpperCase()) ? "model " + state.model : "", state.version ? "Jarvis v" + state.version : ""].filter(Boolean).join("  ·  ");
   $("wallMode").value = state.wall_mode === "photos" ? "photos" : "";
+  const cy = String(state.wall_cycle || "30/1").split("/");
+  $("wallEvery").value = ["10", "15", "30", "60", "0"].includes(cy[0]) ? cy[0] : "30";
+  $("wallStays").value = ["1", "2", "5"].includes(cy[1]) ? cy[1] : "1";
+  drawCycle();
   $("wallUrl").value = state.wall_url || ""; $("wallStart").checked = !!state.wall_start; $("wallDue").value = state.wall_due || ""; $("wallBaby").value = state.wall_baby || "";
   $("jarvisState").innerHTML = state.jarvis_set ? '<span class="pill ok">Jarvis key set</span>' : '<span class="pill no">No Jarvis key</span>';
   $("m3u").value = state.m3u_url || ""; $("stream").value = state.custom_stream_url || "";
@@ -314,7 +325,23 @@ function moveAddon(i, d) { const [a] = addons.splice(i, 1); addons.splice(i + d,
 function dirty(on) { dirtyFlag = on; $("saveBtn").disabled = !on; if (on) { $("saveMsg").className = "msg"; $("saveMsg").textContent = "Unsaved changes"; } }
 $("addonIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addAddon(); });
 ["m3u", "stream", "tmdb", "mdb", "jarvisKey", "wallUrl", "wallKey", "wallBaby", "tvLabel"].forEach((id) => $(id).addEventListener("input", () => dirty(true)));
-["origin", "usOnly", "slow", "intro", "wallStart", "wallDue", "wallMode"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
+["origin", "usOnly", "slow", "intro", "wallStart", "wallDue", "wallMode", "wallEvery", "wallStays"].forEach((id) => $(id).addEventListener("change", () => dirty(true)));
+["wallMode", "wallEvery", "wallStays"].forEach((id) => $(id).addEventListener("change", drawCycle));
+setTimeout(drawCycle);
+/** The calendar setting as the TV stores it: "every/stays" in minutes, "0/0" = never. */
+function wallCycle() {
+  const every = +$("wallEvery").value;
+  if (!every) return "0/0";
+  return every + "/" + Math.min(+$("wallStays").value, every / 2);
+}
+function drawCycle() {
+  const photosOnly = $("wallMode").value === "photos";
+  $("wallCycleBox").style.display = photosOnly ? "none" : "";
+  const [every, stays] = wallCycle().split("/").map(Number);
+  $("wallStays").disabled = !every;
+  $("wallCycleHint").textContent = !every ? "Photos all the time. Press OK on the remote to see the calendar."
+    : "Photos for " + (every - stays) + " min, then the calendar for " + stays + " min. Photos show " + Math.round(100 * (every - stays) / every) + "% of the time.";
+}
 function pickLabel(name) { $("tvLabel").value = name; dirty(true); save(); }
 function drawNow(np) {
   const el = $("nowPlaying"); if (!el) return;
@@ -328,7 +355,7 @@ function fmtTime(ms) { const s = Math.max(0, Math.round(ms / 1000)), h = Math.fl
 async function wallCmd(action, t) {
   const msg = t ? $("findMsg") : $("wallMsg");
   const cmd = { cmd: action === "start" ? "wall_start" : "wall_stop", ts: Date.now() };
-  if (!t) cmd.mode = $("wallMode").value;
+  if (!t) { cmd.mode = $("wallMode").value; cmd.cycle = wallCycle(); }
   try {
     if (t) {
       const k = await crypto.subtle.importKey("raw", b64u.dec(t.key), "AES-GCM", false, ["encrypt", "decrypt"]);
@@ -348,7 +375,7 @@ async function save() {
     m3u_url: $("m3u").value.trim(), custom_stream_url: $("stream").value.trim(),
     origin_filter: $("origin").value, us_only: $("usOnly").checked, slow_connection: $("slow").checked, play_intro: $("intro").checked,
     wall_url: $("wallUrl").value.trim(), wall_start: $("wallStart").checked, wall_due: $("wallDue").value, wall_baby: $("wallBaby").value.trim(),
-    wall_mode: $("wallMode").value, tv_label: $("tvLabel").value.trim().slice(0, 40),
+    wall_mode: $("wallMode").value, wall_cycle: wallCycle(), tv_label: $("tvLabel").value.trim().slice(0, 40),
   };
   if ($("wallKey").value.trim()) data.wall_key = $("wallKey").value.trim();
   if ($("tmdb").value.trim()) data.tmdb_key = $("tmdb").value.trim();

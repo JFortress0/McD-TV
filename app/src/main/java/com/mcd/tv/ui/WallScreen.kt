@@ -62,6 +62,7 @@ import com.mcd.tv.data.BabyCountdown
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Wall
 import com.mcd.tv.data.Wall.Day
+import com.mcd.tv.data.WallCycle
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -71,7 +72,8 @@ import java.util.Locale
 /*
  * Jarvis Wall: photo frame plus family calendar for a wall TV.
  * Left: the photo album (new photo every 30 s, slow zoom). Right: clock, weather, today, the next days, school due dates.
- * One minute in every ten it shows the whole month instead. Remote: OK switches views (and stops the automatic switch
+ * Now and then it shows the whole month instead: by default the last minute of every half hour (pref wall_cycle, set
+ * on the Control page or in Settings, see WallCycle). Remote: OK switches views (and stops the automatic switch
  * for 10 minutes), LEFT / RIGHT change the photo, BACK leaves.
  * The screen stays on while this page is open. From 11 PM to 6 AM it dims.
  */
@@ -101,6 +103,7 @@ fun WallScreen(nav: Nav) {
     var manualAt by remember { mutableLongStateOf(0L) }
     // "photos": photos only, no calendar (set in Settings or from the Control page, live).
     val wallMode by Wall.mode.collectAsState()
+    val wallCycle by Wall.cycle.collectAsState()
 
     // A minute tick: the day, the agenda and the automatic view switch follow it. The clock has its own faster tick.
     val minute by produceState(System.currentTimeMillis()) {
@@ -149,9 +152,11 @@ fun WallScreen(nav: Nav) {
         }
     }
 
-    val autoView = if (Calendar.getInstance().apply { timeInMillis = minute }.get(Calendar.MINUTE) % 10 == 9) WallView.Month else WallView.Agenda
+    val cal = Calendar.getInstance().apply { timeInMillis = minute }
+    val hour = cal.get(Calendar.HOUR_OF_DAY)
+    val minuteOfDay = hour * 60 + cal.get(Calendar.MINUTE)
+    val autoView = if (WallCycle.showCalendar(WallCycle.parse(wallCycle), minuteOfDay)) WallView.Month else WallView.Agenda
     val shown = manualView?.takeIf { minute - manualAt < MANUAL_HOLD_MS } ?: autoView
-    val hour = Calendar.getInstance().apply { timeInMillis = minute }.get(Calendar.HOUR_OF_DAY)
     val night = hour >= 23 || hour < 6
 
     val focus = remember { FocusRequester() }

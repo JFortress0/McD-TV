@@ -196,14 +196,16 @@ object Relay {
             "wall_start", "wall_stop" -> {
                 if (isStale(cmd)) return
                 if (cmd.has("mode")) Wall.setMode(cmd.optString("mode"))
+                if (cmd.has("cycle")) Wall.setCycle(cmd.optString("cycle"))
                 val start = cmd.optString("cmd") == "wall_start"
                 navChannel.trySend(RemoteNav.Wall(start))
                 publishAck(cmd, (if (start) "Wall started on " else "Wall stopped on ") + HouseSync.deviceName())
                 publishState(status)
             }
             "wall_mode" -> {
-                Wall.setMode(cmd.optString("mode"))
-                publishAck(cmd, "Wall shows " + if (Prefs.wallMode == "photos") "photos only" else "photos and calendar")
+                if (cmd.has("mode")) Wall.setMode(cmd.optString("mode"))
+                if (cmd.has("cycle")) Wall.setCycle(cmd.optString("cycle"))
+                publishAck(cmd, if (Prefs.wallMode == "photos") "Wall shows photos only" else "Wall shows photos. " + WallCycle.label(WallCycle.parse(Prefs.wallCycle)) + ".")
                 publishState(status)
             }
             "set" -> {
@@ -639,6 +641,7 @@ object Relay {
         }
         if (d.has("wall_baby")) Prefs.wallBaby = d.optString("wall_baby").trim().take(20)
         if (d.has("wall_mode")) Wall.setMode(d.optString("wall_mode"))
+        if (d.has("wall_cycle")) Wall.setCycle(d.optString("wall_cycle"))
         // This TV's name. Per TV: not a shared setting, so the Control page sends it only to the TV it is linked to.
         if (d.has("tv_label")) {
             val label = TvIdentity.cleanLabel(d.optString("tv_label"))
@@ -680,6 +683,7 @@ object Relay {
             .put("maker", android.os.Build.MANUFACTURER.orEmpty())
             .put("model", android.os.Build.MODEL.orEmpty())
             .put("wall_mode", Prefs.wallMode)
+            .put("wall_cycle", Prefs.wallCycle)
             .put("now_playing", NowPlaying.json(NowPlaying.current) ?: JSONObject.NULL)
             .put("profile", Prefs.activeProfileName)
             .put("house", HouseSync.houseLink())

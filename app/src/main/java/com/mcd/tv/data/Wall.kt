@@ -86,6 +86,14 @@ object Wall {
         mode.value = Prefs.wallMode
     }
 
+    /** When the month calendar shows (see WallCycle). Live, like the mode. */
+    val cycle = kotlinx.coroutines.flow.MutableStateFlow(Prefs.wallCycle)
+
+    fun setCycle(c: String) {
+        Prefs.wallCycle = c
+        cycle.value = Prefs.wallCycle
+    }
+
     private fun base(): String = Prefs.wallUrl.trim().trimEnd('/').let { if (it.startsWith("http")) it else "https://$it" }
 
     /** Downloads the merged calendar. Saves a copy so the wall shows something at once after a restart or outage. */
