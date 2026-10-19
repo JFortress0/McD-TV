@@ -1,6 +1,7 @@
 package com.mcd.tv.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -20,15 +25,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.mcd.tv.Nav
 import com.mcd.tv.Screen
 import com.mcd.tv.data.Addons
+import com.mcd.tv.data.HouseSync
 import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.RealDebrid
+import com.mcd.tv.data.TvIdentity
 import kotlinx.coroutines.delay
 
 private const val PLAYER_TEST_URL =
@@ -41,6 +51,7 @@ fun SettingsScreen(nav: Nav) {
     var slow by remember { mutableStateOf(Prefs.slowConnection) }
     var intro by remember { mutableStateOf(Prefs.playIntro) }
     var wallStart by remember { mutableStateOf(Prefs.wallStart) }
+    var wallMode by remember { mutableStateOf(Prefs.wallMode) }
     var maxMovie by remember { mutableIntStateOf(Prefs.maxMovieGb) }
     var maxEpisode by remember { mutableIntStateOf(Prefs.maxEpisodeGb) }
     val rd by rememberLoad(Prefs.rdAccessToken) { if (RealDebrid.connected) RealDebrid.accountSummary() else "Not connected" }
@@ -61,6 +72,21 @@ fun SettingsScreen(nav: Nav) {
             }
 
             HudPanel(Modifier.fillMaxWidth()) {
+                RailHeader("This TV")
+                Text(
+                    "Name this TV so your phone can tell your TVs apart. Examples: ${TvIdentity.EXAMPLES.joinToString(", ")}.",
+                    color = McdColors.Muted, fontSize = 16.sp,
+                )
+                TvLabelEditor()
+                val model = android.os.Build.MODEL.orEmpty()
+                Text(
+                    "${HouseSync.platform()}" + (if (model.isNotBlank() && !TvIdentity.modelKnown(model)) "  ·  model $model" else "") +
+                        "  ·  Jarvis v${com.mcd.tv.BuildConfig.VERSION_NAME}",
+                    color = McdColors.Muted, fontSize = 13.sp,
+                )
+            }
+
+            HudPanel(Modifier.fillMaxWidth()) {
                 RailHeader("Jarvis Wall")
                 Text(
                     if (com.mcd.tv.data.Wall.configured) "Photo frame and family calendar. Turn on \"Open in Wall\" on the wall TV."
@@ -70,6 +96,10 @@ fun SettingsScreen(nav: Nav) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ActionButton("Open Wall", { nav.push(Screen.Wall) }, primary = true)
                     ActionButton("Open in Wall on start: ${if (wallStart) "ON" else "OFF"}", { wallStart = !wallStart; Prefs.wallStart = wallStart })
+                    ActionButton(
+                        if (wallMode == "photos") "Wall shows: photos only" else "Wall shows: photos and calendar",
+                        { wallMode = if (wallMode == "photos") "" else "photos"; com.mcd.tv.data.Wall.setMode(wallMode) },
+                    )
                 }
             }
 
@@ -294,4 +324,33 @@ fun RdConnectScreen(nav: Nav) {
         )
         Text(status, fontSize = 18.sp, color = McdColors.Muted)
     }
+}
+
+/** The name of this TV. Select the box, press OK to type, then Save. Sent to phones through the house. */
+@Composable
+private fun TvLabelEditor() {
+    var text by remember { mutableStateOf(Prefs.tvLabel) }
+    var saved by remember { mutableStateOf("") }
+    fun save() {
+        val clean = TvIdentity.cleanLabel(text)
+        if (clean != Prefs.tvLabel) { Prefs.tvLabel = clean; HouseSync.onLabelChanged() }
+        text = Prefs.tvLabel
+        saved = if (text.isEmpty()) "No name. Phones show \"${HouseSync.platform()}\"." else "Saved. Phones show \"$text\"."
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        BasicTextField(
+            value = text,
+            onValueChange = { text = it.take(TvIdentity.LABEL_MAX) },
+            singleLine = true,
+            textStyle = TextStyle(color = McdColors.White, fontSize = 18.sp),
+            cursorBrush = SolidColor(McdColors.Accent),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, showKeyboardOnFocus = false),
+            keyboardActions = KeyboardActions(onDone = { save() }),
+            modifier = Modifier.width(320.dp).background(McdColors.Card, HudShape)
+                .border(1.dp, McdColors.Accent.copy(alpha = 0.7f), HudShape).padding(12.dp),
+        )
+        ActionButton("Save", { save() }, primary = true)
+        TvIdentity.EXAMPLES.forEach { ex -> ActionButton(ex, { text = ex; save() }) }
+    }
+    if (saved.isNotEmpty()) Text(saved, color = McdColors.Muted, fontSize = 13.sp)
 }

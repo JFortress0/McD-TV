@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -98,6 +99,8 @@ fun WallScreen(nav: Nav) {
     var photoIndex by remember { mutableIntStateOf(0) }
     var manualView by remember { mutableStateOf<WallView?>(null) }
     var manualAt by remember { mutableLongStateOf(0L) }
+    // "photos": photos only, no calendar (set in Settings or from the Control page, live).
+    val wallMode by Wall.mode.collectAsState()
 
     // A minute tick: the day, the agenda and the automatic view switch follow it. The clock has its own faster tick.
     val minute by produceState(System.currentTimeMillis()) {
@@ -176,6 +179,7 @@ fun WallScreen(nav: Nav) {
     ) {
         when {
             !Wall.configured -> NotSetUp()
+            wallMode == "photos" -> PhotoPanel(photos.getOrNull(photoIndex), fade = false)
             shown == WallView.Month -> MonthView(feed, minute)
             else -> Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(0.62f).fillMaxHeight()) {
@@ -196,7 +200,7 @@ fun WallScreen(nav: Nav) {
 // ---------------- Photos ----------------
 
 @Composable
-private fun PhotoPanel(id: String?) {
+private fun PhotoPanel(id: String?, fade: Boolean = true) {
     Crossfade(targetState = id, animationSpec = tween(1500), label = "wallPhoto") { pid ->
         if (pid == null) {
             EmptyPhotos()
@@ -217,7 +221,7 @@ private fun PhotoPanel(id: String?) {
                     modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = zoom.value, scaleY = zoom.value),
                 )
                 // Soft edge into the calendar panel.
-                Box(
+                if (fade) Box(
                     Modifier.fillMaxHeight().width(60.dp).align(Alignment.CenterEnd)
                         .background(Brush.horizontalGradient(listOf(Color.Transparent, McdColors.Navy.copy(alpha = 0.7f)))),
                 )
