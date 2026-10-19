@@ -254,6 +254,14 @@ private fun App(startScreen: Screen? = null) {
                     if (stack.last() != detail) stack.add(detail)
                     stack.add(Screen.Sources(r.meta, r.imdbId, autoPlay = true))
                 }
+                // Start Wall / Stop Wall from the Control page. Stop only closes the Wall; it never leaves another screen.
+                is RemoteNav.Wall -> {
+                    if (r.start) {
+                        if (stack.last() != Screen.Wall) stack.add(Screen.Wall)
+                    } else {
+                        while (stack.size > 1 && stack.last() == Screen.Wall) stack.removeAt(stack.lastIndex)
+                    }
+                }
             }
         }
     }
