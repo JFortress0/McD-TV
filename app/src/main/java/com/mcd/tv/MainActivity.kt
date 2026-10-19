@@ -123,17 +123,40 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
-    /** FLAG_KEEP_SCREEN_ON on the window while any ScreenAwake hold is on (Jarvis Wall, Phone Setup). */
-    private val applyKeepAwake: (Boolean) -> Unit = { on ->
-        runOnUiThread {
-            if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    /** This activity's window, as the keep-screen-on guard sees it. */
+    private val keepOnWindow = object : com.mcd.tv.data.KeepOnWindow {
+        override var keepOn: Boolean
+            get() = (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
+            set(on) {
+                if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+    }
+
+    // The keep-screen-on self-check: about once a minute while Jarvis is in front (see KeepAwakeGuard).
+    private val awakeCheck = android.os.Handler(android.os.Looper.getMainLooper())
+    private val awakeTick = object : Runnable {
+        override fun run() {
+            ScreenAwake.guard.check()
+            awakeCheck.postDelayed(this, ScreenAwake.CHECK_EVERY_MS)
         }
     }
 
     override fun onResume() {
         super.onResume()
-        applyKeepAwake(ScreenAwake.holds.on)
+        ScreenAwake.guard.resumed()
+        awakeCheck.removeCallbacks(awakeTick)
+        awakeCheck.postDelayed(awakeTick, ScreenAwake.CHECK_EVERY_MS)
+    }
+
+    override fun onPause() {
+        awakeCheck.removeCallbacks(awakeTick)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        ScreenAwake.guard.stopped(isChangingConfigurations)
+        super.onStop()
     }
 
     // The window can be rebuilt (a display change, or Android restoring the app). The back stack starts over
@@ -144,14 +167,18 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (ScreenAwake.holds.listener === applyKeepAwake) ScreenAwake.holds.listener = null
+        ScreenAwake.guard.detach(keepOnWindow)
         super.onDestroy()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        ScreenAwake.holds.listener = applyKeepAwake
-        applyKeepAwake(ScreenAwake.holds.on)
+        // Lapses go to logcat (adb logcat -s JarvisAwake) and to Settings > About and help.
+        ScreenAwake.log = { msg ->
+            android.util.Log.i("JarvisAwake", msg)
+            if (msg.contains("lapsed") || msg.contains("left the front")) com.mcd.tv.data.RecentErrors.note(msg)
+        }
+        ScreenAwake.guard.attach(keepOnWindow)
         Prefs.init(this)
         com.mcd.tv.data.IptvVod.init(this)
         com.mcd.tv.ui.AppImages.install(this)
@@ -196,7 +223,7 @@ class MainActivity : ComponentActivity() {
             "ask" -> Screen.AskJarvis(askExtra)
             "wall" -> Screen.Wall
             else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra)
-                else if (savedInstanceState?.getBoolean(WALL_UP) == true) Screen.Wall
+                else if (savedInstanceState?.getBoolean(WALL_UP) == true) Screen.Wall.also { ScreenAwake.log("Wall reopened after the app was rebuilt") }
                 else null
         }
         setContent { McdTheme { App(startScreen) } }
@@ -252,8 +279,8 @@ private fun App(startScreen: Screen? = null) {
     // opened from the phone plays on top of it. Held here, not in WallScreen, so no other screen can clear it.
     val wallUp = stack.contains(Screen.Wall)
     DisposableEffect(wallUp) {
-        ScreenAwake.holds.set(ScreenAwake.WALL, wallUp)
-        onDispose { ScreenAwake.holds.set(ScreenAwake.WALL, false) }
+        val hold = if (wallUp) ScreenAwake.holds.acquire(ScreenAwake.WALL) else null
+        onDispose { hold?.release() }
     }
 
     // A new version is out: open "Update Jarvis" once per launch, on the Home screen (never mid-movie).

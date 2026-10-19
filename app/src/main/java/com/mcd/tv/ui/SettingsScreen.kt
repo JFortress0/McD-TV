@@ -546,8 +546,8 @@ fun PhoneSetupScreen(nav: Nav) {
     var link by remember { mutableStateOf(com.mcd.tv.data.Relay.controlUrl()) }
     // Keep the TV awake (no screensaver) while this screen is open.
     androidx.compose.runtime.DisposableEffect(Unit) {
-        com.mcd.tv.data.ScreenAwake.holds.set(com.mcd.tv.data.ScreenAwake.PHONE_SETUP, true)
-        onDispose { com.mcd.tv.data.ScreenAwake.holds.set(com.mcd.tv.data.ScreenAwake.PHONE_SETUP, false) }
+        val hold = com.mcd.tv.data.ScreenAwake.holds.acquire(com.mcd.tv.data.ScreenAwake.PHONE_SETUP)
+        onDispose { hold.release() }
     }
     Row(
         Modifier.fillMaxSize().hudBackground().padding(48.dp),

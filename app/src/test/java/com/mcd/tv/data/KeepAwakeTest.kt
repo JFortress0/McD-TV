@@ -9,34 +9,43 @@ class KeepAwakeTest {
     @Test fun offUntilHeld() {
         val k = KeepAwake()
         assertFalse(k.on)
-        k.set("wall", true)
+        val h = k.acquire("wall")
         assertTrue(k.on)
         assertTrue(k.has("wall"))
-        k.set("wall", false)
+        h.release()
         assertFalse(k.on)
+        assertFalse(k.has("wall"))
     }
 
     @Test fun oneReasonClosingKeepsTheOther() {
         // The old bug: Phone Setup closing cleared the Wall's keep-screen-on (one shared flag).
         val k = KeepAwake()
-        k.set("wall", true)
-        k.set("phone_setup", true)
-        k.set("phone_setup", false)
+        k.acquire("wall")
+        val phone = k.acquire("phone_setup")
+        phone.release()
         assertTrue(k.on)
-        k.set("phone_setup", false) // a second release is harmless
+        phone.release() // a second release is harmless
         assertTrue(k.on)
+    }
+
+    @Test fun staleReleaseOfSameReasonKeepsTheNewHold() {
+        // A rebuilt activity holds "wall" before the old screen lets its own "wall" go.
+        val k = KeepAwake()
+        val old = k.acquire("wall")
+        k.acquire("wall")
+        old.release()
+        assertTrue(k.has("wall"))
     }
 
     @Test fun listenerOnlyOnChange() {
         val k = KeepAwake()
         val seen = mutableListOf<Boolean>()
         k.listener = { seen += it }
-        k.set("wall", true)
-        k.set("wall", true)
-        k.set("phone_setup", true)
-        k.set("wall", false)
-        k.set("phone_setup", false)
-        k.set("phone_setup", false)
+        val a = k.acquire("wall")
+        val b = k.acquire("phone_setup")
+        a.release()
+        b.release()
+        b.release()
         assertEquals(listOf(true, false), seen)
     }
 }
