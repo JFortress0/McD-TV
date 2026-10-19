@@ -90,11 +90,14 @@ describe() {
 }
 KB_FAIL=""
 NAV_FAIL=""
-for cat in updates tv profiles playback sources wall network about; do
+FIRST=1
+for cat in tv updates profiles playback sources wall network about; do
   adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "settings:$cat" >/dev/null
   sleep 8
   shot "settings-$cat"
   describe "settings-$cat"
+  # The first cold launch after the other screens: look again a little later (focus timing on a cold start).
+  if [ -n "$FIRST" ]; then sleep 4; describe "settings-$cat-later"; FIRST=""; fi
   adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
   describe "settings-$cat-right"
   grep -q '<node [^>]*focused="true"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,\([2-9][0-9][0-9]\|1[0-9][0-9][0-9]\)\]' "qa-out/ui-settings-$cat-right.xml" || NAV_FAIL="$NAV_FAIL $cat"
