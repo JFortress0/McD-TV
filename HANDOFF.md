@@ -2,7 +2,7 @@
 
 Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next. `CONFIG-MAP.md` lists every setting: where it is entered, stored and synced.
 
-Last updated: 2026-10-18.
+Last updated: 2026-10-19.
 
 ## Names that must not change
 
@@ -16,6 +16,7 @@ The app was called "McD TV" and is now "Jarvis". Only the visible name changed. 
 
 ## Current state
 
+- **Latest (October 19, 2026):** APK v0.2.203, web app BUILD `2026-10-19.2`. Today's changes: TV Settings rebuilt (PR #2), web Settings cleanup and `CONFIG-MAP.md` (PR #2), Wall calendar timing (`wall_cycle`), and TV names in the web picker and the Control page.
 - **Install / update:** Downloader app, address `jfortress0.github.io/McD-TV/get`. It redirects to `releases/latest/download/Jarvis.apk`. Guide for every device: `docs/install.html`.
 - **TMDB:** built into each APK from the GitHub secret `TMDB_API_KEY`. A key saved on the Control page wins.
 - **MDBList (IMDb and Rotten Tomatoes scores):** secret `MDBLIST_API_KEY` or the Control page.
@@ -52,9 +53,9 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 - `HomeScreen.kt`, `BrowseScreens.kt` (Jarvis search, Library, Services, Noise, Genres), `CatalogScreens.kt` (Browse menu and grids), `DetailScreen.kt`, `SourcesScreen.kt`, `PersonScreen.kt`.
 - Live TV: `LiveScreens.kt` (channel list and Games block), `GamesScreen.kt`, `LivePlayer.kt` (channel up / down), `MultiviewScreen.kt` (one ExoPlayer per tile, released on exit).
 - `AskJarvisScreen.kt` is the stand-alone Ask Jarvis page (QA screen `ask`). The search box uses the same `Jarvis.ask`.
-- `ProfilesScreen.kt`, `SettingsScreen.kt` (also Phone & Computer Setup and Real-Debrid sign-in), `RdCloudScreen.kt`
-- **Settings (October 19, 2026):** two panes. The rail on the left lists App updates, This TV, Profiles, Playback, Addons and Live TV, Jarvis Wall, Network, About and help; the right side shows the focused category. `SettingsScreen.kt` draws it, `SettingsKit.kt` holds the rows, the spacing and type scales and the dialogs, `SettingsModel.kt` holds the pure logic (focus moves, update text) with tests in `app/src/test/java/com/mcd/tv/ui/`. Rules: the remote moves through rows only. A text value is an Edit row; OK opens a dialog with a plain EditText and the keyboard; Done saves; one BACK closes both (`onKeyPreIme`). Choices open a list dialog. Destructive rows are red, sit at the end of their category and ask first. A fresh open lands on App updates (RIGHT, OK checks); a return from a screen Settings opened restores the category and row. QA deep link: `--es screen settings:<id>` (`updates`, `tv`, `profiles`, `playback`, `sources`, `wall`, `network`, `about`). The Settings ring in the top bar shows an amber dot when an update is ready.
-- `data/RecentErrors.kt`: the last 10 problems shown on this TV (playback, sources, updates), for Settings > About and help. Pref `recent_errors`; `update_check` keeps the last check. Both this TV only., `WebScreen.kt` (browser with a D-pad pointer; route `Screen.Sports` in `SportsScreens.kt`).
+- `ProfilesScreen.kt`, `SettingsScreen.kt` (also Phone & Computer Setup and Real-Debrid sign-in), `RdCloudScreen.kt`, `WebScreen.kt` (browser with a D-pad pointer; route `Screen.Sports` in `SportsScreens.kt`).
+- **Settings (October 19, 2026):** two panes. The rail on the left lists App updates, This TV, Profiles, Playback, Addons and Live TV, Jarvis Wall, Network, About and help; the right side shows the focused category. `SettingsScreen.kt` draws it, `SettingsKit.kt` holds the rows, the spacing and type scales and the dialogs, `SettingsModel.kt` holds the pure logic (focus moves, update text) with tests in `app/src/test/java/com/mcd/tv/ui/`. Rules: the remote moves through rows only. A text value is an Edit row; OK opens a dialog with a plain EditText and the keyboard; Done saves; one BACK closes both (`onKeyPreIme`). Choices open a list dialog. Destructive rows are red, sit at the end of their category and ask first. A fresh open lands on App updates (RIGHT, OK checks); a return from a screen Settings opened restores the category and row. QA deep link: `--es screen settings:<id>` (`updates`, `tv`, `profiles`, `playback`, `sources`, `wall`, `network`, `about`). The Settings ring in the top bar shows an amber dot when an update is ready. Rows cannot take focus in touch mode (the QA emulator image starts in it; TVs do not), so Settings asks for focus again when the window gains focus and when the first key press ends touch mode. Jarvis Wall has two rows for `wall_cycle`: Show the full calendar, and The calendar stays for.
+- `data/RecentErrors.kt`: the last 10 problems shown on this TV (playback, sources, updates), for Settings > About and help. Pref `recent_errors`; `update_check` keeps the last check. Both this TV only.
 - Look: `Theme.kt`, `Hud.kt`, `Common.kt`, `Components.kt`.
 - `player/PlayerScreen.kt`: Media3 ExoPlayer. Saves progress every 15 s and on exit, pauses when the app leaves the screen, retries network errors, jumps back to the live edge. `TvPlayerView.kt` handles LEFT / RIGHT seek and BACK. `ui/UpNext.kt` shows the 10 s Up Next card between episodes.
 
@@ -87,19 +88,22 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 
 ### Web pages (`docs/`, GitHub Pages)
 
-- **Web Settings (October 19, 2026):** an overview list with a status line per category (Your TVs, Profile, Real-Debrid, Playback, Addons, Keys, House and devices, Help); each opens `#/settings/<id>`. Wide screens keep the list on the left. Saved keys and tokens show as status (Connected, Set, last worked); a box to paste a new one opens only after Replace or Add. Destructive actions sit in a red group and ask first. No storage key changed.
-
 - `docs/index.html`: the Control page (QR link target).
 - `docs/app/`: the Jarvis web app (PWA with a service worker).
 - `docs/install.html`: install guide. `docs/get.html`: redirect to the newest APK.
+- **Web Settings (October 19, 2026):** an overview list with a status line per category (Your TVs, Profile, Real-Debrid, Playback, Addons, Keys, House and devices, Help); each opens `#/settings/<id>`. Wide screens keep the list on the left. Saved keys and tokens show as status (Connected, Set, last worked; per-device key `mcdtv_web_verified`); a box to paste a new one opens only after Replace or Add. Destructive actions sit in a red group and ask first. No storage key was renamed or removed, so nothing has to be entered again.
+- **TV names (October 19, 2026):** the web app and the Control page share one naming rule, `tvNames()`. A TV with its own name shows "Office TV (Fire TV)". A TV with no name, or a name another TV also has, adds its model: "Fire TV (AFTHY7ABBA)". If two still match, the first 4 letters of the device id follow: "Fire TV (AFTSS) #VAT3". Off TVs show when they were last seen first. The Control page fills Your other TVs from Find my TVs with the house link it or the web app saved, and runs Find my TVs by itself when its own TV stays silent for 8 s. An entry that says "Not seen yet" is a TV that has never answered, usually the Control page's own TV while it is off.
 
 ## Build, CI and QA
 
 - Push to `main`, or "Run workflow" in the Actions tab. `build.yml` runs unit tests, builds a signed release APK and publishes a Release (about 2 minutes). Version is `0.2.<run number>`; the version code is the run number.
-- `qa.yml` runs the APK in an Android TV emulator (`.github/qa/run-qa.sh`): screens open and show the right text, setup page, relay end to end, a sample M3U, remote navigation, crash and freeze checks. Results are in the run summary and the `qa-results` artifact.
+- `qa.yml` runs the unit tests (`./gradlew testReleaseUnitTest`), then the APK in an Android TV emulator (`.github/qa/run-qa.sh`): screens open and show the right text, setup page, relay end to end, a sample M3U, remote navigation, a Settings walk of every category (focus starts in the page, the D-pad never opens the keyboard, updates in two presses, the edit dialog opens on OK and one BACK closes it), crash and freeze checks. The Settings walk prints what has focus and the visible text to the job log. Results are in the run summary and the `qa-results` artifact.
+- **Testing a branch:** run QA and Web QA from the Actions tab on the branch ("Run workflow"). They build and test only. Never run Build APK on a branch: it publishes a "latest" release that TVs install.
 - Pushes that only touch `docs/`, Markdown, `rd-proxy/`, `tools/webtest/` or `.claude/` skip the APK build and emulator QA. Changes to `docs/` run Web QA instead (`.github/workflows/web-qa.yml`). A newer push cancels a run in progress.
 - Cloud sessions cannot reach Google Maven, so they cannot build. CI is the build. Before pushing, syntax-check Kotlin with `tree-sitter-kotlin` (pip) and web scripts with `node --check`.
-- Web app tests: `python3 tools/webtest/srv.py &` then `node tools/webtest/qa.mjs`.
+- Web app tests: `python3 tools/webtest/srv.py &` then `node tools/webtest/qa.mjs` (CHROME_PATH can point at the pre-installed Chromium). They cover the Settings pages at `#/settings/<id>`, saved keys staying untouched, the TV picker names and the Control page's Your other TVs.
+- Local unit tests: `bash tools/run-unit-tests.sh` (197 tests on October 19). It compiles the listed `data/` files plus the pure UI logic in `ui/SettingsModel.kt`.
+- Cloud sessions cannot download Actions artifacts (the storage host is blocked). Read the job log instead, or take web screenshots locally with Playwright.
 
 ## House rules
 
@@ -112,3 +116,5 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 1. **Netlify budget:** relay deploys cost 15 credits each (300 a month on the free plan). See CLAUDE.md. The old account server (`server/`) was removed in October 2026; HouseSync, ProfileSync and the house store replace it.
 2. **Next features:** see BACKLOG.md (ranked upgrades from the October 2026 review, by area).
 3. **Housekeeping:** update GitHub Actions versions (Node 20 deprecation warnings).
+4. **Fire TV keyboard:** the Settings edit dialog closes with one BACK on the Android TV emulator. Try a rename on a real Fire Stick with Amazon's keyboard.
+5. **CI flake:** on October 19, one QA run failed because Gradle could not download junit and org.json. One re-run passed. If it happens again, look at caching those test dependencies.
