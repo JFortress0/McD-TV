@@ -333,8 +333,9 @@ private fun ProfilesCategory(ctx: SettingsCtx, changed: () -> Unit) {
     SettingsSection("Names")
     Prefs.PROFILE_IDS.forEachIndexed { i, id ->
         val slot = if (id == Prefs.KIDS_PROFILE) "Kids profile" else "Profile ${i + 1}"
-        DialogRow(ctx, ctx.row(), slot, Prefs.profileName(id), RowEnd.Edit) {
-            SettingsDialog.Edit("Rename $slot", "Up to 20 letters. Press Done to save. Back cancels.", Prefs.profileName(id), 20) { t ->
+        val name = Prefs.profileName(id)
+        DialogRow(ctx, ctx.row(), name, slot, RowEnd.Edit) {
+            SettingsDialog.Edit("Rename $name", "$slot. Up to 20 letters. Press Done to save. Back cancels.", name, 20) { t ->
                 if (t.isNotBlank()) Prefs.setProfileName(id, t.trim())
                 changed()
             }

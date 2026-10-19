@@ -127,12 +127,12 @@ kb_shown && fail "Settings: no keyboard on an edit row before OK" || pass "Setti
 adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 3
 shot settings-edit-open
 describe settings-edit-open
-grep -q "Rename Profile 1" qa-out/ui-settings-edit-open.xml && pass "Settings: OK on an edit row opens the editor" || fail "Settings: OK on an edit row opens the editor"
+grep -q "Rename" qa-out/ui-settings-edit-open.xml && pass "Settings: OK on an edit row opens the editor" || fail "Settings: OK on an edit row opens the editor"
 kb_shown && echo "      keyboard is open in the editor" | tee -a "$R"
 adb shell input keyevent KEYCODE_BACK; sleep 2
 shot settings-edit-closed
 describe settings-edit-closed
-if ! grep -q "Rename Profile 1" qa-out/ui-settings-edit-closed.xml && grep -q "Profile 1" qa-out/ui-settings-edit-closed.xml && ! kb_shown; then
+if ! grep -q "Rename" qa-out/ui-settings-edit-closed.xml && grep -q "Profile 1" qa-out/ui-settings-edit-closed.xml && ! kb_shown; then
   pass "Settings: one BACK closes the keyboard and the editor"
 else
   fail "Settings: one BACK closes the keyboard and the editor"
