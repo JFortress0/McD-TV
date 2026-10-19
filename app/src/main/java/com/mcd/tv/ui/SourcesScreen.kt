@@ -81,7 +81,7 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
                     val queue = SourceQueue.put(order)
                     nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = s.headers, queue = queue, queuePos = index))
                 }
-                .onFailure { status = it.message ?: "Could not open this source"; busy = false }
+                .onFailure { status = it.message ?: "Could not open this source"; busy = false; if (it !is kotlinx.coroutines.CancellationException) com.mcd.tv.data.RecentErrors.note("Source: $status") }
         }
     }
 
@@ -150,7 +150,7 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
                 val all = Prefs.addonUrls.size
                 StatusText(
                     when {
-                        all == 0 -> "No addons installed. Add one on the Control page: Settings > Phone & Computer Setup."
+                        all == 0 -> "No addons installed. Add one on the Control page: Settings > Addons and Live TV."
                         failed.size >= all -> "Your addons did not answer (${failed.joinToString()}). A VPN on this TV or the router can block them. Turn it off and press Retry."
                         failed.isNotEmpty() -> "No sources found. ${failed.joinToString()} did not answer, so press Retry. A VPN can block addons."
                         else -> "Your addons answered but list no sources for this title yet. New talk shows and specials often have none. " +

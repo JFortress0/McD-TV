@@ -241,6 +241,45 @@ select:focus-visible,input:focus-visible{outline:2px solid var(--bright);outline
 .panel label{display:block;color:var(--muted);font-size:13px;margin:12px 0 5px}
 .panel .rowf{display:flex;gap:8px;flex-wrap:wrap}.panel .rowf input,.panel .rowf select{flex:1;min-width:180px}
 .steps{margin:10px 0;padding-left:22px}.steps li{margin:8px 0}
+/* Settings: an overview list of categories, one page per category. Wide screens: list left, category right.
+   Spacing scale 4 / 8 / 12 / 16 / 24 / 32. Type: h1 page, h2 group, 15 body, 13 secondary. */
+.settings{max-width:1100px}
+.settings h1{margin-bottom:16px}
+.slist{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;max-width:760px}
+.srow{display:flex;align-items:center;gap:12px;padding:14px 16px;min-height:60px;border-top:1px solid rgba(255,255,255,.06);transition:background .15s}
+.srow:first-child{border-top:0}
+.srow:hover{background:rgba(255,255,255,.04)}
+.srow.on{background:rgba(61,123,255,.14)}
+.srow .stext{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.srow .stext b{font-size:16px}
+.srow .stext .muted{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srow .chev{color:var(--muted);font-size:22px;line-height:1}
+.sdot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}.sdot.ok{background:#2bd46e}.sdot.no{background:#4b5563}
+.sback{display:inline-block;color:var(--bright);font-weight:700;margin-bottom:12px;padding:4px 0}
+.settings.has-cat .spane-list{display:none}
+.sgroup{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;max-width:760px}
+.sgroup h2{font-size:17px;margin-bottom:8px}
+.sgroup p{margin:8px 0}
+.sgroup label{display:block;color:var(--muted);font-size:13px;margin:12px 0 4px}
+.sgroup label.switch,.sgroup label.rowf{color:#fff;font-size:15px}
+.sgroup .rowf{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.sgroup .rowf input,.sgroup .rowf select{flex:1;min-width:180px}
+.sgroup .profrow{display:flex;gap:8px;flex-wrap:wrap}
+.sgroup.danger{border-color:rgba(255,107,107,.35)}
+.kv{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}
+.kv:first-of-type{border-top:0}
+.kv>span:last-child{text-align:right;min-width:0;overflow-wrap:anywhere}
+.btn.danger{background:transparent;color:#ff9b9b;box-shadow:inset 0 0 0 1px rgba(255,107,107,.55)}
+.btn.danger:hover{background:rgba(255,107,107,.14)}
+details.replace{margin-top:12px}
+details.replace>summary{list-style:none;display:inline-flex}
+details.replace>summary::-webkit-details-marker{display:none}
+details.replace[open]>summary{background:rgba(61,123,255,.22);color:var(--bright)}
+@media (min-width:900px){
+  .settings{display:grid;grid-template-columns:300px minmax(0,1fr);gap:32px;align-items:start}
+  .settings.has-cat .spane-list{display:block;position:sticky;top:calc(var(--hdr) + 16px)}
+  .settings .slist{max-width:none}
+  .sback{display:none}
+}
 .pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;background:#1F2937}
 .pill.ok{background:rgba(31,157,85,.25);color:#5fd38a}.pill.no{background:rgba(255,107,107,.15);color:#ff9b9b}
 .notice{max-width:760px;margin:30px auto;text-align:center;padding:30px 18px}
@@ -1139,7 +1178,7 @@ function applyAddons(m) {
 // ---------- the house (every TV), not one TV ----------
 // Every TV keeps the house's setup on the Jarvis relay (rd-proxy/netlify/functions/house.mts), so this app gets
 // settings, lists and Live TV favorites with any TV on, or none. It needs the house link once: from any TV that
-// answers, an invite, or a code from a TV (Settings > Profiles > Connect a phone).
+// answers, an invite, or a code from a TV (Settings > Network > Connect a phone).
 let houseSyncing = null;
 function syncHouse() {
   if (houseSyncing || !RC.ready()) return houseSyncing;
@@ -1367,7 +1406,7 @@ function findTvs() {
         await useTv(switched);
         toast("Found your " + switched.name + ". Linked again.", "ok");
       } else if (S.status !== "online") {
-        toast("Your TV is not answering. On now: " + tvs.map((t) => t.name).join(", ") + ". Use one in Settings > Find my TVs.", "warn");
+        toast("Your TV is not answering. On now: " + tvs.map((t) => t.name).join(", ") + ". Use one in Settings > Your TVs.", "warn");
       }
     }
     return { tvs, error: "", switched: switched ? switched.id : "" };
@@ -1498,6 +1537,7 @@ async function tmdb(path, params) {
   if (c && Date.now() - c.at < 600000) return c.data;
   const r = await fetch(url, { headers });
   if (!r.ok) throw new Error(r.status === 401 ? "The TMDB key was rejected." : "TMDB error " + r.status);
+  stampOk("tmdb");
   const data = await r.json();
   tcache.set(url, { data, at: Date.now() });
   if (tcache.size > 400) tcache.delete(tcache.keys().next().value);
@@ -2675,9 +2715,9 @@ function addonPanelHTML() {
   const tv = ((S.init && S.init.addon_urls) || []).filter(okUrl), bak = (readJSON(ADDON_BAK) || []).filter(okUrl), mine = myAddons();
   const from = tv.length ? `${tv.length} from your TV` : bak.length ? `${bak.length} saved from your TV earlier` : "none from your TV yet";
   const host = (u) => { try { return new URL(u).host; } catch { return u.slice(0, 40); } };
-  return `<p class="muted">Play here uses ${from}${mine.length ? `, plus ${mine.length} added here` : ""}. To add one here, paste its manifest link (the https link that ends in manifest.json).</p>
+  return `<p class="muted">Play here uses ${from}${mine.length ? `, plus ${mine.length} added here` : ""}. Addons for every device go on the Control page. To add one only here, use its manifest link (the https link that ends in manifest.json).</p>
     ${mine.map((u, i) => `<div class="rowf" style="margin-top:8px"><span>${esc(host(u))}</span><button class="btn small" data-act="addondel" data-i="${i}">Remove</button></div>`).join("")}
-    <div class="rowf" style="margin-top:10px"><input id="addonIn" type="url" placeholder="https://…/manifest.json" autocomplete="off"><button class="btn small primary" data-act="addonadd">Add</button></div>`;
+    <div style="margin-top:10px">${replaceBox("Add an addon", `<input id="addonIn" type="url" placeholder="https://…/manifest.json" autocomplete="off" aria-label="Addon manifest link"><button class="btn small primary" data-act="addonadd">Add</button>`)}</div>`;
 }
 // Which app opens files a browser can't play (MKV, DTS and Dolby audio; IPTV channels): "vlc", "infuse", "iina" or "ask".
 // Default: IINA on a Mac (free, plays everything, opens links from web pages), VLC on iPhone and iPad.
@@ -2771,12 +2811,12 @@ const RD_PROXY = "https://jarvis-rd.netlify.app/rd/";
 const RD_CLIENT = "X245A4XAIBGVM"; // Real-Debrid's published client id for open-source apps (device sign-in)
 const RD_GRANT = "http://oauth.net/grant_type/device/1.0";
 const RDC_KEY = "mcdtv_web_rdc"; // {id, secret, t, r, exp}: this device's own RD sign-in (this browser only)
-const NO_RD = "Connect Real-Debrid first: Settings > Real-Debrid on this device.";
-const TV_OFF = "Your TV is off or not answering. To play without the TV, add Real-Debrid on this device: Settings > Real-Debrid on this device.";
-const TV_SLOW = "Your TV took too long to get this stream. Try again, or add Real-Debrid on this device (Settings > Real-Debrid on this device) to play without the TV.";
+const NO_RD = "Connect Real-Debrid first: Settings > Real-Debrid.";
+const TV_OFF = "Your TV is off or not answering. To play without the TV, sign in to Real-Debrid on this device: Settings > Real-Debrid.";
+const TV_SLOW = "Your TV took too long to get this stream. Try again, or sign in to Real-Debrid on this device (Settings > Real-Debrid) to play without the TV.";
 /** A fatal error that offers the Real-Debrid on this device path (the Sources page adds a Settings button). */
 function tvOff(msg) { const e = fatal(msg); e.tvOff = true; return e; }
-const RECONNECT = "Real-Debrid signed this device out. Connect it again in Settings.";
+const RECONNECT = "Real-Debrid signed this device out. Connect it again in Settings > Real-Debrid.";
 function fatal(msg) { const e = new Error(msg); e.fatal = true; return e; }
 let rdc = readJSON(RDC_KEY);
 // Optional: your personal API token (real-debrid.com/apitoken), pasted in Settings. RD lets it use the streaming
@@ -2863,12 +2903,13 @@ async function rdCall(method, path, fields, retried) {
   if (!rdHere()) throw fatal(NO_RD);
   if (rdToken()) {
     const res = await rdFetch(method, "rest/1.0" + path, fields, rdToken());
-    if (res.status === 401) throw fatal("Real-Debrid refused your API token. Paste a new one in Settings.");
+    if (res.status === 401) throw fatal("Real-Debrid refused your API token. Replace it in Settings > Real-Debrid.");
     if (!res.ok) {
       const e = rdError(res);
       e.status = res.status;
       throw e;
     }
+    stampOk("rdt");
     return res.o;
   }
   if (!rdc.t || Date.now() > (rdc.exp || 0)) await rdRefresh();
@@ -2880,6 +2921,7 @@ async function rdCall(method, path, fields, retried) {
     e.status = res.status;
     throw e;
   }
+  stampOk("rdc");
   return res.o; // null for 204 (no content)
 }
 
@@ -2911,23 +2953,36 @@ async function rdLoginStart() {
   RDL.timer = setTimeout(poll, every);
   rdLoginUi();
 }
+/**
+ * Real-Debrid status and actions (Settings > Real-Debrid, and the welcome page). Status first: what already works
+ * (the TV's sign-in, this device's sign-in, the API token) shows as Connected or Set with when it last worked. A box
+ * for a token opens only after "Add token" or "Replace token"; a saved token is never shown or asked for again.
+ */
 function rdPanelHTML() {
-  return rdSignInHTML() + `<div style="margin-top:16px"><b>Play inside Jarvis on iPhone</b>
-    <p class="muted">Optional. Real-Debrid only gives its iPhone-ready versions to your personal API token. Copy it from
-    <a href="https://real-debrid.com/apitoken" target="_blank" rel="noopener">real-debrid.com/apitoken</a> and paste it here. It stays on this device.
-    Without it, Jarvis opens MKV files in VLC instead.</p>
-    <div class="rowf" style="margin-top:8px">${rdToken() ? `<span class="muted">Token saved.</span><button class="btn small" data-act="rdtclear">Remove token</button>` :
-      `<input id="rdtIn" type="password" placeholder="Paste API token" autocomplete="off"><button class="btn small primary" data-act="rdtsave">Save</button>`}</div></div>`;
-}
-function rdSignInHTML() {
-  if (rdToken() && !(rdc && rdc.r)) return `<p class="muted">Using your API token. Play here works on this device without the TV.</p>`;
-  if (rdHere()) return `<p class="muted">Connected. Play here works on this device without the TV.</p>
-    <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rdout">Disconnect this device</button></div>`;
-  if (RDL.code) return `<p>On any device, open <a href="${esc(RDL.url)}" target="_blank" rel="noopener">real-debrid.com/device</a> and enter this code:</p>
-    <p style="font-size:30px;font-weight:700;letter-spacing:4px;margin:8px 0">${esc(RDL.user)}</p><p class="muted">Waiting for you to approve it…</p>
-    <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rdcancel">Cancel</button></div>`;
-  return `<p class="muted">Sign in once so Play here works on this device without the TV on. Use your own Real-Debrid account.</p>
-    <div class="rowf" style="margin-top:10px"><button class="btn small primary" data-act="rdlogin">Connect Real-Debrid</button></div>`;
+  const signedIn = !!(rdc && rdc.r && rdc.id && rdc.secret);
+  const tv = S.init && S.init.rd_connected;
+  return `<section class="sgroup"><h2>Status</h2>
+      ${kv("Your TV", tv ? pill(true, "Connected") : S.link ? pill(false, "Not connected") : `<span class="muted">No TV linked</span>`)}
+      ${kv("This device", signedIn ? pill(true, "Signed in") : RDL.code ? `<span class="pill">Waiting for approval</span>` : `<span class="muted">Not signed in</span>`)}
+      ${signedIn && verifiedAt("rdc") ? kv("", esc(verifiedText("rdc"))) : ""}
+      ${kv("API token", rdToken() ? pill(true, "Set") : `<span class="muted">Not set</span>`)}
+      ${rdToken() && verifiedAt("rdt") ? kv("", esc(verifiedText("rdt"))) : ""}
+      <p class="muted">${rdHere() ? "Play here works on this device without the TV." : tv ? "Play here asks your TV for the links, so the TV needs to be on. Sign in here to play without it." : "Sign in once so Play here works on this device."}</p>
+      ${rdHere() ? `<div class="rowf"><button class="btn small" data-act="rdverify" id="rdVerify">Check it works</button></div>` : ""}
+    </section>
+    ${signedIn ? "" : `<section class="sgroup"><h2>Sign in on this device</h2>${RDL.code
+      ? `<p>On any device, open <a href="${esc(RDL.url)}" target="_blank" rel="noopener">real-debrid.com/device</a> and enter this code:</p>
+        <p style="font-size:30px;font-weight:700;letter-spacing:4px;margin:8px 0">${esc(RDL.user)}</p><p class="muted">Waiting for you to approve it…</p>
+        <div class="rowf"><button class="btn small" data-act="rdcancel">Cancel</button></div>`
+      : `<p class="muted">Use your own Real-Debrid account. You approve it with a code. No password is typed here.</p>
+        <div class="rowf"><button class="btn small primary" data-act="rdlogin">Connect Real-Debrid</button></div>`}</section>`}
+    <section class="sgroup"><h2>Play inside Jarvis on iPhone</h2>
+      <p class="muted">Optional. Real-Debrid only gives its iPhone-ready versions to your personal API token, from
+      <a href="https://real-debrid.com/apitoken" target="_blank" rel="noopener">real-debrid.com/apitoken</a>. It stays on this device. Without it, Jarvis opens MKV files in VLC.</p>
+      ${replaceBox(rdToken() ? "Replace token" : "Add token", `<input id="rdtIn" type="password" placeholder="Paste API token" autocomplete="off" aria-label="Real-Debrid API token"><button class="btn small primary" data-act="rdtsave">Save</button>`)}
+    </section>
+    ${signedIn || rdToken() ? `<section class="sgroup danger"><h2>Sign out</h2><p class="muted">Only this device signs out. Your TV keeps its own Real-Debrid sign-in.</p>
+      <div class="rowf">${signedIn ? `<button class="btn small danger" data-act="rdout">Disconnect this device</button>` : ""}${rdToken() ? `<button class="btn small danger" data-act="rdtclear">Remove API token</button>` : ""}</div></section>` : ""}`;
 }
 function rdLoginUi() { const p = $("#rdPanel"); if (p) p.innerHTML = rdPanelHTML(); }
 
@@ -3208,7 +3263,7 @@ async function renderSources(v, tok, type, id, q) {
   if (!imdb && !ivOn) { v.innerHTML = `<div class="page">${head}<p class="muted">This title has no IMDb id yet, so your addons can't look it up.</p><div class="actions">${tvBtn}</div></div>`; return; }
   if (!addonUrls().length && !ivOn) {
     v.innerHTML = `<div class="page">${head}<div class="panel" style="margin-top:14px"><h2>No addons yet</h2>
-      <p class="muted">${S.link ? "Your TV hasn't sent any addons. Add one on the TV or the Control page, then tap Refresh from TV. Or add one on this phone in Settings > Addons on this device." : "Add an addon in Settings > Addons on this device, or link your TV to use its addons."}</p>
+      <p class="muted">${S.link ? "Your TV hasn't sent any addons. Add one on the TV or the Control page, then tap Refresh from TV. Or add one on this phone in Settings > Addons." : "Add an addon in Settings > Addons, or link your TV to use its addons."}</p>
       <div class="rowf" style="margin-top:10px">${S.link ? `<button class="btn small primary" data-act="retry">Refresh from TV</button>` : `<a class="btn small primary" href="#/pair">Link your TV</a>`}<a class="btn small" href="#/settings">Settings</a></div></div></div>`;
     return;
   }
@@ -3236,7 +3291,7 @@ async function renderSources(v, tok, type, id, q) {
   if (!list.length && !ivList.length) {
     // Say why: no addons on this device, addons that didn't answer (blocked network), or really nothing found.
     const rep = Object.entries(S.addonReport || {}), bad = rep.filter(([, r]) => r !== "ok");
-    const msg = !addonUrls().length ? "No addons on this device yet. Open Jarvis once with a TV on, or connect with a code (Settings), so it gets your addons."
+    const msg = !addonUrls().length ? "No addons on this device yet. Open Jarvis once with a TV on, or connect with a code (Settings > House and devices), so it gets your addons."
       : bad.length ? `${bad.length === rep.length ? "Your addons" : "Some addons"} didn't answer (${bad.map(([n, r]) => n + ": " + r).join(", ")}). Something on this network is blocking them: a VPN, iCloud Private Relay, or Limit IP Address Tracking. Turn those off for Wi-Fi and try again.`
       : !addonUrls().length || !imdb ? (ivOn ? (S.iptvReport === "failed" ? "Couldn't load your IPTV provider's library. Try again in a minute." : "Your IPTV provider has no copy of this title.") : "No sources found.")
       : "Your addons answered but list no sources for this title yet. New talk shows and specials often have none.";
@@ -4425,7 +4480,7 @@ const LV = (() => {
     if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec) && !String(view.sec).startsWith("game:"))) { view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All"; view.auto = true; }
     const stale = !RC.ready() && S.link && S.status === "offline";
     v.innerHTML = `<div class="page"><h1>Live TV</h1>
-      ${stale ? `<div class="panel" id="lvStale" style="margin-bottom:12px"><h2>Connect this phone to your house</h2><p class="muted">So favorites and lists come from every TV, not just one: on any TV go to Settings &gt; Profiles &gt; Connect a phone, then type its code in this app's Settings &gt; Connect with a code.</p></div>` : ""}
+      ${stale ? `<div class="panel" id="lvStale" style="margin-bottom:12px"><h2>Connect this phone to your house</h2><p class="muted">So favorites and lists come from every TV, not just one: on any TV go to Settings &gt; Network &gt; Connect a phone, then type its code in this app's Settings &gt; House and devices.</p></div>` : ""}
       <div class="lv-wrap">
       <div class="chips" id="lvChips">${(() => { const ls = LEAGUES.filter(inSeason); return ls.length ? `<span class="lv-hd">Games</span>${ls.map((L) => `<button class="chip lv-game" type="button" data-act="livesec" data-sec="game:${L.id}"><span>${L.emoji} ${esc(L.label)}</span><span>${SCHED[L.id] ? SCHED[L.id].games.filter((x) => x.state !== "post").length : ""}</span></button>`).join("")}<span class="lv-hd">Channels</span>` : ""; })()}${LIVE_SECTIONS.filter((s) => ["All", "Favorites", "Recent"].includes(s) || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
       <div><div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
@@ -4713,99 +4768,203 @@ function renderProfiles(v, next) {
 }
 
 // ---------- Settings ----------
+// An overview of every setting with its status, and one page per category (#/settings/<id>). On wide screens the
+// category list stays on the left. Keys and tokens that are already saved show as status, never as empty boxes:
+// a box to paste a new one opens only after "Replace" (or "Add" when none is set). Storage keys are unchanged, so
+// nothing set up before has to be entered again.
+const SET_CATS = [
+  ["tvs", "Your TVs"], ["profile", "Profile"], ["rd", "Real-Debrid"], ["playback", "Playback"],
+  ["addons", "Addons"], ["keys", "Keys"], ["house", "House and devices"], ["help", "Help"],
+];
+// When each key last worked on this device: {tmdb, rdt, rdc} in ms. Written at most once a minute per key.
+const VERIFIED_KEY = "mcdtv_web_verified";
+const verifiedMem = {};
+function verifiedAt(k) { const o = readJSON(VERIFIED_KEY) || {}; return +o[k] || 0; }
+function stampOk(k) {
+  const now = Date.now();
+  if (now - (verifiedMem[k] || 0) < 60000) return;
+  verifiedMem[k] = now;
+  const o = readJSON(VERIFIED_KEY) || {}; o[k] = now; LS.set(VERIFIED_KEY, JSON.stringify(o));
+}
+function agoText(t) {
+  if (!t) return "";
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return "just now";
+  if (s < 3600) return Math.round(s / 60) + " min ago";
+  if (s < 86400) return Math.round(s / 3600) + " h ago";
+  const d = Math.round(s / 86400); return d + (d === 1 ? " day ago" : " days ago");
+}
+const verifiedText = (k) => verifiedAt(k) ? "Last worked " + agoText(verifiedAt(k)) + "." : "";
+const pill = (ok, text) => `<span class="pill ${ok ? "ok" : "no"}">${esc(text)}</span>`;
+/** A label and value line. [value] is HTML. */
+const kv = (label, value) => `<div class="kv"><span class="muted">${esc(label)}</span><span>${value}</span></div>`;
+/** A box that opens only on request ("Replace key"), for pasting a new secret. Nothing is filled in. */
+const replaceBox = (summary, inner, open) => `<details class="replace"${open ? " open" : ""}><summary class="btn small">${esc(summary)}</summary><div class="rowf" style="margin-top:10px">${inner}</div></details>`;
 function statusHTML() {
   if (!S.link) return `<span class="pill no">Not linked</span>`;
   const m = { online: ["ok", "TV online"], connecting: ["", "Connecting"], offline: ["no", "TV not answering"], none: ["no", "Not linked"] }[S.status] || ["", S.status];
   if (linkedTvName()) m[1] = m[1].replace("TV", "").trim().replace(/^./, (c) => c.toUpperCase()) || "Online";
   return `<span class="pill ${m[0]}">${m[1]}</span>`;
 }
-function renderSettings(v) {
+const oName = { no_asia: "Hide Asian-made titles", us: "Made in the US only", all: "All countries" };
+/** One line of status for each category in the overview. */
+function setSummary(id) {
   const k = keys();
-  const o = S.init && S.init.origin_filter;
-  const oname = { no_asia: "Hide Asian-made titles", us: "Made in the US only", all: "All countries" };
-  v.innerHTML = `<div class="page"><h1>Settings</h1>
-    <div class="panel"><h2>Your TV</h2>
-      <p><span id="setStatus">${statusHTML()}</span>${linkedTvName() ? ` <b>${esc(linkedTvName())}</b> <span class="muted">${esc(tvDetail(linkedTv()))}</span>` : ""}</p>
-      ${S.link ? `<p class="muted" data-now="${esc(S.link.id)}">${esc(nowText(S.link.id))}</p>
-        <p class="muted">Play on TV, Open on TV and Watchlist go to this TV, encrypted, through the same relay as the Control page. Name each TV in its Settings or on the Control page, then pick one below or from the TV pill at the top.</p>
-        <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="retry">Refresh from TV</button><a class="btn small" href="../#${S.link.id}.${S.link.key}">Control page</a><button class="btn small" data-act="copylink">Copy link</button><button class="btn small" data-act="unpair">Unlink this browser</button></div>`
+  switch (id) {
+    case "tvs": return S.link ? (linkedTvName() || "Linked") + " · " + ({ online: "online", connecting: "connecting", offline: "not answering" }[S.status] || "linked") : "Not linked";
+    case "profile": return S.profile ? "Watching as " + profileName(S.profile) : "Not chosen";
+    case "rd": return rdHere() ? "Connected on this device" : rdViaTv() ? "Connected through your TV" : "Not connected";
+    case "playback": return (extPref() === "ask" ? "Ask each time" : EXT_NAME[extPref()] || "VLC") + " · " + (S.originPref ? oName[S.originPref] : "Titles as on the TV");
+    case "addons": { const tv = ((S.init && S.init.addon_urls) || []).filter(okUrl).length, mine = myAddons().length;
+      return (tv ? tv + " from your TV" : "None from your TV") + (mine ? ", " + mine + " added here" : ""); }
+    case "keys": return "TMDB " + (k.fromTv ? "from your TV" : S.manualTmdb ? "saved here" : "not set") + " · Ask Jarvis " + (jarvisKey() ? "ready" : jarvisLocalOn() ? "on" : "through the TV");
+    case "house": return RC.ready() ? "Connected to your house" : "Codes, invites and install";
+    case "help": return "Check network, recent errors";
+  }
+  return "";
+}
+function setCatOk(id) {
+  switch (id) {
+    case "tvs": return !!S.link;
+    case "rd": return rdAvailable();
+    case "keys": return !!keys().tmdb;
+    case "house": return RC.ready();
+    default: return null;
+  }
+}
+function setListHTML(cur) {
+  return `<nav class="slist" aria-label="Settings">${SET_CATS.map(([id, name]) => {
+    const ok = setCatOk(id);
+    return `<a class="srow${id === cur ? " on" : ""}" href="#/settings/${id}"${id === cur ? ' aria-current="page"' : ""}>
+      <span class="stext"><b>${esc(name)}</b><span class="muted">${esc(setSummary(id))}</span></span>
+      ${ok === null ? "" : `<span class="sdot ${ok ? "ok" : "no"}" aria-hidden="true"></span>`}<span class="chev" aria-hidden="true">›</span></a>`;
+  }).join("")}</nav>`;
+}
+function setTvsHTML() {
+  return `<section class="sgroup"><h2>This browser's TV</h2>
+      ${kv("Status", `<span id="setStatus">${statusHTML()}</span>`)}
+      ${S.link ? `${linkedTvName() ? kv("TV", `<b>${esc(linkedTvName())}</b> <span class="muted">${esc(tvDetail(linkedTv()))}</span>`) : ""}
+        <p class="muted" data-now="${esc(S.link.id)}">${esc(nowText(S.link.id))}</p>
+        <div class="rowf"><button class="btn small" data-act="retry">Refresh from TV</button><a class="btn small" href="../#${S.link.id}.${S.link.key}">Control page</a><button class="btn small" data-act="copylink">Copy link</button></div>`
       : `<p class="muted">Not linked. <a href="#/pair" style="color:var(--bright)">How to link your TV</a></p>`}
-      <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="findtvs" id="findTvBtn">Find my TVs</button></div>
+    </section>
+    <section class="sgroup"><h2>All your TVs</h2>
+      <p class="muted">Play on TV, Open on TV and Watchlist go to the TV picked here, encrypted, through the same relay as the Control page. Name each TV in its Settings or on the Control page.</p>
+      <div class="rowf"><button class="btn small" data-act="findtvs" id="findTvBtn">Find my TVs</button></div>
       <ul class="netlist" id="tvFound" aria-live="polite">${tvFoundHTML(tvFindLast)}</ul>
-      <label for="pasteLink">${S.link ? "Link a different TV: paste its link" : "Paste a Jarvis link"}</label>
-      <div class="rowf"><input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off"><button class="btn small primary" data-act="paste">Link</button></div>
-    </div>
-    <div class="panel"><h2>Profile</h2>
-      <p class="muted">Watchlist, favorites and Continue Watching here are ${S.profile ? `<b style="color:var(--white)">${esc(profileName(S.profile))}</b>'s` : "the chosen profile's"}, the same as on the TV. Switching here doesn't change the TV.</p>
-      <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small${p.id === S.profile ? " primary" : ""}" data-act="setprofile" data-pid="${p.id}"${p.id === S.profile ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</div>
-    </div>
-    <div class="panel"><h2>Real-Debrid on this device</h2><div id="rdPanel">${rdPanelHTML()}</div></div>
-    <div class="panel"><h2>Player app</h2><p class="muted">Browsers can't play MKV files or DTS and Dolby sound. Jarvis hands those to this app. ${isMac ? `On a Mac: IINA, free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : "VLC is free on the App Store. Infuse also works for movies and shows (it starts where you left off), but most files need Infuse Pro. Live TV channels always open in VLC. Tip: with your Real-Debrid API token saved below, most movies and shows play right here instead, and pick up where you left off on any TV."}</p>
-      <div class="rowf" style="margin-top:10px">${extPrefSelect("extPrefSet")}</div></div>
-    <div class="panel"><h2>Addons on this device</h2>${addonPanelHTML()}</div>
-    <div class="panel"><h2>Check network</h2>
-      <p class="muted">Tests what Jarvis needs from this phone: TMDB, your addons, the Jarvis relay, the TV link and your TV. Use it when sources or posters don't load.</p>
-      <div class="rowf" style="margin-top:10px"><button class="btn small primary" data-act="netcheck" id="netBtn">Check network</button></div>
-      <ul class="netlist" id="netList" aria-live="polite"></ul></div>
-    <div class="panel"><h2>Recent errors</h2>
-      <p class="muted">Problems Jarvis hit on this device, newest first. Links and keys are left out.</p>
-      <ul class="netlist" id="errList"></ul>
-      <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="clearerrs" id="errClear">Clear</button></div></div>
-    <div class="panel"><h2>Ask Jarvis</h2>
+    </section>
+    <section class="sgroup"><h2>${S.link ? "Link a different TV" : "Link a TV"}</h2>
+      <p class="muted">Paste the Jarvis link from a TV's Phone &amp; Computer Setup page.</p>
+      ${replaceBox(S.link ? "Paste a link" : "Paste a Jarvis link", `<input id="pasteLink" type="text" placeholder="https://jfortress0.github.io/McD-TV/#…" autocomplete="off" aria-label="Jarvis link"><button class="btn small primary" data-act="paste">Link</button>`, !S.link)}
+    </section>
+    ${S.link ? `<section class="sgroup danger"><h2>Unlink</h2><p class="muted">This browser stops sending to your TV. The TV and its settings stay as they are.</p>
+      <div class="rowf"><button class="btn small danger" data-act="unpair">Unlink this browser</button></div></section>` : ""}`;
+}
+function setProfileHTML() {
+  return `<section class="sgroup"><h2>Who's watching here</h2>
+    <p class="muted">Watchlist, favorites and Continue Watching here are ${S.profile ? `<b style="color:#fff">${esc(profileName(S.profile))}</b>'s` : "the chosen profile's"}, the same as on the TV. Switching here doesn't change the TV.</p>
+    <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small${p.id === S.profile ? " primary" : ""}" data-act="setprofile" data-pid="${p.id}"${p.id === S.profile ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</div>
+  </section>`;
+}
+function setPlaybackHTML() {
+  const o = S.init && S.init.origin_filter;
+  return `<section class="sgroup"><h2>Player app</h2>
+      <p class="muted">Browsers can't play MKV files or DTS and Dolby sound. Jarvis hands those to this app. ${isMac ? `On a Mac: IINA, free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : "VLC is free on the App Store. Infuse also works for movies and shows (it starts where you left off), but most files need Infuse Pro. Live TV channels always open in VLC."}</p>
+      <div class="rowf">${extPrefSelect("extPrefSet")}</div></section>
+    <section class="sgroup"><h2>Titles shown</h2>
+      <label for="originSel">Countries</label>
+      <select id="originSel">
+        <option value="">Same as the TV${o ? " (" + esc(oName[o] || o) + ")" : ""}</option>
+        <option value="no_asia">Hide Asian-made titles</option><option value="us">Made in the US only</option><option value="all">All countries</option>
+      </select>
+      <p class="muted" style="margin-top:10px">Adult titles are never shown.</p></section>`;
+}
+function setKeysHTML() {
+  const k = keys(), i = S.init || {};
+  const tmdbState = k.fromTv ? pill(true, "Connected · from your TV") : S.manualTmdb ? pill(true, "Saved on this device") : pill(false, "Not set");
+  const mdbState = i.mdblist_key ? pill(true, "Connected · from your TV") : S.manualMdb ? pill(true, "Saved on this device") : pill(false, "Not set");
+  return `<section class="sgroup"><h2>TMDB</h2>
+      ${kv("Status", tmdbState)}
+      ${verifiedAt("tmdb") && k.tmdb ? kv("Checked", esc(verifiedText("tmdb"))) : ""}
+      <p class="muted">Posters and title info. ${k.fromTv ? "Your TV sends its key, so nothing is needed here." : "The TV sends its key when it answers. You can also keep your own free key from themoviedb.org on this device."}</p>
+      ${replaceBox(S.manualTmdb ? "Replace key" : k.fromTv ? "Use my own key" : "Add key", `<input id="tmdbIn" type="password" placeholder="Paste TMDB key or read token" autocomplete="off" aria-label="TMDB key"><button class="btn small primary" data-act="savetmdb">Save</button>`)}
+    </section>
+    <section class="sgroup"><h2>MDBList</h2>
+      ${kv("Status", mdbState)}
+      <p class="muted">Optional. IMDb and Rotten Tomatoes scores.</p>
+      ${replaceBox(S.manualMdb || i.mdblist_key ? "Replace key" : "Add key", `<input id="mdbIn" type="password" placeholder="Paste MDBList key" autocomplete="off" aria-label="MDBList key"><button class="btn small primary" data-act="savemdb">Save</button>`)}
+    </section>
+    <section class="sgroup"><h2>Ask Jarvis</h2>
       <label class="switch"><input type="checkbox" id="jvLocal" ${jarvisLocalOn() ? "checked" : ""}> Use Jarvis on this device without the TV</label>
-      <p>${jarvisKey() ? `<span class="pill ok">Key saved on this device</span>` : `<span class="pill no">No key on this device</span>`}</p>
+      ${kv("Key", jarvisKey() ? pill(true, "Saved on this device") : pill(false, "Not on this device"))}
       <p class="muted">${jarvisLocalOn()
         ? (jarvisKey() ? "Your TV's Jarvis key is saved on this device, so Ask Jarvis works even when the TV is off." : S.link ? "The TV's Jarvis key will be saved on this device next time the TV answers. Add the key on the Control page if the TV has none." : "Link your TV to get its Jarvis key.")
         : "Off: Ask Jarvis goes through your TV, which needs to be on. No key is kept on this device."}</p>
-      ${jarvisKey() ? `<div class="rowf" style="margin-top:10px"><button class="btn small" data-act="rmjarvis">Remove key from this device</button></div>` : ""}
-    </div>
-    <div class="panel"><h2>Connect with a code</h2>
-      <p class="muted">${RC.ready() ? "This phone is connected to your house: it stays in sync with every TV, whichever ones are on." : "Keeps this phone in sync with every TV in the house, not just one."} On any TV: Settings &gt; Profiles &gt; Connect a phone. Type the code it shows here.</p>
-      <div class="rowf" style="margin-top:10px;gap:8px"><input id="pairCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px">
-        <button class="btn small primary" data-act="paircode">Connect</button></div></div>
-    <div class="panel"><h2>Add a TV</h2>
-      <p class="muted">A new Jarvis TV shows an 8-digit code (it asks the first time, or Settings > Profiles > Join my other TVs on the TV). Type it here: the TV gets your profiles, settings and Real-Debrid.</p>
-      <div class="rowf" style="margin-top:10px;gap:8px"><input id="addTvCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px">
-        <button class="btn small primary" data-act="addtv">Add TV</button></div></div>
-    <div class="panel"><h2>Set up another phone</h2>
+    </section>
+    ${S.manualTmdb || jarvisKey() ? `<section class="sgroup danger"><h2>Remove from this device</h2>
+      <p class="muted">Only this device forgets the key. Your TV keeps its own.</p>
+      <div class="rowf">${S.manualTmdb ? `<button class="btn small danger" data-act="cleartmdb">Remove my TMDB key</button>` : ""}${jarvisKey() ? `<button class="btn small danger" data-act="rmjarvis">Remove Jarvis key</button>` : ""}</div></section>` : ""}`;
+}
+function setHouseHTML() {
+  return `<section class="sgroup"><h2>Connect with a code</h2>
+      <p class="muted">${RC.ready() ? pill(true, "Connected to your house") + " This phone stays in sync with every TV, whichever ones are on." : "Keeps this phone in sync with every TV in the house, not just one."} On any TV: Settings &gt; Network &gt; Connect a phone. Type the code it shows here.</p>
+      <div class="rowf"><input id="pairCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px" aria-label="Code from your TV">
+        <button class="btn small primary" data-act="paircode">Connect</button></div></section>
+    <section class="sgroup"><h2>Add a TV</h2>
+      <p class="muted">A new Jarvis TV shows an 8-digit code (it asks the first time, or Settings &gt; Network &gt; Join my other TVs on the TV). Type it here: the TV gets your profiles, settings and Real-Debrid.</p>
+      <div class="rowf"><input id="addTvCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px" aria-label="Code from the new TV">
+        <button class="btn small primary" data-act="addtv">Add TV</button></div></section>
+    <section class="sgroup"><h2>Set up another phone</h2>
       <p class="muted">Sends an invite with everything set up the way it is here: your TV link, sources, playlist, keys and player choice. They tap it and add Jarvis to their Home Screen. Only send it to people you'd hand your TV remote.</p>
       ${rdToken() ? `<label class="rowf" style="margin-top:10px;gap:8px;align-items:flex-start"><input type="checkbox" id="invTok" checked style="margin-top:4px">
         <span>Include my Real-Debrid API token, so movies and shows play inside Jarvis on their phone with no sign-in. <span class="muted">The invite then works like a password: send it only by text to someone in the house.</span></span></label>`
-        : `<p class="muted" style="margin-top:8px">Tip: save your Real-Debrid API token above first, and the invite can carry it, so movies play inside Jarvis on their phone with no sign-in.</p>`}
-      <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small" data-act="invite" data-pid="${p.id}">Invite as ${esc(p.name)}</button>`).join("")}</div></div>
-    <div class="panel"><h2>Install as an app</h2>
-      <p class="muted">${isStandalone() ? "Jarvis is installed on this device. iPhone keeps the app's settings apart from Safari's. To bring your setup over: open Jarvis in Safari, go to Settings and tap Copy setup for the app, then paste it under Your TV here and tap Link." : "iPhone and iPad: in Safari, tap Share, then Add to Home Screen. Then tap Copy setup for the app below and paste it in the app's Settings, under Your TV. (iPhone keeps the app's settings apart from Safari's.) Android and computers: use the browser menu and choose Install app."}</p>
-      ${isStandalone() ? "" : `<div class="rowf" style="margin-top:10px"><button class="btn small primary" data-act="copysetup">Copy setup for the app</button></div>`}
-    </div>
-    <div class="panel"><h2>TMDB key</h2>
-      <p>${k.fromTv ? `<span class="pill ok">Using the TV's key</span>` : S.manualTmdb ? `<span class="pill ok">Using the key saved here</span>` : `<span class="pill no">No key</span>`}</p>
-      <p class="muted">The TV sends its key automatically. If the TV is off, you can paste your own free key from themoviedb.org (Settings, API). It stays in this browser.</p>
-      <label for="tmdbIn">TMDB API key or read access token</label>
-      <div class="rowf"><input id="tmdbIn" type="password" placeholder="${S.manualTmdb ? "Saved. Paste to replace" : "Paste key"}" autocomplete="off"><button class="btn small primary" data-act="savetmdb">Save</button>${S.manualTmdb ? `<button class="btn small" data-act="cleartmdb">Remove</button>` : ""}</div>
-      <label for="mdbIn">MDBList key (IMDb and Rotten Tomatoes scores, optional)</label>
-      <div class="rowf"><input id="mdbIn" type="password" placeholder="${k.mdb ? "Set. Paste to replace" : "Paste key"}" autocomplete="off"><button class="btn small primary" data-act="savemdb">Save</button></div>
-    </div>
-    <div class="panel"><h2>Titles shown</h2>
-      <label for="originSel">Countries</label>
-      <select id="originSel">
-        <option value="">Same as the TV${o ? " (" + esc(oname[o] || o) + ")" : ""}</option>
-        <option value="no_asia">Hide Asian-made titles</option><option value="us">Made in the US only</option><option value="all">All countries</option>
-      </select>
-      <p class="muted" style="margin-top:10px">Adult titles are never shown.</p>
-    </div>
-    <div class="panel"><h2>About</h2><p class="muted">Jarvis web app. Browse on your phone or computer and send titles to your TV. Posters and info from TMDB.</p></div>
+        : `<p class="muted" style="margin-top:8px">Tip: add your Real-Debrid API token in Settings &gt; Real-Debrid first, and the invite can carry it.</p>`}
+      <div class="profrow" style="margin-top:10px">${profiles().map((p) => `<button class="btn small" data-act="invite" data-pid="${p.id}">Invite as ${esc(p.name)}</button>`).join("")}</div></section>
+    <section class="sgroup"><h2>Install as an app</h2>
+      <p class="muted">${isStandalone() ? "Jarvis is installed on this device. iPhone keeps the app's settings apart from Safari's. To bring your setup over: open Jarvis in Safari, go to Settings &gt; House and devices and tap Copy setup for the app, then paste it in Settings &gt; Your TVs here and tap Link." : "iPhone and iPad: in Safari, tap Share, then Add to Home Screen. Then tap Copy setup for the app below and paste it in the app's Settings &gt; Your TVs. (iPhone keeps the app's settings apart from Safari's.) Android and computers: use the browser menu and choose Install app."}</p>
+      ${isStandalone() ? "" : `<div class="rowf"><button class="btn small primary" data-act="copysetup">Copy setup for the app</button></div>`}</section>`;
+}
+function setHelpHTML() {
+  return `<section class="sgroup"><h2>Check network</h2>
+      <p class="muted">Tests what Jarvis needs from this phone: TMDB, your addons, the Jarvis relay, the TV link and your TV. Use it when sources or posters don't load.</p>
+      <div class="rowf"><button class="btn small primary" data-act="netcheck" id="netBtn">Check network</button></div>
+      <ul class="netlist" id="netList" aria-live="polite"></ul></section>
+    <section class="sgroup"><h2>Recent errors</h2>
+      <p class="muted">Problems Jarvis hit on this device, newest first. Links and keys are left out.</p>
+      <ul class="netlist" id="errList"></ul>
+      <div class="rowf" style="margin-top:10px"><button class="btn small" data-act="clearerrs" id="errClear">Clear</button></div></section>
+    <section class="sgroup"><h2>About</h2>
+      ${kv("Version", esc(BUILD))}
+      <p class="muted">Jarvis web app. Browse on your phone or computer and send titles to your TV. Posters and info from TMDB.</p></section>`;
+}
+function renderSettings(v) {
+  const path = String(location.hash).split("?")[0].replace(/^#\/?/, "").split("/");
+  const asked = path[0] === "settings" ? path[1] || "" : "";
+  const wide = window.matchMedia && matchMedia("(min-width:900px)").matches;
+  // Phones: the overview is the list. Wide screens: the list stays on the left and the first category shows.
+  const cur = SET_CATS.some(([id]) => id === asked) ? asked : wide ? "tvs" : "";
+  const name = (SET_CATS.find(([id]) => id === cur) || [])[1] || "";
+  const body = {
+    tvs: setTvsHTML, profile: setProfileHTML, rd: () => `<div id="rdPanel">${rdPanelHTML()}</div>`, playback: setPlaybackHTML,
+    addons: () => `<section class="sgroup"><h2>Addons on this device</h2>${addonPanelHTML()}</section>`, keys: setKeysHTML, house: setHouseHTML, help: setHelpHTML,
+  }[cur];
+  v.innerHTML = `<div class="page settings${cur ? " has-cat" : ""}">
+    <div class="spane-list"><h1>Settings</h1>${setListHTML(cur)}</div>
+    ${cur ? `<div class="spane-body"><a class="sback" href="#/settings">‹ Settings</a><h1>${esc(name)}</h1>${body()}</div>` : ""}
   </div>`;
-  $("#originSel", v).value = S.originPref || "";
-  $("#jvLocal", v).addEventListener("change", (e) => {
+  const os = $("#originSel", v); if (os) {
+    os.value = S.originPref || "";
+    os.addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
+  }
+  const jl = $("#jvLocal", v); if (jl) jl.addEventListener("change", (e) => {
     if (e.target.checked) { LS.del(JLOCAL); if (S.link) askInit(); toast("Jarvis key will be saved on this device", "ok"); }
     else { LS.set(JLOCAL, "0"); LS.del(JKEY); toast("Jarvis key removed from this device"); }
     renderSettings(v);
   });
-  $("#originSel", v).addEventListener("change", (e) => { S.originPref = e.target.value; if (S.originPref) LS.set("mcdtv_web_origin", S.originPref); else LS.del("mcdtv_web_origin"); toast("Saved"); });
-  $("#pasteLink", v).addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
+  const pl = $("#pasteLink", v); if (pl) pl.addEventListener("keydown", (e) => { if (e.key === "Enter") doPaste(); });
   drawErrs();
   // What every TV plays: one read of the house topic, cached a minute. The linked TV is heard live too.
-  nowFetchAll();
+  if (cur === "tvs" || !cur) nowFetchAll();
 }
 function drawErrs() {
   const ul = $("#errList"), btn = $("#errClear"); if (!ul) return;
@@ -4997,7 +5156,7 @@ function renderWelcome(v) {
 
 // ---------- Pairing screen ----------
 function renderPair(v) {
-  const codeBox = `<div class="panel"><h2>Have a code from your TV?</h2><p class="muted">On any Jarvis TV: Settings &gt; Profiles &gt; Connect a phone. Type the code here.</p>
+  const codeBox = `<div class="panel"><h2>Have a code from your TV?</h2><p class="muted">On any Jarvis TV: Settings &gt; Network &gt; Connect a phone. Type the code here.</p>
       <div class="rowf" style="margin-top:10px;gap:8px"><input id="pairCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="11" style="max-width:180px">
         <button class="btn small primary" data-act="paircode">Connect</button></div></div>`;
   const inviteBox = codeBox + `<div class="panel"><h2>Got an invite?</h2><p class="muted">If someone sent you a Jarvis invite and you opened it in Safari, tap below. Jarvis sets itself up.</p>
@@ -5005,7 +5164,7 @@ function renderPair(v) {
   v.innerHTML = `<div class="page"><h1>${isStandalone() ? "Welcome to Jarvis" : "Link your TV"}</h1>${inviteBox}
     <div class="panel"><h2>Three steps</h2>
       <ol class="steps">
-        <li>On the TV, open Jarvis and go to <b>Settings &gt; Phone &amp; Computer Setup</b>.</li>
+        <li>On the TV, open Jarvis and go to <b>Settings &gt; Addons and Live TV &gt; Phone &amp; Computer Setup</b>.</li>
         <li>Scan the QR code with your phone's camera. The Jarvis Control page opens.</li>
         <li>On the Control page, tap <b>Open Jarvis web app</b>. This app opens linked to your TV, and remembers it next time.</li>
       </ol>
@@ -5142,7 +5301,7 @@ document.addEventListener("click", async (e) => {
     case "welcomedone": LS.del(WELCOME_KEY); location.hash = "#/"; break;
     case "copysetup": {
       const url = setupLink();
-      try { await navigator.clipboard.writeText(url); toast("Setup copied. Open the Jarvis app, Settings, paste under Your TV, tap Link.", "ok"); }
+      try { await navigator.clipboard.writeText(url); toast("Setup copied. Open the Jarvis app, Settings > Your TVs, paste it and tap Link.", "ok"); }
       catch { prompt("Copy this setup link:", url); }
       break;
     }
@@ -5180,15 +5339,21 @@ document.addEventListener("click", async (e) => {
       if (!/^[A-Za-z0-9]{20,80}$/.test(t)) { toast("That doesn't look like a Real-Debrid API token", "warn"); break; }
       const r = await rdFetch("GET", "rest/1.0/user", null, t).catch(() => null);
       if (!r || !r.ok) { toast("Real-Debrid didn't accept that token", "warn"); break; }
-      LS.set(RDT_KEY, t); rdLoginUi(); toast("API token saved on this device", "ok");
+      LS.set(RDT_KEY, t); stampOk("rdt"); rdLoginUi(); toast("API token saved on this device", "ok");
       break;
     }
     case "netcheck": netCheck(); break;
-    case "rdtclear": LS.del(RDT_KEY); rdLoginUi(); toast("API token removed from this device", "ok"); break;
+    case "rdtclear": if (confirm("Remove the Real-Debrid API token from this device? You would need to paste it again to play inside Jarvis.")) { LS.del(RDT_KEY); rdLoginUi(); toast("API token removed from this device", "ok"); } break;
+    case "rdverify": {
+      const b = $("#rdVerify"); if (b) b.disabled = true;
+      try { const u = await rdCall("GET", "/user"); toast("Real-Debrid works" + (u && u.username ? ": " + u.username : ""), "ok"); }
+      catch (err) { toast(err.message || "Real-Debrid didn't answer", "warn"); }
+      rdLoginUi(); break;
+    }
     case "rdlogin": rdLoginStart().catch((err) => toast(err.message || "Real-Debrid didn't answer", "warn")); break;
     case "rdcancel": RDL.code = null; clearTimeout(RDL.timer); rdLoginUi(); break;
     case "rdout": if (confirm("Disconnect Real-Debrid on this device?")) { saveRdc(null); rdLoginUi(); toast("Real-Debrid disconnected on this device", "ok"); } break;
-    case "rmjarvis": LS.set(JLOCAL, "0"); LS.del(JKEY); toast("Jarvis key removed from this device", "ok"); renderSettings($("#view")); break;
+    case "rmjarvis": if (confirm("Remove the Jarvis key from this device? Ask Jarvis then goes through your TV.")) { LS.set(JLOCAL, "0"); LS.del(JKEY); toast("Jarvis key removed from this device", "ok"); renderSettings($("#view")); } break;
     case "live": LV.play(+d.idx); break;
     case "livesec": LV.section(d.sec); break;
     case "livesport": LV.sport(d.sub || ""); break;
@@ -5197,7 +5362,7 @@ document.addEventListener("click", async (e) => {
     case "livemore": LV.more(); break;
     case "liveretry": LV.reset(); route(); break;
     case "dismisshint": { const h = $("#iosHint"); if (h) h.remove(); break; }
-    case "cleartmdb": S.manualTmdb = ""; LS.del("mcdtv_web_tmdb"); tcache.clear(); renderSettings($("#view")); break;
+    case "cleartmdb": if (confirm("Remove your TMDB key from this device? Your TV's key still works when the TV answers.")) { S.manualTmdb = ""; LS.del("mcdtv_web_tmdb"); tcache.clear(); renderSettings($("#view")); } break;
     case "savemdb": {
       const val = $("#mdbIn").value.trim(); if (!val) return;
       S.manualMdb = val; LS.set("mcdtv_web_mdb", val); toast("MDBList key saved", "ok"); renderSettings($("#view")); break;
@@ -5209,7 +5374,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-18.3";
+const BUILD = "2026-10-19.1";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;

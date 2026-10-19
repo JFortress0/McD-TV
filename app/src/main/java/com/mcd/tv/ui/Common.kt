@@ -511,30 +511,38 @@ private fun NavItem(label: String, selected: Boolean, onClick: () -> Unit, modif
     }
 }
 
-/** Profile / settings button: a thin cyan ring with a person glyph. */
+/** Profile / settings button: a thin cyan ring with a person glyph. [badge]: an amber dot (an update is ready). */
 @Composable
-private fun ProfileCircle(selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ProfileCircle(selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false) {
     var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .onFocusChanged { focused = it.isFocused }
-            .graphicsLayer { val sc = if (focused) 1.08f else 1f; scaleX = sc; scaleY = sc }
-            .size(36.dp)
-            .hudGlow(focused || selected, CircleShape, McdColors.Accent, layers = 3)
-            .clip(CircleShape)
-            .background(if (focused) McdColors.Accent.copy(alpha = 0.18f) else McdColors.Ink.copy(alpha = 0.4f))
-            .clickable(onClick = onClick),
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val ring = if (focused) McdColors.AccentBright else McdColors.Accent
-            val sw = (if (focused) 2.dp else 1.5.dp).toPx()
-            drawCircle(ring, radius = size.minDimension / 2f - sw / 2f, style = Stroke(sw))
-            val c = ring.copy(alpha = 0.95f)
-            drawCircle(c, radius = size.minDimension * 0.13f, center = Offset(size.width / 2, size.height * 0.39f))
-            drawArc(
-                c, startAngle = 180f, sweepAngle = 180f, useCenter = true,
-                topLeft = Offset(size.width * 0.27f, size.height * 0.58f),
-                size = Size(size.width * 0.46f, size.height * 0.34f),
+    Box {
+        Box(
+            modifier = modifier
+                .onFocusChanged { focused = it.isFocused }
+                .graphicsLayer { val sc = if (focused) 1.08f else 1f; scaleX = sc; scaleY = sc }
+                .size(36.dp)
+                .hudGlow(focused || selected, CircleShape, McdColors.Accent, layers = 3)
+                .clip(CircleShape)
+                .background(if (focused) McdColors.Accent.copy(alpha = 0.18f) else McdColors.Ink.copy(alpha = 0.4f))
+                .clickable(onClick = onClick),
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                val ring = if (focused) McdColors.AccentBright else McdColors.Accent
+                val sw = (if (focused) 2.dp else 1.5.dp).toPx()
+                drawCircle(ring, radius = size.minDimension / 2f - sw / 2f, style = Stroke(sw))
+                val c = ring.copy(alpha = 0.95f)
+                drawCircle(c, radius = size.minDimension * 0.13f, center = Offset(size.width / 2, size.height * 0.39f))
+                drawArc(
+                    c, startAngle = 180f, sweepAngle = 180f, useCenter = true,
+                    topLeft = Offset(size.width * 0.27f, size.height * 0.58f),
+                    size = Size(size.width * 0.46f, size.height * 0.34f),
+                )
+            }
+        }
+        if (badge) {
+            Box(
+                Modifier.align(Alignment.TopEnd).size(11.dp).clip(CircleShape)
+                    .background(McdColors.Navy).padding(1.5.dp).clip(CircleShape).background(McdColors.Amber),
             )
         }
     }
@@ -576,6 +584,10 @@ fun TopNav(
             NavItem("◉ $profileName", false, onProfile)
             Spacer(Modifier.width(6.dp))
         }
-        ProfileCircle(current == NavTab.Settings, { onSelect(NavTab.Settings) }, if (current == NavTab.Settings) Modifier.focusRequester(currentFocus) else Modifier)
+        ProfileCircle(
+            current == NavTab.Settings, { onSelect(NavTab.Settings) },
+            if (current == NavTab.Settings) Modifier.focusRequester(currentFocus) else Modifier,
+            badge = com.mcd.tv.data.Updater.available != null,
+        )
     }
 }

@@ -1,6 +1,6 @@
 # Jarvis: handoff notes
 
-Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next.
+Read this first when you pick the project up in a new session. It records the current state, how the pieces fit and what comes next. `CONFIG-MAP.md` lists every setting: where it is entered, stored and synced.
 
 Last updated: 2026-10-18.
 
@@ -52,7 +52,9 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 - `HomeScreen.kt`, `BrowseScreens.kt` (Jarvis search, Library, Services, Noise, Genres), `CatalogScreens.kt` (Browse menu and grids), `DetailScreen.kt`, `SourcesScreen.kt`, `PersonScreen.kt`.
 - Live TV: `LiveScreens.kt` (channel list and Games block), `GamesScreen.kt`, `LivePlayer.kt` (channel up / down), `MultiviewScreen.kt` (one ExoPlayer per tile, released on exit).
 - `AskJarvisScreen.kt` is the stand-alone Ask Jarvis page (QA screen `ask`). The search box uses the same `Jarvis.ask`.
-- `ProfilesScreen.kt`, `SettingsScreen.kt` (also Phone & Computer Setup and Real-Debrid sign-in), `RdCloudScreen.kt`, `WebScreen.kt` (browser with a D-pad pointer; route `Screen.Sports` in `SportsScreens.kt`).
+- `ProfilesScreen.kt`, `SettingsScreen.kt` (also Phone & Computer Setup and Real-Debrid sign-in), `RdCloudScreen.kt`
+- **Settings (October 19, 2026):** two panes. The rail on the left lists App updates, This TV, Profiles, Playback, Addons and Live TV, Jarvis Wall, Network, About and help; the right side shows the focused category. `SettingsScreen.kt` draws it, `SettingsKit.kt` holds the rows, the spacing and type scales and the dialogs, `SettingsModel.kt` holds the pure logic (focus moves, update text) with tests in `app/src/test/java/com/mcd/tv/ui/`. Rules: the remote moves through rows only. A text value is an Edit row; OK opens a dialog with a plain EditText and the keyboard; Done saves; one BACK closes both (`onKeyPreIme`). Choices open a list dialog. Destructive rows are red, sit at the end of their category and ask first. A fresh open lands on App updates (RIGHT, OK checks); a return from a screen Settings opened restores the category and row. QA deep link: `--es screen settings:<id>` (`updates`, `tv`, `profiles`, `playback`, `sources`, `wall`, `network`, `about`). The Settings ring in the top bar shows an amber dot when an update is ready.
+- `data/RecentErrors.kt`: the last 10 problems shown on this TV (playback, sources, updates), for Settings > About and help. Pref `recent_errors`; `update_check` keeps the last check. Both this TV only., `WebScreen.kt` (browser with a D-pad pointer; route `Screen.Sports` in `SportsScreens.kt`).
 - Look: `Theme.kt`, `Hud.kt`, `Common.kt`, `Components.kt`.
 - `player/PlayerScreen.kt`: Media3 ExoPlayer. Saves progress every 15 s and on exit, pauses when the app leaves the screen, retries network errors, jumps back to the live edge. `TvPlayerView.kt` handles LEFT / RIGHT seek and BACK. `ui/UpNext.kt` shows the 10 s Up Next card between episodes.
 
@@ -84,6 +86,8 @@ A back stack of `Screen` objects. Each entry keeps its own saved state, so Back 
 - Baby countdown: a light blue card under the weather. The date comes from "Baby due date" on the Control page (pref `wall_due`, shared with linked TVs), else an all-day calendar event called "Due date" or with "baby" and "due" in its title. The label and headline use "Baby's first name" from the Control page (pref `wall_baby`), never stored in the repo. Logic in `data/BabyCountdown.kt`. It hides 3 weeks after the date.
 
 ### Web pages (`docs/`, GitHub Pages)
+
+- **Web Settings (October 19, 2026):** an overview list with a status line per category (Your TVs, Profile, Real-Debrid, Playback, Addons, Keys, House and devices, Help); each opens `#/settings/<id>`. Wide screens keep the list on the left. Saved keys and tokens show as status (Connected, Set, last worked); a box to paste a new one opens only after Replace or Add. Destructive actions sit in a red group and ask first. No storage key changed.
 
 - `docs/index.html`: the Control page (QR link target).
 - `docs/app/`: the Jarvis web app (PWA with a service worker).

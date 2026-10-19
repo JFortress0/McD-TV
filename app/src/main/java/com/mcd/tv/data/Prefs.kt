@@ -370,7 +370,8 @@ object Prefs {
     /** Keys that belong to this TV only and never sync to the account. */
     private val localOnly = setOf("server_url", "account_token", "account_name", "last_sync_at", "relay_id", "relay_key", "relay_since", "qa_mode", "jarvis_key",
         "house_id", "house_key", "house_since", "house_stamp", "device_id", "active_profile", "sync_peers", "sync_budget", "sync_pause",
-        "tv_link_sig", "tv_link_at", "rd_last_add", "tv_label", "wall_mode", "wall_start", "wall_cache")
+        "tv_link_sig", "tv_link_at", "rd_last_add", "tv_label", "wall_mode", "wall_start", "wall_cache",
+        "update_check", "recent_errors")
 
     // ---- Internet setup link (ntfy relay) ----
     var relayId: String

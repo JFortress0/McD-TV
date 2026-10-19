@@ -170,7 +170,7 @@ object Tmdb {
 
     private suspend fun get(path: String, params: Map<String, String> = emptyMap()): JSONObject {
         val key = Prefs.tmdbKey
-        if (key.isBlank()) throw IllegalStateException("Add your TMDB API key: Settings > Phone & Computer Setup")
+        if (key.isBlank()) throw IllegalStateException("Add your TMDB API key: Settings > Addons and Live TV")
         val all = params.toMutableMap()
         val headers = mutableMapOf<String, String>()
         if (key.length > 40) headers["Authorization"] = "Bearer $key" else all["api_key"] = key

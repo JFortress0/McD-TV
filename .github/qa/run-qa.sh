@@ -58,7 +58,8 @@ check_screen() { # name, expected text (case-insensitive regex)
     echo "      on screen: $(grep -o 'text="[^"]*"' "qa-out/ui-${1//:/-}.xml" 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-400)" | tee -a "$R"
   fi
 }
-check_screen settings "Phone &amp; Computer Setup|Phone & Computer Setup"
+check_screen settings "Check for updates"
+check_screen settings:sources "Phone &amp; Computer Setup|Phone & Computer Setup"
 check_screen phone "JARVIS CONTROL"
 check_screen genres "All years"
 check_screen services "Netflix"
@@ -76,6 +77,73 @@ check_screen browse "Collections"
 check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
+
+# 4a) Settings with the remote: a screenshot of each category, a D-pad walk through its rows (the keyboard must
+# never open on focus), the edit dialog (opens on OK, one BACK closes it) and the update check in two presses.
+kb_shown() { adb shell dumpsys input_method | grep -q "mInputShown=true"; }
+dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "qa-out/$1.xml" >/dev/null 2>&1; }
+# Writes what has focus and the visible text to the log (screenshots are in the artifact; this is for log readers).
+describe() {
+  dump "ui-$1"
+  echo "      [$1] focused: $(grep -o '<node [^>]*focused="true"[^>]*>' "qa-out/ui-$1.xml" 2>/dev/null | grep -o 'text="[^"]*"\|content-desc="[^"]*"\|bounds="[^"]*"' | tr '\n' ' ' | cut -c1-300)"
+  echo "      [$1] text: $(grep -o 'text="[^"]\+"' "qa-out/ui-$1.xml" 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-700)"
+}
+KB_FAIL=""
+NAV_FAIL=""
+FIRST=1
+for cat in tv updates profiles playback sources wall network about; do
+  adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "settings:$cat" >/dev/null
+  sleep 8
+  shot "settings-$cat"
+  describe "settings-$cat"
+  # The first cold launch after the other screens: look again a little later (focus timing on a cold start).
+  if [ -n "$FIRST" ]; then sleep 4; describe "settings-$cat-later"; FIRST=""; fi
+  adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+  describe "settings-$cat-right"
+  grep -q '<node [^>]*focused="true"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,\([2-9][0-9][0-9]\|1[0-9][0-9][0-9]\)\]' "qa-out/ui-settings-$cat-right.xml" || NAV_FAIL="$NAV_FAIL $cat"
+  for i in $(seq 1 10); do
+    adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+    kb_shown && KB_FAIL="$KB_FAIL $cat:$i"
+  done
+  shot "settings-$cat-walked"
+  describe "settings-$cat-walked"
+done
+# RIGHT from the rail must stay in the page, never jump to the top bar (focus starts on the rail).
+if [ -z "$NAV_FAIL" ]; then pass "Settings: opens with focus in the page"; else fail "Settings: opens with focus in the page (top bar or nothing at:$NAV_FAIL)"; fi
+if [ -z "$KB_FAIL" ]; then pass "Settings: D-pad never opens the keyboard"; else fail "Settings: D-pad never opens the keyboard (opened at$KB_FAIL)"; fi
+
+# Fresh open lands on App updates in the rail: RIGHT reaches Check for updates, OK checks.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings >/dev/null
+sleep 9
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 6
+shot settings-updates-checked
+describe settings-updates-checked
+if grep -qiE "up to date|is ready|Checking|t check" qa-out/ui-settings-updates-checked.xml && grep -qi "Last checked" qa-out/ui-settings-updates-checked.xml; then
+  pass "Settings: update check in two presses"
+else
+  fail "Settings: update check in two presses"
+fi
+
+# Edit row: Profiles > RIGHT (Watching now) > DOWN (Profile 1) > OK opens the rename dialog; BACK closes it.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings:profiles >/dev/null
+sleep 8
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+kb_shown && fail "Settings: no keyboard on an edit row before OK" || pass "Settings: no keyboard on an edit row before OK"
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 3
+shot settings-edit-open
+describe settings-edit-open
+grep -q "Rename" qa-out/ui-settings-edit-open.xml && pass "Settings: OK on an edit row opens the editor" || fail "Settings: OK on an edit row opens the editor"
+kb_shown && echo "      keyboard is open in the editor" | tee -a "$R"
+adb shell input keyevent KEYCODE_BACK; sleep 2
+shot settings-edit-closed
+describe settings-edit-closed
+if ! grep -q "Rename" qa-out/ui-settings-edit-closed.xml && grep -q "Profile 1" qa-out/ui-settings-edit-closed.xml && ! kb_shown; then
+  pass "Settings: one BACK closes the keyboard and the editor"
+else
+  fail "Settings: one BACK closes the keyboard and the editor"
+fi
 
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
 mkdir -p qa-m3u

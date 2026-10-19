@@ -23,9 +23,9 @@ import com.mcd.tv.data.HouseJoin
 import kotlinx.coroutines.delay
 
 /**
- * "Join my other TVs": shows an 8-digit code to type on a phone (Jarvis > Settings > Add a TV). The phone
+ * "Join my other TVs": shows an 8-digit code to type on a phone (Jarvis > Settings > House and devices > Add a TV). The phone
  * sends this house's link; the TV joins and gets the settings, Real-Debrid and every profile. Opens by
- * itself once on a new TV, and from Settings > Profiles.
+ * itself once on a new TV, and from Settings > Network.
  */
 @Composable
 fun JoinHouseScreen(nav: Nav) {
@@ -62,14 +62,14 @@ fun JoinHouseScreen(nav: Nav) {
                     "So this TV has the same profiles, Continue Watching, settings and Real-Debrid as your other Jarvis TVs:",
                     color = McdColors.White, fontSize = 20.sp,
                 )
-                Text("1.  On your phone, open Jarvis and go to Settings > Add a TV.", color = McdColors.White, fontSize = 20.sp)
+                Text("1.  On your phone, open Jarvis and go to Settings > House and devices > Add a TV.", color = McdColors.White, fontSize = 20.sp)
                 Text("2.  Type this code:", color = McdColors.White, fontSize = 20.sp)
                 Text(
                     if (state == 2) "Code expired" else code.chunked(4).joinToString("  "),
                     style = broadcastStyle(64.sp, if (state == 2) McdColors.Muted else McdColors.Accent),
                 )
                 Text(
-                    if (state == 2) "Go back and open this screen again (Settings > Profiles > Join my other TVs) for a new code."
+                    if (state == 2) "Go back and open this screen again (Settings > Network > Join my other TVs) for a new code."
                     else "Waiting for your phone… The code works for 15 minutes.",
                     color = McdColors.Muted, fontSize = 16.sp,
                 )

@@ -66,7 +66,7 @@ object RealDebrid {
         Prefs.rdExpiresAt = System.currentTimeMillis() + o.optLong("expires_in", 3600) * 1000 - 60_000
     }
 
-    private const val RECONNECT = "Real-Debrid needs reconnecting. Go to Settings > Real-Debrid."
+    private const val RECONNECT = "Real-Debrid needs reconnecting. Go to Settings > Playback."
 
     /** Only one token refresh at a time; the others wait and reuse its result. */
     private val refreshLock = Mutex()
@@ -326,7 +326,7 @@ object RealDebrid {
     suspend fun resolveForWeb(url: String?, infoHash: String?, fileIdx: Int?, season: Int?, episode: Int?): WebStream {
         if (!connected) {
             if (url != null) return WebStream(url, "", "", "", null)
-            throw IllegalStateException("Connect Real-Debrid on the TV first (Settings > Real-Debrid).")
+            throw IllegalStateException("Connect Real-Debrid on the TV first (Settings > Playback).")
         }
         val o: JSONObject = when {
             infoHash != null -> unrestrictInfo(resolveHashLink(infoHash, fileIdx, season, episode))

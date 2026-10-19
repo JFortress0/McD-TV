@@ -67,8 +67,8 @@ for (const w of [390,1280]) {
   const star1=await p.$eval('.lv-row .lv-star',e=>e.innerText+'|'+e.getAttribute('aria-pressed'));
   await p.click('.lv-row .lv-star'); await p.waitForTimeout(300); const f2=await fv();
   log(w,'fav toggle',f0,f1,f2,'star after add',star1); if(!(f1===f0+1&&f2===f0)) fails.push(`${w} favorite toggle ${f0}->${f1}->${f2}`);
-  // Settings > Check network: runs, lists TMDB, addons, the relay and the TV link (all mocked here), shows no keys
-  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(800);
+  // Settings > Help > Check network: runs, lists TMDB, addons, the relay and the TV link (all mocked here), shows no keys
+  await p.goto(B+'#/settings/help'); await p.reload(); await p.waitForTimeout(800);
   if(!await p.$('#netBtn')) fails.push(`${w} Check network button missing`); else {
     await p.click('#netBtn'); await p.waitForFunction(()=>!document.querySelector('#netBtn').disabled,null,{timeout:15000}).catch(()=>fails.push(`${w} network check never finished`));
     const net=await p.$$eval('#netList li',r=>r.map(x=>x.innerText.replace(/\s+/g,' ')));
@@ -80,7 +80,7 @@ for (const w of [390,1280]) {
   }
   // Recent errors: an uncaught error is logged without its query string, shown in Settings, and cleared
   await p.evaluate(()=>{ try{logErr('qa boom https://example.com/x?api_key=SECRET123','qa.js:1');}catch{} });
-  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(800);
+  await p.goto(B+'#/settings/help'); await p.reload(); await p.waitForTimeout(800);
   const el=await p.$eval('#errList',e=>e.innerText).catch(()=>'missing');
   log(w,'recent errors',el.replace(/\s+/g,' ').slice(0,120));
   if(!el.includes('qa boom')) fails.push(`${w} recent errors list missing the logged error`);
@@ -192,7 +192,7 @@ for (const w of [390,1280]) {
     reply='';
     const {ctx,p,errs}=await mk({width:390,height:844}); await ntfyMock(ctx);
     await p.goto(B); await seed(p,false);
-    await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(800);
+    await p.goto(B+'#/settings/tvs'); await p.reload(); await p.waitForTimeout(800);
     if(!await p.$('#findTvBtn')) fails.push('find tvs (c): Find my TVs button missing'); else {
       await p.click('#findTvBtn');
       await p.waitForFunction(()=>!document.querySelector('#findTvBtn').disabled,null,{timeout:20000}).catch(()=>fails.push('find tvs (c): never finished'));
@@ -229,7 +229,7 @@ for (const w of [390,1280]) {
     return [await ev({type:'tv_status',from:'devof',name:'Office TV',now:{media:'tv',id:82728,name:'Bluey',season:1,episode:4,playing:false,position_ms:125000,duration_ms:420000,ts:t-60000},ts:t-60000},0),
       await ev({type:'tv_status',from:'devof',name:'Office TV',now:null,ts:t-90000},1),
       await ev({type:'tv_status',from:'devlr',name:'Living Room TV',now:{media:'live',id:0,name:'ESPN',playing:true,position_ms:0,duration_ms:0,ts:t-30000},ts:t-30000},2)].join('\n')+'\n'; },[HK,t]));
-  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(1500);
+  await p.goto(B+'#/settings/tvs'); await p.reload(); await p.waitForTimeout(1500);
   const txt=await p.$eval('#tvFound',e=>e.innerText.replace(/\s+/g,' ')).catch(()=>'');
   log('tv status',txt);
   if(!/Living Room TV \(Google TV\)/.test(txt)||!/Office TV \(Fire TV\)/.test(txt)) fails.push(`tv status: names missing "${txt}"`);
@@ -399,8 +399,8 @@ for (const w of [390,1280]) {
   await openSrc('#/sources/movie/398978');
   const vodCalls=iv.filter(x=>x==='get_vod_streams').length;
   log('iptv library downloads',vodCalls); if(vodCalls!==1) fails.push(`iptv: library downloaded ${vodCalls} times (expected 1, then the saved index)`);
-  // Settings > Check network: the library size.
-  await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(600);
+  // Settings > Help > Check network: the library size.
+  await p.goto(B+'#/settings/help'); await p.reload(); await p.waitForTimeout(600);
   await p.click('#netBtn'); await p.waitForFunction(()=>!document.querySelector('#netBtn').disabled,null,{timeout:15000}).catch(()=>{});
   const nrow=(await p.$$eval('#netList li',r=>r.map(x=>x.innerText.replace(/\s+/g,' ')))).find(x=>x.includes('IPTV movies and shows'))||'';
   log('iptv netcheck',nrow); if(!/^OK\b.*8 movies, 2 shows/.test(nrow)) fails.push(`iptv netcheck row: "${nrow}"`);
@@ -420,6 +420,45 @@ for (const w of [390,1280]) {
   if(!leak.idxSaved) fails.push('iptv: the index was not saved in IndexedDB');
   if(errs.length) fails.push(...errs.map(e=>`iptv pageerror ${e}`));
   await ctx.close();
+}
+// Settings keeps what is set up: saved keys and Real-Debrid show as status, never as empty boxes; secret boxes open
+// only after Replace; visiting every category changes no stored value and shows no secret in the page.
+{
+  const TOK='QATOKEN'+'x'.repeat(45), TM='QATMDBKEY1234567890abcdef', MDB='QAMDBKEY998877';
+  const seedKeys={mcdtv_web_profile:'p1',mcdtv_web_tmdb:TM,mcdtv_web_mdb:MDB,mcdtv_web_rdt:TOK,
+    mcdtv_web_rdc:JSON.stringify({id:'QAID',secret:'QASECRET',t:'QAACCESS',r:'QAREFRESH',exp:Date.now()+3600e3}),
+    mcdtv_web_init:JSON.stringify({tmdb_key:'',rd_connected:true}),mcdtv_web_addons_mine:JSON.stringify(['https://addon.example/manifest.json']),
+    mcdtv_web_extplayer:'vlc',mcdtv_web_origin:'us'};
+  for (const w of [390,1280]) {
+    const {ctx,p,errs}=await mk({width:w,height:844});
+    await p.goto(B); await p.evaluate((k)=>{ localStorage.clear(); for(const [a,v] of Object.entries(k)) localStorage.setItem(a,v); },seedKeys);
+    for (const cat of ['','tvs','profile','rd','playback','addons','keys','house','help']) {
+      await p.goto(B+'#/settings'+(cat?'/'+cat:'')); await p.reload(); await p.waitForTimeout(500);
+      const h=await hsc(p); if(h.sw>h.iw) fails.push(`${w} settings/${cat} overflow ${h.sw} ${h.wide}`);
+      const leak=await p.evaluate((sec)=>{ const html=document.documentElement.outerHTML; return sec.filter(x=>html.includes(x)); },[TOK,TM,MDB,'QASECRET','QAREFRESH']);
+      if(leak.length) fails.push(`${w} settings/${cat} shows a secret`);
+      const open=await p.$$eval('input[type=password]',a=>a.filter(e=>e.checkVisibility()).map(e=>e.id));
+      if(open.length) fails.push(`${w} settings/${cat}: secret box open without Replace: ${open}`);
+    }
+    await p.goto(B+'#/settings/rd'); await p.reload(); await p.waitForTimeout(500);
+    const rd=await p.$eval('#rdPanel',e=>e.innerText.replace(/\s+/g,' '));
+    log(w,'settings rd',rd.slice(0,200));
+    if(!/Your TV Connected/.test(rd)||!/This device Signed in/.test(rd)||!/API token Set/.test(rd)) fails.push(`${w} settings rd status: "${rd.slice(0,160)}"`);
+    if(/Paste API token/.test(await p.$eval('#rdPanel',e=>e.innerText))) fails.push(`${w} settings rd: token box text visible`);
+    await p.click('#rdPanel details.replace summary'); await p.waitForTimeout(150);
+    if(!await p.$eval('#rdtIn',e=>e.checkVisibility()).catch(()=>false)) fails.push(`${w} settings rd: Replace token does not open the box`);
+    await p.goto(B+'#/settings/keys'); await p.reload(); await p.waitForTimeout(500);
+    const ky=await p.$eval('.spane-body',e=>e.innerText.replace(/\s+/g,' '));
+    if(!/Saved on this device/.test(ky)||!/Replace key/i.test(ky)) fails.push(`${w} settings keys status: "${ky.slice(0,160)}"`);
+    if(w===390){ await p.goto(B+'#/settings'); await p.reload(); await p.waitForTimeout(400);
+      const rows=await p.$$eval('.slist .srow',a=>a.length); if(rows!==8) fails.push(`settings overview rows ${rows}`);
+      if(await p.$('.spane-body')) fails.push('settings overview on a phone shows a category too'); }
+    const after=await p.evaluate((k)=>Object.keys(k).filter(a=>localStorage.getItem(a)!==k[a]),seedKeys);
+    log(w,'settings stored values changed',after.join(',')||'none');
+    if(after.length) fails.push(`${w} settings changed stored values: ${after}`);
+    if(errs.length) fails.push(...errs.map(e=>`${w} settings pageerror ${e}`));
+    await ctx.close();
+  }
 }
 log('FAILS', fails.length); fails.forEach(f=>log(' -',f));
 await b.close();

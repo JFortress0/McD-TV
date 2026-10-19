@@ -30,6 +30,15 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Same unit tests as the Build APK workflow, so a QA run from the Actions tab on a branch checks them too.
+      - name: Run unit tests
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          MDBLIST_API_KEY: ${{ secrets.MDBLIST_API_KEY }}
+        run: |
+          chmod +x gradlew
+          ./gradlew testReleaseUnitTest
+
       - name: Build APK
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}

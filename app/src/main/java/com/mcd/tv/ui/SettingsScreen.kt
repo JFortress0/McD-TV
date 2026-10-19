@@ -1,235 +1,515 @@
 package com.mcd.tv.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.BackHandler
 import androidx.tv.material3.Text
 import com.mcd.tv.Nav
 import com.mcd.tv.Screen
 import com.mcd.tv.data.Addons
 import com.mcd.tv.data.HouseSync
+import com.mcd.tv.data.LiveStats
 import com.mcd.tv.data.LocalWeb
+import com.mcd.tv.data.OriginFilter
 import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.RealDebrid
+import com.mcd.tv.data.RecentErrors
+import com.mcd.tv.data.Relay
 import com.mcd.tv.data.TvIdentity
+import com.mcd.tv.data.Updater
+import com.mcd.tv.data.Wall
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val PLAYER_TEST_URL =
     "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8"
 
+/** A category to open Settings on (QA deep link "--es screen settings:updates"). Read once. */
+object SettingsLaunch {
+    @Volatile var requested: SettingsCategory? = null
+}
+
+/** The dialog Settings shows over the page, if any. */
+private sealed interface SettingsDialog {
+    data class Edit(val title: String, val help: String, val initial: String, val max: Int, val onDone: (String) -> Unit) : SettingsDialog
+    data class Choice(val title: String, val options: List<String>, val selected: Int, val onPick: (Int) -> Unit) : SettingsDialog
+    data class Confirm(val title: String, val message: String, val confirm: String, val onConfirm: () -> Unit) : SettingsDialog
+}
+
+/** One focusable row: its focus modifier and its requester (focus comes back to it after a dialog). */
+private class RowHandle(val modifier: Modifier, val requester: FocusRequester)
+
+/**
+ * What a category's content needs: row handles in order, dialogs and navigation.
+ * Each category calls [begin] first and takes every [row] in its own body (never inside a child composable
+ * that can recompose alone), so row numbers stay the same on every recomposition.
+ */
+private class SettingsCtx(
+    val nav: Nav,
+    private val category: SettingsCategory,
+    private val requester: (SettingsCategory, Int) -> FocusRequester,
+    private val onRowFocus: (Int) -> Unit,
+    private val open: (SettingsDialog, FocusRequester) -> Unit,
+) {
+    var count = 0
+        private set
+
+    fun begin() { count = 0 }
+
+    /** The next focusable row, in order. */
+    fun row(): RowHandle {
+        val i = count++
+        val r = requester(category, i)
+        return RowHandle(Modifier.focusRequester(r).onFocusChanged { if (it.isFocused) onRowFocus(i) }, r)
+    }
+
+    /** Opens [d]; focus returns to [row] when it closes. */
+    fun dialog(row: RowHandle, d: SettingsDialog) = open(d, row.requester)
+}
+
+/**
+ * Settings: category rail on the left, the category on the right. The remote moves through rows only; text
+ * values open a dialog with the keyboard on OK. A fresh open lands on App updates; coming back from a screen
+ * Settings opened restores the category and row.
+ */
 @Composable
 fun SettingsScreen(nav: Nav) {
-    var usOnly by remember { mutableStateOf(Prefs.usOnly) }
-    var origin by remember { mutableStateOf(Prefs.origin) }
-    var slow by remember { mutableStateOf(Prefs.slowConnection) }
-    var intro by remember { mutableStateOf(Prefs.playIntro) }
-    var wallStart by remember { mutableStateOf(Prefs.wallStart) }
-    var wallMode by remember { mutableStateOf(Prefs.wallMode) }
-    var maxMovie by remember { mutableIntStateOf(Prefs.maxMovieGb) }
-    var maxEpisode by remember { mutableIntStateOf(Prefs.maxEpisodeGb) }
-    val rd by rememberLoad(Prefs.rdAccessToken) { if (RealDebrid.connected) RealDebrid.accountSummary() else "Not connected" }
-    val addons by rememberLoad { Prefs.addonUrls.map { u -> runCatching { Addons.manifest(u).name }.getOrDefault(u.take(40)) } }
+    var saved by rememberSaveable { mutableStateOf<String?>(null) }
+    var focus by remember {
+        val requested = SettingsLaunch.requested.also { SettingsLaunch.requested = null }
+        mutableStateOf(SettingsFocus.open(SettingsFocus.decode(saved), requested))
+    }
+    SideEffect { saved = focus.encode() }
 
-    TabPage(nav, NavTab.Settings) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 48.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Jarvis Control")
-                Text(
-                    "Paste your TMDB key, addon links, playlist and stream links from your phone instead of typing with the remote.",
-                    color = McdColors.Muted, fontSize = 16.sp,
-                )
-                ActionButton("Phone & Computer Setup", { nav.push(Screen.PhoneSetup) }, primary = true)
-            }
+    val rail = remember { SettingsCategory.entries.associateWith { FocusRequester() } }
+    val rowReqs = remember { HashMap<String, FocusRequester>() }
+    val rowCounts = remember { HashMap<SettingsCategory, Int>() }
+    fun rowReq(c: SettingsCategory, i: Int) = rowReqs.getOrPut("${c.id}:$i") { FocusRequester() }
 
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("This TV")
-                Text(
-                    "Name this TV so your phone can tell your TVs apart. Examples: ${TvIdentity.EXAMPLES.joinToString(", ")}.",
-                    color = McdColors.Muted, fontSize = 16.sp,
-                )
-                TvLabelEditor()
-                val model = android.os.Build.MODEL.orEmpty()
-                Text(
-                    "${HouseSync.platform()}" + (if (model.isNotBlank() && !TvIdentity.modelKnown(model)) "  ·  model $model" else "") +
-                        "  ·  Jarvis v${com.mcd.tv.BuildConfig.VERSION_NAME}",
-                    color = McdColors.Muted, fontSize = 13.sp,
-                )
-            }
+    var dialog by remember { mutableStateOf<SettingsDialog?>(null) }
+    var returnTo by remember { mutableStateOf<FocusRequester?>(null) }
+    // Bumped when a dialog saves, so the content re-reads Prefs.
+    var tick by remember { mutableIntStateOf(0) }
 
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Jarvis Wall")
-                Text(
-                    if (com.mcd.tv.data.Wall.configured) "Photo frame and family calendar. Turn on \"Open in Wall\" on the wall TV."
-                    else "Photo frame and family calendar. Add the wall address and key on the Control page first.",
-                    color = McdColors.Muted, fontSize = 16.sp,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton("Open Wall", { nav.push(Screen.Wall) }, primary = true)
-                    ActionButton("Open in Wall on start: ${if (wallStart) "ON" else "OFF"}", { wallStart = !wallStart; Prefs.wallStart = wallStart })
-                    ActionButton(
-                        if (wallMode == "photos") "Wall shows: photos only" else "Wall shows: photos and calendar",
-                        { wallMode = if (wallMode == "photos") "" else "photos"; com.mcd.tv.data.Wall.setMode(wallMode) },
+    fun focusRail() { runCatching { rail.getValue(focus.category).requestFocus() } }
+    fun focusContent() {
+        val r = focus.enterRow(rowCounts[focus.category] ?: 0) ?: return
+        runCatching { rowReq(focus.category, r).requestFocus() }
+    }
+
+    // Put focus where Settings opens: the saved row on a return, else the rail. A request made before the
+    // window has focus can be lost on a cold start, so try again for a short while until the page holds focus.
+    // It runs again when the window gains focus, which on a slow cold start can come seconds later, and when the
+    // first key press ends touch mode (rows cannot take focus in touch mode, so a launch in touch mode starts
+    // with nothing focused).
+    var pageHasFocus by remember { mutableStateOf(false) }
+    val windowFocused = androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
+    val inputMode = androidx.compose.ui.platform.LocalInputModeManager.current.inputMode
+    LaunchedEffect(windowFocused, inputMode) {
+        repeat(20) {
+            withFrameNanos { }
+            if (pageHasFocus) return@LaunchedEffect
+            if (focus.inContent) focusContent() else focusRail()
+            delay(250)
+        }
+    }
+    // Back to the row that opened a dialog.
+    LaunchedEffect(dialog) {
+        val r = returnTo
+        if (dialog == null && r != null) {
+            withFrameNanos { }
+            // The row can be gone (a list was cleared): fall back to the rail.
+            if (runCatching { r.requestFocus() }.isFailure) focusRail()
+            returnTo = null
+        }
+    }
+    // BACK from the content goes to the rail first; from the rail it leaves Settings.
+    BackHandler(enabled = focus.inContent && dialog == null) { focusRail() }
+
+    TabPage(nav, NavTab.Settings, autoFocus = false) {
+        Row(Modifier.fillMaxSize().onFocusChanged { pageHasFocus = it.hasFocus }.padding(start = Space.XXL, end = Space.XXL, top = Space.S)) {
+            // ---- Rail
+            Column(
+                Modifier.width(260.dp).fillMaxHeight().verticalScroll(rememberScrollState())
+                    .onPreviewKeyEvent { e ->
+                        if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) { focusContent(); true } else false
+                    },
+                verticalArrangement = Arrangement.spacedBy(Space.XS),
+            ) {
+                Text("SETTINGS", style = hudLabelStyle(12.sp, McdColors.Muted), modifier = Modifier.padding(start = Space.M + 3.dp, bottom = Space.S))
+                SettingsCategory.entries.forEach { c ->
+                    RailItem(
+                        label = c.title,
+                        selected = c == focus.category,
+                        onClick = { focus = focus.onRail(c); focusContent() },
+                        modifier = Modifier.focusRequester(rail.getValue(c)).onFocusChanged { if (it.isFocused) focus = focus.onRail(c) },
+                        badge = if (c == SettingsCategory.Updates && Updater.available != null) "New" else null,
                     )
                 }
             }
-
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Profiles")
-                var watching by remember { mutableStateOf(Prefs.activeProfileName) }
-                Text(
-                    "Watching as $watching. Each profile has its own history, Continue Watching, My List, favorites and Live TV favorites. " +
-                        "Settings, keys, addons and the playlist are shared by the whole TV.",
-                    color = McdColors.White, fontSize = 16.sp,
+            Spacer(Modifier.width(Space.L))
+            Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = Space.S).background(McdColors.Line.copy(alpha = 0.45f)))
+            Spacer(Modifier.width(Space.L))
+            // ---- Content
+            val cat = focus.category
+            key(cat, tick) {
+                val ctx = SettingsCtx(
+                    nav, cat, ::rowReq,
+                    onRowFocus = { i -> focus = focus.onRow(i) },
+                    open = { d, r -> returnTo = r; dialog = d },
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton("Switch profile", { nav.push(Screen.Profiles) }, primary = true)
-                    // Another TV in the house: same profiles, settings and Real-Debrid (code typed on the phone).
-                    ActionButton("Join my other TVs", { nav.push(Screen.JoinHouse) })
-                    // A phone: the house link with a code (works even when the phone link can't reach this TV).
-                    ActionButton("Connect a phone", { nav.push(Screen.ConnectPhone) })
-                }
-                Text("Rename: select a name, press OK to type, then Save.", color = McdColors.Muted, fontSize = 13.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Prefs.PROFILE_IDS.forEach { id ->
-                        ProfileNameEditor(id) { watching = Prefs.activeProfileName }
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())
+                        .onPreviewKeyEvent { e ->
+                            if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) { focusRail(); true } else false
+                        }
+                        .padding(bottom = Space.XXL),
+                    verticalArrangement = Arrangement.spacedBy(Space.XS),
+                ) {
+                    Text(cat.title.uppercase(), style = broadcastStyle(SettingsType.Title), modifier = Modifier.padding(start = Space.L, bottom = Space.S))
+                    when (cat) {
+                        SettingsCategory.Updates -> UpdatesCategory(ctx)
+                        SettingsCategory.ThisTv -> ThisTvCategory(ctx) { tick++ }
+                        SettingsCategory.Profiles -> ProfilesCategory(ctx) { tick++ }
+                        SettingsCategory.Playback -> PlaybackCategory(ctx) { tick++ }
+                        SettingsCategory.Sources -> SourcesCategory(ctx) { tick++ }
+                        SettingsCategory.Wall -> WallCategory(ctx) { tick++ }
+                        SettingsCategory.Network -> NetworkCategory(ctx) { tick++ }
+                        SettingsCategory.About -> AboutCategory(ctx) { tick++ }
                     }
                 }
-                Text(
-                    "Taste: pick the genres and topics each person likes or wants to skip. Jarvis also learns from what they watch.",
-                    color = McdColors.Muted, fontSize = 13.sp,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Prefs.PROFILE_IDS.forEach { id ->
-                        ActionButton("${Prefs.profileName(id)}'s taste", { nav.push(Screen.Taste(id)) })
-                    }
-                }
+                SideEffect { rowCounts[cat] = ctx.count }
             }
+        }
+    }
 
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Real-Debrid")
-                Text(
-                    when (val r = rd) { is Load.Ok -> r.value; is Load.Err -> "Error: ${r.message}"; else -> "Checking…" },
-                    color = McdColors.White, fontSize = 16.sp,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton(if (RealDebrid.connected) "Reconnect Real-Debrid" else "Connect Real-Debrid", { nav.push(Screen.RdConnect) }, primary = !RealDebrid.connected)
-                    if (RealDebrid.connected) ActionButton("Disconnect", { Prefs.clearRealDebrid(); nav.replace(Screen.Settings) })
-                }
-            }
+    when (val d = dialog) {
+        null -> {}
+        is SettingsDialog.Edit -> TextEditDialog(d.title, d.help, d.initial, d.max, onDone = { d.onDone(it); dialog = null; tick++ }, onDismiss = { dialog = null })
+        is SettingsDialog.Choice -> ChoiceDialog(d.title, d.options, d.selected, onPick = { d.onPick(it); dialog = null; tick++ }, onDismiss = { dialog = null })
+        is SettingsDialog.Confirm -> ConfirmDialog(d.title, d.message, d.confirm, onConfirm = { d.onConfirm(); tick++ }, onDismiss = { dialog = null })
+    }
+}
 
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Sources")
-                Text(
-                    "TMDB: " + (if (Prefs.tmdbKey.isNotBlank()) "connected" else "add a key on the Control page") +
-                        "\nAddons: " + when (val a = addons) { is Load.Ok -> a.value.joinToString(", ").ifBlank { "none" }; else -> "…" } +
-                        "\nLive TV playlist: " + (if (Prefs.m3uUrl.isNotBlank()) "set" else "none") +
-                        "\nWebsites: " + Prefs.websites.joinToString(", ") { it.first }.ifBlank { "none" } +
-                        "\nControl page link: " + com.mcd.tv.data.Relay.status,
-                    color = McdColors.White, fontSize = 16.sp,
-                )
-            }
+/** A row that opens a dialog. Focus comes back to it when the dialog closes. */
+@Composable
+private fun DialogRow(
+    ctx: SettingsCtx,
+    h: RowHandle,
+    label: String,
+    value: String?,
+    end: RowEnd,
+    danger: Boolean = false,
+    dialog: () -> SettingsDialog,
+) {
+    SettingsRow(label, { ctx.dialog(h, dialog()) }, h.modifier, value = value, end = end, danger = danger)
+}
 
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Preferences")
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton("Titles: ${origin.label}", {
-                        val all = com.mcd.tv.data.OriginFilter.entries
-                        origin = all[(all.indexOf(origin) + 1) % all.size]
-                        Prefs.origin = origin
-                    }, primary = true)
-                    ActionButton("Replay intro", { nav.push(Screen.Intro) })
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton("US release dates: ${if (usOnly) "ON" else "OFF"}", { usOnly = !usOnly; Prefs.usOnly = usOnly })
-                    ActionButton("Slow connection: ${if (slow) "ON" else "OFF"}", { slow = !slow; Prefs.slowConnection = slow })
-                    ActionButton("Intro on launch: ${if (intro) "ON" else "OFF"}", { intro = !intro; Prefs.playIntro = intro })
-                }
-                // Source list hides bigger files (a "Show hidden" row reveals them). 0 = no limit.
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton("Movie size limit: ${sizeLimitLabel(maxMovie)}", {
-                        maxMovie = nextLimit(maxMovie, listOf(20, 40, 60, 0))
-                        Prefs.maxMovieGb = maxMovie
-                    })
-                    ActionButton("Episode size limit: ${sizeLimitLabel(maxEpisode)}", {
-                        maxEpisode = nextLimit(maxEpisode, listOf(4, 8, 12, 20, 0))
-                        Prefs.maxEpisodeGb = maxEpisode
-                    })
-                }
-            }
+/** A row that flips a setting on or off. Saves at once. */
+@Composable
+private fun ToggleRow(h: RowHandle, label: String, value: String?, initial: Boolean, save: (Boolean) -> Unit) {
+    var on by remember { mutableStateOf(initial) }
+    SettingsRow(label, { on = !on; save(on) }, h.modifier, value = value, end = RowEnd.Toggle, toggled = on)
+}
 
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("App updates")
-                val ctx = androidx.compose.ui.platform.LocalContext.current
-                val up = com.mcd.tv.data.Updater.available
-                Text(
-                    "Version ${com.mcd.tv.data.Updater.installedName(ctx)}" + (if (up != null) ". Version ${up.name} is ready to install." else ". Jarvis checks for updates when it starts."),
-                    color = McdColors.White, fontSize = 16.sp,
-                )
-                ActionButton(if (up != null) "Update now" else "Check for updates", { nav.push(Screen.Update) }, primary = up != null)
-            }
+// ============================== categories ==============================
 
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Live TV health")
-                val ctx = androidx.compose.ui.platform.LocalContext.current
-                var sessions by remember { mutableStateOf(com.mcd.tv.data.LiveStats.recent()) }
-                Text("This TV: ${com.mcd.tv.data.LiveStats.device(ctx)}", color = McdColors.White, fontSize = 16.sp)
-                if (sessions.isEmpty()) {
-                    Text("Watch a few live channels, then come back. Jarvis notes how each one played.", color = McdColors.Muted, fontSize = 15.sp)
-                } else {
-                    sessions.take(8).forEach { s ->
-                        Text("${s.channel}: ${s.summary()}", color = McdColors.Muted, fontSize = 14.sp)
-                        if (s.decoder.isNotBlank()) Text("Decoder: ${s.decoder}", color = McdColors.Muted, fontSize = 12.sp)
-                    }
-                    ActionButton("Clear", { com.mcd.tv.data.LiveStats.clear(); sessions = emptyList() })
-                }
-            }
+@Composable
+private fun UpdatesCategory(ctx: SettingsCtx) {
+    ctx.begin()
+    val c = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val now by produceState(System.currentTimeMillis()) { while (true) { delay(30_000); value = System.currentTimeMillis() } }
+    val installed = remember { Updater.installedName(c) }
+    val v = updateView(installed, Updater.available?.name, Updater.checking, Updater.checkError, Updater.checkedAt)
 
-            HudPanel(Modifier.fillMaxWidth()) {
-                RailHeader("Player test")
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton("Play test stream", { nav.push(Screen.Player(PLAYER_TEST_URL, "Player test")) })
-                    if (Prefs.customUrl.isNotBlank()) ActionButton("Play My Stream", { nav.push(Screen.Player(Prefs.customUrl, "My Stream")) })
-                }
+    Row(Modifier.padding(horizontal = Space.L, vertical = Space.S), verticalAlignment = Alignment.CenterVertically) {
+        val tint = when {
+            v.ready -> McdColors.Amber
+            v.headline.startsWith("Couldn't") -> McdColors.Coral
+            else -> McdColors.Accent
+        }
+        Box(Modifier.size(44.dp).clip(CircleShape).background(tint.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+            if (v.busy) HudSpinner(diameter = 24.dp) else Text(
+                when { v.ready -> "↑"; v.headline.startsWith("Couldn't") -> "!"; else -> "✓" },
+                color = tint, fontSize = 22.sp,
+            )
+        }
+        Spacer(Modifier.width(Space.M))
+        Column {
+            Text(v.headline, style = broadcastStyle(20.sp, if (v.ready) McdColors.Amber else McdColors.White))
+            Text(v.detail, color = McdColors.Muted, fontSize = SettingsType.Value)
+        }
+    }
+    Spacer(Modifier.height(Space.S))
+    BigButton(
+        v.button,
+        onClick = {
+            when {
+                v.ready -> ctx.nav.push(Screen.Update)
+                !v.busy -> scope.launch { Updater.check(c, force = true) }
             }
-            Spacer(Modifier.height(40.dp))
+        },
+        modifier = ctx.row().modifier.padding(start = Space.L),
+        highlight = v.ready,
+    )
+    Spacer(Modifier.height(Space.M))
+    SettingsDivider()
+    InfoRow("Installed version", installed)
+    InfoRow("Latest version", Updater.latestName.ifBlank { "Not checked yet" })
+    InfoRow("Last checked", agoLabel(Updater.checkedAt, now))
+    SettingsNote("Jarvis also checks when it starts and every 6 hours. When a new version is out, Home offers it once.")
+}
+
+@Composable
+private fun ThisTvCategory(ctx: SettingsCtx, changed: () -> Unit) {
+    ctx.begin()
+    val platform = remember { HouseSync.platform() }
+    fun saveLabel(text: String) {
+        val clean = TvIdentity.cleanLabel(text)
+        if (clean != Prefs.tvLabel) { Prefs.tvLabel = clean; HouseSync.onLabelChanged() }
+        changed()
+    }
+    SettingsSection("Name", first = true)
+    DialogRow(ctx, ctx.row(), "TV name", Prefs.tvLabel.ifBlank { "Not set. Phones show \"$platform\"." }, RowEnd.Edit) {
+        SettingsDialog.Edit(
+            "Name this TV",
+            "Phones use this name to tell your TVs apart. Press Done to save. Back cancels.",
+            Prefs.tvLabel, TvIdentity.LABEL_MAX, ::saveLabel,
+        )
+    }
+    val names = TvIdentity.EXAMPLES
+    DialogRow(ctx, ctx.row(), "Suggested names", names.joinToString(", "), RowEnd.Change) {
+        SettingsDialog.Choice("Pick a name", names + "No name", names.indexOf(Prefs.tvLabel).let { if (it < 0 && Prefs.tvLabel.isBlank()) names.size else it }) { i ->
+            saveLabel(names.getOrElse(i) { "" })
+        }
+    }
+    SettingsSection("This device")
+    InfoRow("Platform", platform)
+    InfoRow("Model", android.os.Build.MODEL.orEmpty().ifBlank { "Unknown" })
+    InfoRow("Maker", android.os.Build.MANUFACTURER.orEmpty().ifBlank { "Unknown" })
+    InfoRow("Jarvis version", com.mcd.tv.BuildConfig.VERSION_NAME)
+    SettingsSection("Start-up")
+    ToggleRow(ctx.row(), "Intro on launch", "Play the Jarvis intro when the app opens.", Prefs.playIntro) { Prefs.playIntro = it }
+    SettingsRow("Replay intro", { ctx.nav.push(Screen.Intro) }, ctx.row().modifier, value = "Watch the intro now.")
+}
+
+@Composable
+private fun ProfilesCategory(ctx: SettingsCtx, changed: () -> Unit) {
+    ctx.begin()
+    SettingsSection("Who's watching", first = true)
+    SettingsRow("Watching now", { ctx.nav.push(Screen.Profiles) }, ctx.row().modifier, value = "${Prefs.activeProfileName}. Press OK to switch.")
+    SettingsSection("Names")
+    Prefs.PROFILE_IDS.forEachIndexed { i, id ->
+        val slot = if (id == Prefs.KIDS_PROFILE) "Kids profile" else "Profile ${i + 1}"
+        val name = Prefs.profileName(id)
+        DialogRow(ctx, ctx.row(), name, slot, RowEnd.Edit) {
+            SettingsDialog.Edit("Rename $name", "$slot. Up to 20 letters. Press Done to save. Back cancels.", name, 20) { t ->
+                if (t.isNotBlank()) Prefs.setProfileName(id, t.trim())
+                changed()
+            }
+        }
+    }
+    SettingsSection("Taste")
+    Prefs.PROFILE_IDS.forEach { id ->
+        SettingsRow(possessive(Prefs.profileName(id)) + " taste", { ctx.nav.push(Screen.Taste(id)) }, ctx.row().modifier, value = "Genres and topics to like or skip.")
+    }
+    SettingsNote(
+        "Each profile has its own history, Continue Watching, My List, favorites and Live TV favorites. " +
+            "Settings, keys, addons and the playlist are shared by the whole TV. Jarvis also learns from what each person watches.",
+    )
+}
+
+@Composable
+private fun PlaybackCategory(ctx: SettingsCtx, changed: () -> Unit) {
+    ctx.begin()
+    val rd by rememberLoad(Prefs.rdAccessToken) { if (RealDebrid.connected) RealDebrid.accountSummary() else "Not connected" }
+    SettingsSection("Real-Debrid", first = true)
+    InfoRow("Status", when (val r = rd) { is Load.Ok -> r.value; is Load.Err -> "Error: ${r.message}"; else -> "Checking…" })
+    SettingsRow(
+        if (RealDebrid.connected) "Reconnect Real-Debrid" else "Connect Real-Debrid",
+        { ctx.nav.push(Screen.RdConnect) }, ctx.row().modifier, value = "Sign in with a code on your phone.",
+    )
+
+    SettingsSection("What Jarvis shows")
+    val origins = OriginFilter.entries
+    DialogRow(ctx, ctx.row(), "Titles", Prefs.origin.label, RowEnd.Change) {
+        SettingsDialog.Choice("Titles", origins.map { it.label }, origins.indexOf(Prefs.origin)) { i -> Prefs.origin = origins[i] }
+    }
+    ToggleRow(ctx.row(), "US release dates", "Lists use US releases and US streaming services.", Prefs.usOnly) { Prefs.usOnly = it }
+
+    SettingsSection("Source list")
+    DialogRow(ctx, ctx.row(), "Movie size limit", sizeLimitLabel(Prefs.maxMovieGb), RowEnd.Change) {
+        SettingsDialog.Choice("Movie size limit", MOVIE_LIMITS.map(::sizeLimitLabel), MOVIE_LIMITS.indexOf(Prefs.maxMovieGb)) { i -> Prefs.maxMovieGb = MOVIE_LIMITS[i] }
+    }
+    DialogRow(ctx, ctx.row(), "Episode size limit", sizeLimitLabel(Prefs.maxEpisodeGb), RowEnd.Change) {
+        SettingsDialog.Choice("Episode size limit", EPISODE_LIMITS.map(::sizeLimitLabel), EPISODE_LIMITS.indexOf(Prefs.maxEpisodeGb)) { i -> Prefs.maxEpisodeGb = EPISODE_LIMITS[i] }
+    }
+    SettingsNote("Bigger files stay hidden. Show hidden in the source list shows them.")
+
+    SettingsSection("Player test")
+    SettingsRow("Play test stream", { ctx.nav.push(Screen.Player(PLAYER_TEST_URL, "Player test")) }, ctx.row().modifier, value = "A short sample video. Checks that the player works.")
+    if (Prefs.customUrl.isNotBlank()) {
+        SettingsRow("Play My Stream", { ctx.nav.push(Screen.Player(Prefs.customUrl, "My Stream")) }, ctx.row().modifier, value = "The stream link saved on the Control page.")
+    }
+
+    if (RealDebrid.connected) {
+        SettingsSection("Sign out")
+        DialogRow(ctx, ctx.row(), "Disconnect Real-Debrid", "Signs this TV out of Real-Debrid.", RowEnd.None, danger = true) {
+            SettingsDialog.Confirm(
+                "Disconnect Real-Debrid?",
+                "Cached sources stop working on this TV until you connect again. Linked TVs share this sign-in.",
+                "Disconnect",
+            ) { Prefs.clearRealDebrid(); changed() }
         }
     }
 }
 
-private fun sizeLimitLabel(gb: Int) = if (gb <= 0) "No limit" else "$gb GB"
+@Composable
+private fun SourcesCategory(ctx: SettingsCtx, changed: () -> Unit) {
+    ctx.begin()
+    val c = LocalContext.current
+    val addons by rememberLoad { Prefs.addonUrls.map { u -> runCatching { Addons.manifest(u).name }.getOrDefault(u.take(40)) } }
+    val link = remember { Relay.controlUrl() }
 
-/** The next value in [cycle] after [current] (the first one if [current] is not in the list). */
-private fun nextLimit(current: Int, cycle: List<Int>): Int = cycle[(cycle.indexOf(current) + 1) % cycle.size]
+    Row(Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = Space.S), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.S)) {
+            Text("Set up from your phone", style = broadcastStyle(18.sp))
+            Text(
+                "Scan the code with your phone's camera. Add addons, playlists, websites and keys there, then tap Save.",
+                color = McdColors.Muted, fontSize = SettingsType.Value,
+            )
+            Text(Relay.status, color = McdColors.White, fontSize = SettingsType.Caption)
+        }
+        Spacer(Modifier.width(Space.L))
+        QrCode(link, 140.dp)
+    }
+    SettingsRow("Phone & Computer Setup", { ctx.nav.push(Screen.PhoneSetup) }, ctx.row().modifier, value = "The full setup page, with the home Wi-Fi option.")
+
+    SettingsSection("What's set up")
+    InfoRow("TMDB", if (Prefs.tmdbKey.isNotBlank()) "Connected" else "Add a key on the Control page")
+    InfoRow("Addons", when (val a = addons) { is Load.Ok -> a.value.joinToString(", ").ifBlank { "None" }; else -> "…" })
+    InfoRow("Live TV playlist", if (Prefs.m3uUrl.isNotBlank()) "Set" else "None")
+    InfoRow("Websites", Prefs.websites.joinToString(", ") { it.first }.ifBlank { "None" })
+    SettingsNote("Long text such as links and keys stays on the Control page, so you never type it with the remote.")
+
+    SettingsSection("Live TV health")
+    InfoRow("This TV", remember { LiveStats.device(c) })
+    val sessions = remember { LiveStats.recent() }
+    if (sessions.isEmpty()) {
+        SettingsNote("Watch a few live channels, then come back. Jarvis notes how each one played.")
+    } else {
+        sessions.take(8).forEach { s ->
+            SettingsRow(s.channel, {}, ctx.row().modifier, value = s.summary() + (if (s.decoder.isNotBlank()) ". Decoder: ${s.decoder}" else ""), end = RowEnd.None)
+        }
+        DialogRow(ctx, ctx.row(), "Clear Live TV health", "Forget how these channels played.", RowEnd.None, danger = true) {
+            SettingsDialog.Confirm("Clear Live TV health?", "Jarvis forgets the channel notes on this TV.", "Clear") { LiveStats.clear(); changed() }
+        }
+    }
+}
+
+@Composable
+private fun WallCategory(ctx: SettingsCtx, changed: () -> Unit) {
+    ctx.begin()
+    SettingsNote(
+        if (Wall.configured) "Photo frame and family calendar. Turn on Open in Wall on start on the wall TV."
+        else "Photo frame and family calendar. Add the wall address and key on the Control page first.",
+    )
+    Spacer(Modifier.height(Space.S))
+    SettingsRow("Open Wall", { ctx.nav.push(Screen.Wall) }, ctx.row().modifier, value = "OK switches views. Back closes it.")
+    ToggleRow(ctx.row(), "Open in Wall on start", "For a TV on the wall. Back goes to Home.", Prefs.wallStart) { Prefs.wallStart = it }
+    val modes = listOf("" to "Photos and calendar", "photos" to "Photos only")
+    DialogRow(ctx, ctx.row(), "Wall shows", modes.firstOrNull { it.first == Prefs.wallMode }?.second ?: modes[0].second, RowEnd.Change) {
+        SettingsDialog.Choice("Wall shows", modes.map { it.second }, modes.indexOfFirst { it.first == Prefs.wallMode }.coerceAtLeast(0)) { i ->
+            Wall.setMode(modes[i].first)
+        }
+    }
+}
+
+@Composable
+private fun NetworkCategory(ctx: SettingsCtx, changed: () -> Unit) {
+    ctx.begin()
+    SettingsSection("Phone link", first = true)
+    InfoRow("Control page link", Relay.status)
+    SettingsRow("Connect a phone", { ctx.nav.push(Screen.ConnectPhone) }, ctx.row().modifier, value = "Link a phone with a code. Works away from home too.")
+    SettingsSection("Other TVs")
+    SettingsRow("Join my other TVs", { ctx.nav.push(Screen.JoinHouse) }, ctx.row().modifier, value = "Share profiles, settings and Real-Debrid with another TV.")
+    SettingsSection("Connection")
+    ToggleRow(ctx.row(), "Slow connection", "Prefer smaller files and 720p when Jarvis picks a source.", Prefs.slowConnection) { Prefs.slowConnection = it }
+    InfoRow("Home Wi-Fi address", remember { LocalWeb.addresses().firstOrNull() ?: "Not on Wi-Fi" })
+    SettingsNote("The home Wi-Fi setup page runs only while Phone & Computer Setup is open.")
+}
+
+@Composable
+private fun AboutCategory(ctx: SettingsCtx, changed: () -> Unit) {
+    ctx.begin()
+    val now = remember { System.currentTimeMillis() }
+    SettingsSection("Jarvis", first = true)
+    InfoRow("Version", com.mcd.tv.BuildConfig.VERSION_NAME)
+    InfoRow("Build", com.mcd.tv.BuildConfig.VERSION_CODE.toString())
+    InfoRow("Device", remember { HouseSync.platform() + "  ·  " + android.os.Build.MODEL.orEmpty() })
+    SettingsSection("Help")
+    SettingsNote("To install Jarvis on another TV, open Downloader and enter jfortress0.github.io/McD-TV/get.")
+    SettingsNote("To add addons, playlists or keys, open Addons and Live TV and scan the code with your phone.")
+    SettingsSection("Recent errors")
+    val errors = remember { RecentErrors.recent() }
+    if (errors.isEmpty()) {
+        SettingsNote("No problems noted on this TV.")
+    } else {
+        errors.forEach { e ->
+            SettingsRow(
+                e.text, {}, ctx.row().modifier,
+                value = agoLabel(e.at, now) + if (e.count > 1) ". ${e.count} times." else "",
+                end = RowEnd.None,
+            )
+        }
+        DialogRow(ctx, ctx.row(), "Clear recent errors", "Start a fresh list.", RowEnd.None, danger = true) {
+            SettingsDialog.Confirm("Clear recent errors?", "The list starts empty again.", "Clear") { RecentErrors.clear(); changed() }
+        }
+    }
+}
 
 /** Setup from a phone or computer: QR code for the internet Control page, plus the home-network page. */
 @Composable
@@ -324,33 +604,4 @@ fun RdConnectScreen(nav: Nav) {
         )
         Text(status, fontSize = 18.sp, color = McdColors.Muted)
     }
-}
-
-/** The name of this TV. Select the box, press OK to type, then Save. Sent to phones through the house. */
-@Composable
-private fun TvLabelEditor() {
-    var text by remember { mutableStateOf(Prefs.tvLabel) }
-    var saved by remember { mutableStateOf("") }
-    fun save() {
-        val clean = TvIdentity.cleanLabel(text)
-        if (clean != Prefs.tvLabel) { Prefs.tvLabel = clean; HouseSync.onLabelChanged() }
-        text = Prefs.tvLabel
-        saved = if (text.isEmpty()) "No name. Phones show \"${HouseSync.platform()}\"." else "Saved. Phones show \"$text\"."
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        BasicTextField(
-            value = text,
-            onValueChange = { text = it.take(TvIdentity.LABEL_MAX) },
-            singleLine = true,
-            textStyle = TextStyle(color = McdColors.White, fontSize = 18.sp),
-            cursorBrush = SolidColor(McdColors.Accent),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, showKeyboardOnFocus = false),
-            keyboardActions = KeyboardActions(onDone = { save() }),
-            modifier = Modifier.width(320.dp).background(McdColors.Card, HudShape)
-                .border(1.dp, McdColors.Accent.copy(alpha = 0.7f), HudShape).padding(12.dp),
-        )
-        ActionButton("Save", { save() }, primary = true)
-        TvIdentity.EXAMPLES.forEach { ex -> ActionButton(ex, { text = ex; save() }) }
-    }
-    if (saved.isNotEmpty()) Text(saved, color = McdColors.Muted, fontSize = 13.sp)
 }

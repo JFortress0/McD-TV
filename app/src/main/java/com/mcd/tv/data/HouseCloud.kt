@@ -184,7 +184,7 @@ object HouseCloud {
 
     /**
      * Puts the house link (and the snapshot, so the phone is set up at once) on the relay under [code] for
-     * 15 minutes. The phone types the code in Jarvis > Settings > Connect with a code. True when it was saved.
+     * 15 minutes. The phone types the code in Jarvis > Settings > House and devices > Connect with a code. True when it was saved.
      */
     suspend fun offerCode(code: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
