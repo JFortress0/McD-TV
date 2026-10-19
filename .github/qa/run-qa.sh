@@ -178,13 +178,19 @@ W=$(wake); shot wall-idle
 adb shell wm density 240; sleep 6
 if wall_shown && keep_flag; then pass "Wall: stays up and held after a density change"; else fail "Wall: stays up and held after a density change"; fi
 adb shell wm density reset; sleep 4
-# Android rebuilds the activity ("Don't keep activities" destroys it on HOME): the app comes back to the Wall.
-adb shell settings put global always_finish_activities 1
+# Android rebuilds the activity: HOME, then the system kills the app in the background (as low memory does), then
+# it is opened again. Android restores the task from saved state, with its first launch intent (Settings) again:
+# the Wall must win. ("settings put global always_finish_activities 1" does not take effect without the
+# Developer options screen, so it is not used.)
+PID_BEFORE=$(adb shell pidof com.mcd.tv | tr -d '\r')
 adb shell input keyevent KEYCODE_HOME; sleep 4
-adb shell am start -n com.mcd.tv/.MainActivity >/dev/null; sleep 8
+adb shell am kill com.mcd.tv; sleep 2
+adb shell am start -n com.mcd.tv/.MainActivity >/dev/null; sleep 10
+PID_AFTER=$(adb shell pidof com.mcd.tv | tr -d '\r')
+echo "      app process before $PID_BEFORE, after $PID_AFTER" | tee -a "$R"
+[ -n "$PID_AFTER" ] && [ "$PID_BEFORE" != "$PID_AFTER" ] && pass "Wall: the app process was really replaced" || fail "Wall: the app process was really replaced"
 shot wall-rebuilt
 if wall_shown && keep_flag; then pass "Wall: comes back held after the activity is rebuilt"; else fail "Wall: comes back held after the activity is rebuilt"; fi
-adb shell settings put global always_finish_activities 0
 sleep 30
 W=$(wake); [ "$W" = "Awake" ] && pass "Wall: still awake after the rebuild" || fail "Wall: still awake after the rebuild ($W)"
 # The guard's log: the rebuild is noted, and the self-check found no lapse while Jarvis was in front.

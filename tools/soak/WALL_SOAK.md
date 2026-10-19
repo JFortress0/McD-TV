@@ -19,7 +19,7 @@ This test proves that Jarvis Wall keeps the Fire TV screen on for hours with no 
 
 ## Automated check
 
-The QA workflow (`.github/qa/run-qa.sh`, step 4w) runs a short version of this test in the Android TV emulator with a 15 second idle timeout. It runs the control, the Wall, the density change and the rebuild. Use this soak test on the real Fire TV for the long runs.
+The QA workflow (`.github/qa/run-qa.sh`, step 4w) runs a short version of this test in the Android TV emulator with a 15 second idle timeout. It runs the control, the Wall, the density change and the rebuild (a background kill, with a check that the process really changed). Use this soak test on the real Fire TV for the long runs.
 
 ## Set up
 
@@ -38,7 +38,7 @@ The QA workflow (`.github/qa/run-qa.sh`, step 4w) runs a short version of this t
 1. Open the Wall: Settings > Jarvis Wall > Open Wall, or Start Wall on the Control page. Use the Control page at least once, because before this fix that path did not survive a rebuild.
 2. Run `tools/soak/wall-soak.sh <minutes> 60`. Use at least 6×T. For a full pass, also do one overnight run of 8 hours or more.
 3. Display test, during the run: run `adb shell wm density 240`, then `adb shell wm density reset`. The app handles density changes itself (as it does colorMode and fontScale, which an HDMI mode change can also cause). The Wall must stay up with no rebuild.
-4. Rebuild test, during the run: run `adb shell settings put global always_finish_activities 1` ("Don't keep activities"). Press HOME, then open Jarvis again from the Fire TV home screen. Run `adb shell settings put global always_finish_activities 0`. The Wall must come back by itself, and logcat must show `Wall reopened after the app was rebuilt`. The HOME press logs `left the front`; that one line is expected and does not fail the run.
+4. Rebuild test, during the run: press HOME, run `adb shell am kill com.mcd.tv` (this ends Jarvis in the background, as low memory does), then open Jarvis again from the Fire TV home screen. Android rebuilds it from saved state. The Wall must come back by itself, and logcat must show `Wall reopened after the app was rebuilt`. The HOME press logs `left the front`; that one line is expected and does not fail the run. Do not use `settings put global always_finish_activities`: it does not take effect without the Developer options screen.
 
 ## Pass rule
 
