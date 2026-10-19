@@ -6,11 +6,12 @@ package com.mcd.tv.data
  *
  * The order at one spot:
  *  1. Reconnect at the same position (twice for network-type failures, not for decoder errors).
- *  2. The spot is the resume point (another device's or this TV's saved position) and it never played:
- *     this source can't jump there. Play from the start and say so. The saved position is kept
- *     (see [keepSavedBelow]) so it isn't lost on the other devices.
- *  3. Another source is left: switch to it. It resumes at the same spot.
- *  4. None left: skip [SKIP_MS] past the bad spot once and say so.
+ *  2. Another source is left: switch to it. It resumes at the same spot (the position belongs to the
+ *     title, not to the source).
+ *  3. The spot is the resume point (another device's or this TV's saved position), it never played and
+ *     no other source is left: this source can't jump there. Play from the start and say so. The saved
+ *     position is kept (see [keepSavedBelow]) so it isn't lost on the other devices.
+ *  4. Otherwise skip [SKIP_MS] past the bad spot once and say so.
  *  5. Still failing: give up with a message that names the time.
  *
  * A failure more than [SPOT_MS] away from the last one is a new spot and starts at step 1 again.
@@ -22,6 +23,10 @@ class PlaybackRescue(resumeMs: Long, private val hasNextSource: () -> Boolean) {
     data class Step(val action: Action, val seekToMs: Long = -1L, val note: String? = null)
 
     private val resumeMs = resumeMs.coerceAtLeast(0L)
+
+    /** True when the last failure was at the resume point before it ever played (set by [onFailure]). */
+    var failedAtResume = false
+        private set
 
     /** True until the resume point has really played (or the viewer moved away from it). */
     var resumePending = this.resumeMs > 0
@@ -62,7 +67,15 @@ class PlaybackRescue(resumeMs: Long, private val hasNextSource: () -> Boolean) {
         if (retryable && failsHere <= RECONNECTS) return Step(Action.RECONNECT)
 
         val at = SeekAccumulator.clock(pos)
-        if (resumePending && resumeMs > 0 && kotlin.math.abs(pos - resumeMs) <= SPOT_MS) {
+        val atResume = resumePending && resumeMs > 0 && kotlin.math.abs(pos - resumeMs) <= SPOT_MS
+        failedAtResume = atResume
+        if (hasNextSource()) {
+            return Step(
+                Action.NEXT_SOURCE,
+                note = if (atResume) "This source couldn't start at $at. Trying the next one at $at." else "This source stopped at $at. Trying the next one.",
+            )
+        }
+        if (atResume) {
             resumePending = false
             keepSavedBelow = resumeMs
             spotMs = -1L
@@ -73,7 +86,6 @@ class PlaybackRescue(resumeMs: Long, private val hasNextSource: () -> Boolean) {
                     "Hold RIGHT to skip ahead, or pick another source.",
             )
         }
-        if (hasNextSource()) return Step(Action.NEXT_SOURCE, note = "This source stopped at $at. Trying the next one.")
         if (!skippedHere) {
             skippedHere = true
             return Step(
@@ -101,13 +113,14 @@ class PlaybackRescue(resumeMs: Long, private val hasNextSource: () -> Boolean) {
         const val STALL_MS = 30_000L
 
         /**
-         * Where to start a source, given a saved position. A spot past the end of this source (a shorter cut,
-         * or a length saved from a different file) starts at 0. [durationMs] <= 0: length not known yet.
+         * Where to start, given a saved position and the title's expected length ([SourceHealth.expectedMs]:
+         * the longest of the source's, the runtime and the saved length, so a cut-off source can't shorten it).
+         * Only a spot at the very end of the title starts at 0. [expectedMs] <= 0: length not known yet.
          */
-        fun resumeTarget(savedMs: Long, durationMs: Long): Long {
+        fun resumeTarget(savedMs: Long, expectedMs: Long): Long {
             if (savedMs <= 0) return 0L
-            if (durationMs <= 0) return savedMs
-            return if (savedMs >= durationMs - END_MARGIN_MS) 0L else savedMs
+            if (expectedMs <= 0) return savedMs
+            return if (savedMs >= expectedMs - END_MARGIN_MS) 0L else savedMs
         }
 
         private const val END_MARGIN_MS = 10_000L

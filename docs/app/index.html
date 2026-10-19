@@ -311,6 +311,7 @@ footer{padding:30px var(--gut) 40px;color:#59637a;font-size:12px}
 .src .sz{font-weight:600;white-space:nowrap}
 .src .in{color:var(--bright);font-weight:700;white-space:nowrap}
 .src .dl{color:var(--muted);white-space:nowrap}
+.src .badsrc{background:#7a1f1f;color:#fff}
 .src .ad{margin-left:auto;color:var(--muted);opacity:.75;font-size:11px;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srcmore{border:0;background:transparent;color:var(--muted);text-align:left;padding:10px 12px;cursor:pointer;font-size:13px;border-radius:8px}
 .srcmore:hover{color:#fff;background:rgba(255,255,255,.05)}
@@ -907,6 +908,28 @@ const RC = (() => {
         body: JSON.stringify({ k: await k.tag("list"), t: at, v: enc64(v) }), keepalive: true });
     } catch {}
   }
+  // Files flagged as incomplete (SH), for the whole house: profile tag "badsrc", key tag "title|<titleKey>",
+  // value {f:[{k,s,at}],at}. Same entries as the TV (BadSources.kt).
+  async function badGet(titleKey) {
+    const k = await keys(); if (!k) return [];
+    try {
+      const r = await fetch(`${URL_R}?h=${k.house}&p=${await k.tag("badsrc")}`, { cache: "no-store" });
+      if (!r.ok) return [];
+      const rec = ((await r.json()).e || {})[await k.tag("title|" + titleKey)]; if (!rec) return [];
+      const all = unb64u(rec.v);
+      return SH.decode(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, k.aes, all.slice(12))));
+    } catch { return []; }
+  }
+  async function badPut(titleKey, flags) {
+    const k = await keys(); if (!k) return;
+    const at = Date.now(), iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k.aes, new TextEncoder().encode(SH.encode(flags, at))));
+    const v = new Uint8Array(12 + ct.length); v.set(iv); v.set(ct, 12);
+    try {
+      await fetch(`${URL_R}?h=${k.house}&p=${await k.tag("badsrc")}`, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify({ k: await k.tag("title|" + titleKey), t: at, v: enc64(v) }), keepalive: true });
+    } catch {}
+  }
   /** The house's setup snapshot (settings and every profile's lists), kept current by every TV (HouseCloud.kt). */
   async function houseGet() {
     const k = await keys(); if (!k) return null;
@@ -917,7 +940,83 @@ const RC = (() => {
       return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12) }, k.aes, all.slice(12))));
     } catch { return null; }
   }
-  return { list, push, peekFor, mergeCont, refresh, favGet, favPut, houseGet, ready: () => !!houseKey() };
+  return { list, push, peekFor, mergeCont, refresh, favGet, favPut, badGet, badPut, houseGet, ready: () => !!houseKey() };
+})();
+
+/**
+ * Sources that stop far short of the title (a cut-off file, or one that dies at one spot). Same rules as the
+ * TV (app/.../data/SourceHealth.kt); tools/webtest/qa.mjs checks both give the same answers. Where you are
+ * belongs to the title; a flag belongs to one file. Any device resumes at the position with any source and
+ * lists flagged files last.
+ */
+const SH = (() => {
+  const RATIO = 0.7, SHORT = 5 * 60000, MAX = 8, KEEP = 90 * 86400000, LKEY = "mcdtv_badsrc";
+  const H40 = /^[a-f0-9]{40}$/;
+  const after = (s, d) => { const i = s.indexOf(d); return i < 0 ? "" : s.slice(i + d.length); };
+  const before = (s, d) => { const i = s.indexOf(d); return i < 0 ? s : s.slice(0, i); };
+  /** A 40-character torrent hash in the path of a link, lower case. */
+  function hashInLink(url) {
+    const path = before(before(after(after(String(url || ""), "://"), "/"), "?"), "#");
+    const seg = path.split("/").find((x) => H40.test(x.toLowerCase()));
+    return seg ? seg.toLowerCase() : null;
+  }
+  async function sha16(t) {
+    const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+    return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  }
+  /** The same key on every device for one file. A plain link is hashed, so a login in it is never stored. */
+  async function key(s) {
+    const ih = String(s.infoHash || "").toLowerCase();
+    const h = H40.test(ih) ? ih : s.url ? hashInLink(s.url) : null;
+    if (h) return "h:" + h;
+    if (s.url && String(s.url).trim()) return "u:" + await sha16(String(s.url));
+    return "n:" + await sha16(`${s.addon || ""}|${s.name || ""}|${s.title || ""}`);
+  }
+  const titleKey = (type, id, season, episode) => (type === "tv" && +season > 0 ? `tv:${+id}:${+season}:${+episode}` : `${type}:${+id}`);
+  const expected = (srcDur, runtime, savedDur) => Math.max(+srcDur || 0, +runtime || 0, +savedDur || 0, 0);
+  const incomplete = (at, exp) => exp > 0 && Math.max(0, at) < exp * RATIO && exp - Math.max(0, at) >= SHORT;
+  const shortSource = (srcDur, exp) => srcDur > 0 && incomplete(srcDur, exp);
+  /** The length saved with a position: the title's when this source is cut off (else a stop reads as "watched"). */
+  function progressDur(srcDur, runtime, savedDur) {
+    const exp = expected(0, runtime, savedDur);
+    return srcDur > 0 && !shortSource(srcDur, exp) ? srcDur : exp > 0 ? exp : srcDur;
+  }
+  function merge(a, b, now) {
+    const best = new Map();
+    for (const f of [...(a || []), ...(b || [])]) {
+      if (!f || !f.k || now - (+f.at || 0) >= KEEP) continue;
+      const o = best.get(f.k); if (!o || +f.at > +o.at) best.set(f.k, { k: f.k, s: +f.s || 0, at: +f.at || 0 });
+    }
+    return [...best.values()].sort((x, y) => y.at - x.at).slice(0, MAX);
+  }
+  const encode = (flags, now) => JSON.stringify({ f: (flags || []).map((f) => ({ k: f.k, s: f.s, at: f.at })), at: now });
+  function decode(text) {
+    try { const o = JSON.parse(text); return Array.isArray(o.f) ? o.f.filter((f) => f && typeof f.k === "string" && f.k && f.k.length <= 80).map((f) => ({ k: f.k, s: +f.s || 0, at: +f.at || 0 })) : []; } catch { return []; }
+  }
+  /** [list] with flagged files moved to the end, in their order. */
+  const demote = (list, flagged, keyOf) => !flagged || !flagged.size ? list : list.filter((x) => !flagged.has(keyOf(x))).concat(list.filter((x) => flagged.has(keyOf(x))));
+  const local = () => readJSON(LKEY) || {};
+  const flags = (tk) => local()[tk] || [];
+  function saveLocal(tk, list) {
+    const all = local(); all[tk] = list;
+    const ks = Object.keys(all);
+    if (ks.length > 200) ks.sort((a, b) => Math.max(0, ...all[a].map((f) => f.at)) - Math.max(0, ...all[b].map((f) => f.at))).slice(0, ks.length - 200).forEach((k) => delete all[k]);
+    LS.set(LKEY, JSON.stringify(all));
+  }
+  const flagged = (tk) => new Set(flags(tk).map((f) => f.k));
+  /** Merges the house's flags for this title into this device's (one request). Returns the flagged keys. */
+  async function refresh(tk) {
+    const shared = await RC.badGet(tk);
+    if (shared.length) saveLocal(tk, merge(flags(tk), shared, Date.now()));
+    return flagged(tk);
+  }
+  /** This file stopped for good at [stoppedMs]: flag it here, then on the shared copy. */
+  async function mark(tk, k, stoppedMs) {
+    const now = Date.now(), list = merge([{ k, s: Math.round(stoppedMs), at: now }], flags(tk), now);
+    saveLocal(tk, list);
+    try { await RC.badPut(tk, merge(list, await RC.badGet(tk), Date.now())); } catch {}
+  }
+  return { key, hashInLink, titleKey, expected, incomplete, shortSource, progressDur, merge, encode, decode, demote, flagged, refresh, mark, RATIO, SHORT };
 })();
 
 /**
@@ -3240,7 +3339,8 @@ function srcRow(r, i) {
     return `<button class="src iptv" data-src="${i}" title="${esc(s.title + " (no Real-Debrid needed)")}">${parts.join("")}</button>`;
   }
   const f = r.info;
-  const st = `<span class="st" aria-label="${f.stars} of 5 stars">${"&#9733;".repeat(f.stars)}<i>${"&#9733;".repeat(5 - f.stars)}</i></span>`;
+  const bad = r.bad ? `<span class="bdg badsrc" title="Stopped far short of the title on a device in this house">Incomplete</span>` : "";
+  const st = bad + `<span class="st" aria-label="${f.stars} of 5 stars">${"&#9733;".repeat(f.stars)}<i>${"&#9733;".repeat(5 - f.stars)}</i></span>`;
   const parts = [st];
   if (f.resolution) parts.push(`<span class="bdg${f.resolution === "4K" || f.resolution === "1080p" ? " hi" : ""}">${esc(f.resolution)}</span>`);
   f.hdr.forEach((h) => parts.push(`<span class="bdg">${esc(h)}</span>`));
@@ -3306,6 +3406,15 @@ async function renderSources(v, tok, type, id, q) {
   const ivList = list.filter((s) => s.iptv), ivRows = ivList.map((s) => ({ source: s, info: {} }));
   list = list.filter((s) => !s.iptv);
   const a = SI.arrange(list, type === "tv", opts);
+  // Files the house flagged as incomplete for this title (any device): marked, listed last, tried last.
+  const tk = SH.titleKey(type, id, season, episode), keyOf = new Map();
+  await Promise.all(list.map(async (s) => { try { keyOf.set(s, await SH.key(s)); } catch {} }));
+  let bad = SH.flagged(tk);
+  try { bad = await Promise.race([SH.refresh(tk), new Promise((r) => setTimeout(() => r(SH.flagged(tk)), 4000))]); } catch {}
+  if (tok !== routeTok) return;
+  const badRow = (r) => bad.has(keyOf.get(r.source));
+  a.visible = SH.demote(a.visible, bad, (r) => keyOf.get(r.source)); a.hidden = SH.demote(a.hidden, bad, (r) => keyOf.get(r.source));
+  a.visible.concat(a.hidden).forEach((r) => { r.bad = badRow(r); });
   let rows = ivRows.concat(a.visible), showHidden = false;
   const ivNote = ivOn && S.iptvReport === "failed" ? " Your IPTV provider's library didn't load." : "";
   if (!list.length && !ivList.length) {
@@ -3327,6 +3436,8 @@ async function renderSources(v, tok, type, id, q) {
       ? `<button class="srcmore" id="showHidden">Show ${a.hidden.length} hidden source${a.hidden.length === 1 ? "" : "s"} (CAM releases, files over the size limit)</button>` : "");
   };
   draw();
+  // From the player: that source was cut off. Pick another one at once (flagged files go last).
+  if (q.get("best") === "1") setTimeout(() => { if (tok === routeTok && !bestBtn.disabled) bestBtn.click(); }, 0);
   let busy = false;
   const lock = (on) => { busy = on; bestBtn.disabled = on; $$(".src", listEl).forEach((b) => { b.disabled = on; }); };
   async function go(s, o) {
@@ -3346,7 +3457,8 @@ async function renderSources(v, tok, type, id, q) {
       return true;
     }
     const f = SI.info(s);
-    S.playing = { key: posKey(meta), meta, cands, back: location.hash, direct: res.direct || "",
+    S.playing = { key: posKey(meta), meta, cands, back: location.hash.replace(/([?&])best=1&?/, "$1").replace(/[?&]$/, ""), direct: res.direct || "",
+      tk, srcKey: keyOf.get(s) || "",
       line: [f.resolution, f.source, f.sizeLabel, s.addon].filter(Boolean).join(" · ") };
     location.hash = `#/play/${type}/${id}` + (type === "tv" ? `?s=${season}&e=${episode}` : "");
     return true;
@@ -3454,6 +3566,7 @@ async function renderSources(v, tok, type, id, q) {
       if (tok !== routeTok) return;
       pool = pool.filter((s) => owned.has(hashOf(s))).concat(pool.filter((s) => !owned.has(hashOf(s))));
     }
+    pool = SH.demote(pool, bad, (s) => keyOf.get(s));
     const order = pool.slice(0, 8);
     let last = null;
     for (let i = 0; i < order.length; i++) {
@@ -3493,7 +3606,7 @@ function renderPlayer(v, tok, type, id, q) {
       <div class="pl-title"><b>${esc(m.label)}</b><span class="muted" id="plLine">${esc(P.line)}</span></div></div>
     <div class="pl-stage"><video id="vid" controls playsinline webkit-playsinline preload="auto"${bd}></video>
       <button class="pl-tap hidden" id="plTap" type="button" aria-label="Play"><i aria-hidden="true">&#9654;</i>Tap to play</button>
-      <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><div class="rowf" style="justify-content:center;gap:8px;flex-wrap:wrap">${vlcBtn}<a class="btn small${vlcBtn ? "" : " primary"}" href="${esc(P.back)}">Pick another source</a></div></div></div>
+      <div class="pl-msg hidden" id="plMsg"><p id="plMsgText"></p><div class="rowf" style="justify-content:center;gap:8px;flex-wrap:wrap">${vlcBtn}<a class="btn small${vlcBtn ? "" : " primary"}" id="plOther" href="${esc(P.back)}">Pick another source</a></div></div></div>
     <div class="pl-bar"><button class="btn primary big" id="fsBtn">&#9974; Full screen</button>
       <a class="btn" href="${esc(P.back)}">Other sources</a>${vlcBtn.replace("btn small primary", "btn")}
       <button class="btn" ${playAttrs({ type, id, name: m.name }, m.season, m.episode)}>&#9654; Play on TV instead</button></div></div>`;
@@ -3545,9 +3658,47 @@ function renderPlayer(v, tok, type, id, q) {
   function next() {
     if (gone) return;
     clearTimeout(watchdog);
-    if (i < P.cands.length - 1) { i++; resumed = false; load(); } else showMsg(BAD_FORMAT);
+    if (i < P.cands.length - 1) { i++; resumed = false; load(); }
+    else if (started && SH.incomplete(vid.currentTime * 1000, expected())) broken(vid.currentTime * 1000);
+    else showMsg(BAD_FORMAT);
   }
-  const durMs = () => (isFinite(vid.duration) && vid.duration > 0 ? vid.duration * 1000 : (m.runtimeMin || 0) * 60000);
+  // Lengths: this file's, the title's runtime, and the one another device saved. A cut-off file must not
+  // shorten the title, or a stop there would read as "watched" on every device (SH.progressDur).
+  const runtime = (m.runtimeMin || 0) * 60000;
+  const savedDur = (() => {
+    const cl = RC.peekFor(m.type, m.id), sp = getPos(m);
+    const c = cl && (m.type !== "tv" || (cl.season === +m.season && cl.episode === +m.episode)) ? +cl.dur || 0 : 0;
+    return Math.max(c, (sp && +sp.d) || 0);
+  })();
+  const vidDur = () => (isFinite(vid.duration) && vid.duration > 0 ? vid.duration * 1000 : 0);
+  const expected = () => SH.expected(vidDur(), runtime, savedDur);
+  const durMs = () => SH.progressDur(vidDur(), runtime, savedDur);
+  let resumeMs = 0, brokenDone = false;
+  /** This file stops for good at [atMs], far short of the title: flag it for the house and switch sources. */
+  function broken(atMs) {
+    if (brokenDone || gone) return;
+    brokenDone = true;
+    save(true);
+    if (P.srcKey && P.tk) SH.mark(P.tk, P.srcKey, atMs);
+    const spot = fmtTime(Math.max(vid.currentTime * 1000, resumeMs) / 1000);
+    const href = P.back + (P.back.includes("?") ? "&" : "?") + "best=1", here = location.hash;
+    showMsg(`This source appears incomplete. It stops at ${fmtTime(atMs / 1000)}. Switching to another source at ${spot}…`);
+    const a = $("#plOther", v); if (a) { a.href = href; a.textContent = "Play another source"; }
+    try { vid.pause(); } catch {}
+    setTimeout(() => { if (!gone && location.hash === here) location.hash = href; }, 6000);
+  }
+  // Playing but stuck for 45 s with nothing new loaded: a file that dies at this spot.
+  let lastT = -1, lastMove = Date.now();
+  const stallWatch = setInterval(() => {
+    if (gone) { clearInterval(stallWatch); return; }
+    const t = vid.currentTime;
+    if (!started || vid.paused || vid.ended || t !== lastT) { lastT = t; lastMove = Date.now(); return; }
+    if (Date.now() - lastMove < 45000 || vid.readyState >= 3 || brokenDone) return;
+    if (SH.incomplete(t * 1000, expected())) { broken(t * 1000); return; }
+    brokenDone = true;
+    const a = $("#plOther", v); if (a) a.href = P.back + (P.back.includes("?") ? "&" : "?") + "best=1";
+    showMsg(`This source stopped loading at ${fmtTime(t)}. Pick another source. Jarvis resumes there.`);
+  }, 5000);
   function save(sendTv) {
     const pos = vid.currentTime * 1000, dur = durMs();
     if (!(pos > 5000) || !(dur > 0)) return;
@@ -3570,7 +3721,15 @@ function renderPlayer(v, tok, type, id, q) {
     if (resumed) return;
     resumed = true;
     // Pick up where this profile left off on any device (this browser, the cloud, the TV's list).
-    const at = resumeAt(m, durMs()) / 1000;
+    const at = resumeAt(m, expected()) / 1000;
+    resumeMs = at * 1000;
+    // This file is far shorter than the title: flag it. Past its end already? Switch now, else at its end.
+    const vd = vidDur();
+    if (SH.shortSource(vd, SH.expected(0, runtime, savedDur))) {
+      if (at * 1000 >= vd - 10000) { broken(vd); return; }
+      if (P.srcKey && P.tk) SH.mark(P.tk, P.srcKey, vd);
+      toast(`This source appears incomplete. It stops at ${fmtTime(vd / 1000)}.`, "warn");
+    }
     if (at > 0) { try { vid.currentTime = at; toast("Resumed at " + fmtTime(at)); } catch {} }
   });
   vid.addEventListener("timeupdate", () => {
@@ -3579,7 +3738,11 @@ function renderPlayer(v, tok, type, id, q) {
     if (now - lastSave >= 10000) save(now - lastRelay >= 120000);
   });
   vid.addEventListener("pause", () => { if (!gone && !vid.ended) save(Date.now() - lastRelay > 5000); });
-  vid.addEventListener("ended", () => save(true));
+  vid.addEventListener("ended", () => {
+    const t = vid.currentTime * 1000;
+    save(true); // with the title's length: a cut-off end is not "watched"
+    if (SH.incomplete(t, expected())) broken(t);
+  });
   // Going to the background (see onBackground): save here and tell the house. Hidden, pagehide, freeze and the
   // pause iOS adds can all fire together, so the house and the TV get it once.
   S.bgSave = () => { if (!gone) save(Date.now() - lastRelay > 5000); };
@@ -3602,6 +3765,7 @@ function renderPlayer(v, tok, type, id, q) {
   });
   S.cleanup = () => {
     gone = true;
+    clearInterval(stallWatch);
     save(true);
     S.bgSave = null;
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
@@ -5394,7 +5558,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-19.2";
+const BUILD = "2026-10-19.3";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;

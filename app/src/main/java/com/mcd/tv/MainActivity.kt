@@ -337,17 +337,18 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
             androidx.compose.runtime.key(s.url, s.queuePos) {
                 // A failed stream offers "Try next source" from the list it was picked from.
                 val nextSource = com.mcd.tv.ui.rememberNextSource(nav, s)
+                val sourceKey = com.mcd.tv.data.SourceQueue.get(s.queue)?.getOrNull(s.queuePos)?.let { com.mcd.tv.data.SourceHealth.key(it) }
                 if (m != null && next != null) {
                     // TV episode: "Up next" countdown card before rolling into the next episode.
                     com.mcd.tv.ui.UpNextPlayer(
                         url = s.url, title = s.title, meta = m, headers = s.headers,
                         onNext = next, onCancel = { nav.back() }, onSleep = { nav.back() },
-                        nextSource = nextSource,
+                        nextSource = nextSource, sourceKey = sourceKey,
                     )
                 } else {
                     PlayerScreen(
                         url = s.url, title = s.title, meta = m, onEnded = next, headers = s.headers, onSleep = { nav.back() },
-                        nextSource = nextSource, onBack = { nav.back() },
+                        nextSource = nextSource, onBack = { nav.back() }, sourceKey = sourceKey,
                     )
                 }
             }

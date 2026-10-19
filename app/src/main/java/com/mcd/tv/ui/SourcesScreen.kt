@@ -48,6 +48,8 @@ import com.mcd.tv.data.ArrangedStreams
 import com.mcd.tv.data.RankedStream
 import com.mcd.tv.data.StreamInfo
 import com.mcd.tv.data.SourceQueue
+import com.mcd.tv.data.BadSources
+import com.mcd.tv.data.SourceHealth
 import com.mcd.tv.data.StreamSource
 import com.mcd.tv.data.XtreamVod
 import com.mcd.tv.player.NextSource
@@ -69,6 +71,10 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val firstFocus = remember { FocusRequester() }
+    // Files the house flagged as incomplete for this title (any device): marked, listed last, tried last.
+    val titleKey = SourceHealth.titleKey(meta.type, meta.tmdbId, meta.season, meta.episode)
+    LaunchedEffect(titleKey) { BadSources.refresh(titleKey) }
+    val flagged = remember(titleKey, BadSources.version) { BadSources.flagged(titleKey) }
 
     /** [order] is the list on screen, so "Try next source" in the player goes down the same list. */
     fun start(s: StreamSource, order: List<StreamSource>, index: Int) {
@@ -91,10 +97,15 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
         busy = true
         status = "Finding the best source…"
         // Back leaves the screen and cancels this, including a wait between Real-Debrid adds.
-        runCatching { Resolver.best(all, meta, onStatus = { status = it }) }
+        // Continue Watching opens this with autoPlay at once: get the house's flags first (a few seconds at most).
+        kotlinx.coroutines.withTimeoutOrNull(4_000) { BadSources.refresh(titleKey) }
+        val bad = BadSources.flagged(titleKey)
+        runCatching { Resolver.best(all, meta, onStatus = { status = it }, flagged = bad) }
             .onSuccess { (src, url) ->
                 // Same order Resolver.best tried, so "Try next source" picks up after the one that worked.
-                val order = StreamInfo.playOrder(all, episode = meta.type == "tv" || all.any { it.episode != null })
+                val order = SourceHealth.demote(
+                    StreamInfo.playOrder(all, episode = meta.type == "tv" || all.any { it.episode != null }), bad, SourceHealth::key,
+                )
                 val queue = SourceQueue.put(order)
                 nav.replace(Screen.Player(url, meta.label, meta, imdbId, headers = src.headers, queue = queue, queuePos = order.indexOf(src)))
             }
@@ -109,7 +120,14 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
 
     val l = sources
     // Sorted, de-duplicated rows; CAM releases and oversized files are hidden until "Show N hidden sources".
-    val arranged = remember(l) { (l as? Load.Ok<List<StreamSource>>)?.value?.let { StreamInfo.arrange(it, episode = meta.type == "tv") } }
+    val arranged = remember(l, flagged) {
+        (l as? Load.Ok<List<StreamSource>>)?.value?.let { StreamInfo.arrange(it, episode = meta.type == "tv") }?.let { a ->
+            ArrangedStreams(
+                SourceHealth.demote(a.visible, flagged) { SourceHealth.key(it.source) },
+                SourceHealth.demote(a.hidden, flagged) { SourceHealth.key(it.source) },
+            )
+        }
+    }
     var showHidden by remember { mutableStateOf(false) }
     // "Show N hidden sources" disappears when pressed: move focus to the first revealed row.
     val hiddenFocus = remember { FocusRequester() }
@@ -177,7 +195,7 @@ fun SourcesScreen(nav: Nav, meta: PlayMeta, imdbId: String, autoPlay: Boolean) {
                 }
                 itemsIndexed(rows, key = { _, r -> r.info.dedupeKey }) { i, r ->
                     val m = if (showHidden && i == a.visible.size) Modifier.focusRequester(hiddenFocus) else Modifier
-                    SourceRow(r, onClick = { start(r.source, order, i) }, modifier = m)
+                    SourceRow(r, onClick = { start(r.source, order, i) }, modifier = m, incomplete = SourceHealth.key(r.source) in flagged)
                 }
                 if (a.hidden.isNotEmpty() && !showHidden) item(key = "show-hidden") {
                     ShowHiddenRow(
@@ -207,7 +225,7 @@ private fun stars(n: Int): AnnotatedString = buildAnnotatedString {
 
 /** One clean line: stars, resolution, HDR, audio, size, Instant / Download, then the addon name. */
 @Composable
-private fun SourceRow(r: RankedStream, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun SourceRow(r: RankedStream, onClick: () -> Unit, modifier: Modifier = Modifier, incomplete: Boolean = false) {
     val info = r.info
     Surface(
         onClick = onClick,
@@ -226,6 +244,8 @@ private fun SourceRow(r: RankedStream, onClick: () -> Unit, modifier: Modifier =
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(stars(info.stars), fontSize = 13.sp, maxLines = 1)
+            // Stopped far short of the title on a device in this house (BadSources).
+            if (incomplete) Badge("Incomplete", McdColors.Red)
             if (info.resolution.isNotBlank()) Badge(info.resolution, if (info.resolution == "4K" || info.resolution == "1080p") McdColors.RedDark else McdColors.Raised)
             info.hdr.forEach { Badge(it, McdColors.Raised) }
             if (info.audio.isNotBlank()) Badge(info.audio, McdColors.Raised)

@@ -26,8 +26,20 @@ class PlaybackRescueTest {
     }
 
     @Test
-    fun failedResumeReconnectsTwiceThenPlaysFromTheStart() {
+    fun failedResumeWithAnotherSourceSwitchesAtTheSameSpot() {
         val r = PlaybackRescue(resume) { true }
+        assertEquals(Action.RECONNECT, r.onFailure(resume, true).action)
+        assertEquals(Action.RECONNECT, r.onFailure(resume, true).action)
+        val step = r.onFailure(resume, true)
+        assertEquals(Action.NEXT_SOURCE, step.action)
+        assertTrue(step.note!!.contains("at 34:50"))
+        // A failed jump is not proof the file is cut off: the player does not flag it.
+        assertTrue(r.failedAtResume)
+    }
+
+    @Test
+    fun failedResumeReconnectsTwiceThenPlaysFromTheStart() {
+        val r = PlaybackRescue(resume) { false }
         assertEquals(Action.RECONNECT, r.onFailure(resume, true).action)
         assertEquals(Action.RECONNECT, r.onFailure(resume + 1_000L, true).action)
         val step = r.onFailure(resume, true)

@@ -53,7 +53,9 @@ import androidx.tv.material3.Text
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.NowPlaying
 import com.mcd.tv.data.PlayMeta
+import com.mcd.tv.data.BadSources
 import com.mcd.tv.data.PlaybackRescue
+import com.mcd.tv.data.SourceHealth
 import com.mcd.tv.data.RdErrors
 import com.mcd.tv.ui.ActionButton
 import com.mcd.tv.ui.McdColors
@@ -106,6 +108,8 @@ fun PlayerScreen(
     onBack: (() -> Unit)? = null,
     /** A live channel: live-edge, buffer and stall-recovery settings for IPTV (see [LiveTuning]). */
     live: Boolean = false,
+    /** SourceHealth.key of the playing file: a file that stops far short of the title is flagged for the house. */
+    sourceKey: String? = null,
 ) {
     val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
@@ -113,10 +117,23 @@ fun PlayerScreen(
     var audioNote by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     // Saved position for this title (this TV, another TV or a phone). Read once, before the player starts.
-    val resumeMs = remember { meta?.let { Library.resumePosition(it) } ?: 0L }
+    // It belongs to the title, not to a source: any source resumes here.
+    val saved = remember { meta?.let { Library.resumeEntry(it) } }
+    val resumeMs = saved?.positionMs ?: 0L
+    val savedDurMs = saved?.durationMs ?: 0L
+    // The title's runtime (TMDB, usually cached by Detail): tells a cut-off source from the real end.
+    var runtimeMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(meta) {
+        if (meta != null && !live && meta.tmdbId > 0) {
+            runtimeMs = runCatching { com.mcd.tv.data.Tmdb.details(meta.type, meta.tmdbId).runtimeMin * 60_000L }.getOrDefault(0L)
+        }
+    }
     // Non-live: what to do when the video fails or stalls at one spot (see PlaybackRescue).
     val rescue = remember { PlaybackRescue(if (live) 0L else resumeMs) { nextSource?.hasMore() == true } }
-    val progress = remember { ProgressSaver(meta) { rescue.keepSavedBelow } }
+    // Saves the title's length, not a cut-off source's, so a stop there never reads as "watched" elsewhere.
+    val progress = remember {
+        ProgressSaver(meta, { rescue.keepSavedBelow }) { d -> SourceHealth.progressDurationMs(d, runtimeMs, savedDurMs) }
+    }
     // What this TV plays, for the web app ("now" on the relay). Cleared when the player leaves.
     val report = remember { NowReporter(title, meta, live) }
     @Suppress("DEPRECATION") // androidx.compose.ui.platform.LocalLifecycleOwner: always on the classpath with this BOM
@@ -177,10 +194,49 @@ fun PlayerScreen(
         rescueNoteTick++
     }
 
+    // The length this title should have: the longest of this source's, the runtime and the saved length.
+    fun expectedMs(): Long = SourceHealth.expectedMs(player.duration.coerceAtLeast(0L), runtimeMs, savedDurMs)
+
+    // This file stops for good at [atMs], far short of the title: flag it for the whole house and say so.
+    fun flagIncomplete(atMs: Long): String {
+        val exp = expectedMs()
+        if (meta != null && sourceKey != null) {
+            BadSources.mark(SourceHealth.titleKey(meta.type, meta.tmdbId, meta.season, meta.episode), sourceKey, atMs)
+        }
+        val at = com.mcd.tv.data.SeekAccumulator.clock(atMs)
+        com.mcd.tv.data.RecentErrors.note("Playback: ${title.ifBlank { "video" }}: source incomplete, stops at $at")
+        return "This source appears incomplete. It stops at $at of ${com.mcd.tv.data.SeekAccumulator.clock(exp)}."
+    }
+
+    // Leave a broken source: keep the position (it belongs to the title) and switch, or say what to do.
+    fun leaveBrokenSource(msg: String) {
+        rescueJob?.cancel()
+        player.stop()
+        // A resume that never played sits at this file's end, before the saved spot: keep the saved spot.
+        val keepSaved = rescue.resumePending && player.currentPosition < resumeMs
+        if (!keepSaved) progress.save(player, force = true)
+        val next = nextSource
+        val at = com.mcd.tv.data.SeekAccumulator.clock(if (keepSaved) resumeMs else player.currentPosition)
+        if (next != null && next.hasMore()) {
+            showRescueNote("$msg Trying the next one at $at.")
+            rescueJob = scope.launch {
+                val m2 = next.tryNext() ?: return@launch // null: switching to the next source
+                error = "$msg $m2"
+            }
+        } else {
+            error = "$msg Pick another source. Jarvis resumes at $at."
+        }
+    }
+
     // Non-live video failed or stalled at the current position: ask PlaybackRescue what to do, and do it.
     fun recover(retryable: Boolean, why: String) {
         val pos = player.currentPosition.coerceAtLeast(0L)
         val step = rescue.onFailure(pos, retryable)
+        // It played up to here and won't go on, far short of the title: the file is cut off or broken there.
+        if (step.action != PlaybackRescue.Action.RECONNECT && !rescue.failedAtResume && SourceHealth.incomplete(pos, expectedMs())) {
+            leaveBrokenSource(flagIncomplete(pos))
+            return
+        }
         val at = com.mcd.tv.data.SeekAccumulator.clock(pos)
         if (step.action != PlaybackRescue.Action.RECONNECT) {
             com.mcd.tv.data.RecentErrors.note("Playback: ${title.ifBlank { "video" }}: $why at $at, ${step.action.name.lowercase().replace('_', ' ')}")
@@ -224,16 +280,38 @@ fun PlayerScreen(
         }
     }
 
-    // The saved spot is past the end of this source (a shorter cut, or a length from another file): start at 0.
-    fun restartIfResumePastEnd(): Boolean {
+    // Checks this source's length once it is known (and again when the runtime arrives). A file far shorter
+    // than the title is flagged; if the saved spot is past its end it is left at once, else at its end.
+    // Returns true when it moved the player (the caller skips its own handling).
+    var shortFlagged by remember { mutableStateOf(false) }
+    fun checkSource(): Boolean {
         val dur = player.duration
-        if (live || resumeMs <= 0 || dur <= 0 || !rescue.resumePending) return false
-        if (PlaybackRescue.resumeTarget(resumeMs, dur) != 0L || player.currentPosition < dur - 15_000) return false
-        rescue.onPlaying(0L)
-        player.seekTo(0L)
-        player.playWhenReady = true
-        showRescueNote("Your saved spot is past the end of this source. Playing from the start.")
-        return true
+        if (live || dur <= 0) return false
+        val exp = SourceHealth.expectedMs(0L, runtimeMs, savedDurMs)
+        val pos = player.currentPosition
+        if (SourceHealth.shortSource(dur, exp)) {
+            if (shortFlagged) return false
+            shortFlagged = true
+            val msg = flagIncomplete(dur)
+            if (resumeMs > 0 && resumeMs >= dur - 10_000) {
+                leaveBrokenSource(msg)
+                return true
+            }
+            showRescueNote(if (nextSource?.hasMore() == true) "$msg Jarvis switches to the next one there." else msg)
+            return false
+        }
+        // The saved spot is at the very end of the title itself: start over.
+        if (resumeMs > 0 && rescue.resumePending && PlaybackRescue.resumeTarget(resumeMs, maxOf(dur, exp)) == 0L && pos >= dur - 15_000) {
+            rescue.onPlaying(0L)
+            player.seekTo(0L)
+            player.playWhenReady = true
+            showRescueNote("Your saved spot is at the end. Playing from the start.")
+            return true
+        }
+        return false
+    }
+    LaunchedEffect(runtimeMs) {
+        if (runtimeMs > 0 && player.playbackState == Player.STATE_READY) checkSource()
     }
 
     DisposableEffect(player) {
@@ -253,9 +331,17 @@ fun PlayerScreen(
                     liveNote = null
                     if (rescueNote == "Reconnecting…") rescueNote = null
                     report.update(player)
-                    restartIfResumePastEnd()
+                    checkSource()
                 }
-                if (state == Player.STATE_ENDED && restartIfResumePastEnd()) return
+                if (state == Player.STATE_ENDED && !live) {
+                    if (checkSource()) return
+                    // Ended far short of the title: a cut-off file. Never "watched", never the next episode.
+                    val pos = player.currentPosition
+                    if (SourceHealth.incomplete(pos, expectedMs())) {
+                        leaveBrokenSource(flagIncomplete(pos)) // flagging twice is harmless (one flag per file)
+                        return
+                    }
+                }
                 if (state == Player.STATE_ENDED) {
                     progress.save(player, force = true)
                     if (SLEEP_STEPS[sleepStep] == SLEEP_END_OF_VIDEO) {
@@ -664,7 +750,12 @@ private class NowReporter(private val title: String, private val meta: PlayMeta?
  * Writes the resume position, skipping writes when the position moved 5 s or less since the last one.
  * Positions below [keepBelow] are not written: after a resume that failed, the saved spot stays until passed.
  */
-private class ProgressSaver(private val meta: PlayMeta?, private val keepBelow: () -> Long = { 0L }) {
+private class ProgressSaver(
+    private val meta: PlayMeta?,
+    private val keepBelow: () -> Long = { 0L },
+    /** The length to save for this player's length (SourceHealth.progressDurationMs). */
+    private val lengthFor: (Long) -> Long = { it },
+) {
     private var lastSavedMs = -1L
 
     fun save(player: Player, force: Boolean = false) {
@@ -676,7 +767,7 @@ private class ProgressSaver(private val meta: PlayMeta?, private val keepBelow: 
         if (!force && lastSavedMs >= 0 && kotlin.math.abs(pos - lastSavedMs) <= 5_000) return
         if (force && pos == lastSavedMs) return
         lastSavedMs = pos
-        Library.record(meta, pos, dur, urgent = force)
+        Library.record(meta, pos, lengthFor(dur), urgent = force)
     }
 }
 

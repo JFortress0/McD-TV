@@ -155,9 +155,12 @@ object Library {
         }
     }
 
-    fun resumePosition(meta: PlayMeta): Long =
+    fun resumePosition(meta: PlayMeta): Long = resumeEntry(meta)?.positionMs ?: 0L
+
+    /** The saved spot for this exact title or episode (from any device), unless it was finished. */
+    fun resumeEntry(meta: PlayMeta): HistoryEntry? =
         history().firstOrNull { it.meta.historyKey == meta.historyKey && it.meta.season == meta.season && it.meta.episode == meta.episode }
-            ?.takeIf { !it.finished }?.positionMs ?: 0L
+            ?.takeIf { !it.finished }
 
     private fun HistoryEntry.toJson() = JSONObject().put("meta", meta.toJson()).put("pos", positionMs).put("dur", durationMs).put("at", updatedAt)
 
