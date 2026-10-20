@@ -26,6 +26,8 @@ object WallRecorder {
     @Volatile private var lastTickElapsed = 0L
     @Volatile private var diagnosed = false
     @Volatile private var crashHook = false
+    /** This sleep is already noted (by the screen-off broadcast or by onStop, whichever comes first). */
+    @Volatile private var sleepNoted = false
 
     private fun wallUp() = ScreenAwake.holds.has(ScreenAwake.WALL)
 
@@ -65,8 +67,10 @@ object WallRecorder {
         if (!changingConfig && wallUp()) {
             val on = runCatching { (context.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive }.getOrDefault(true)
             runCatching { Prefs.putJson(LEFT, if (on) "screen on" else "screen off") }
-            // Screen off is noted by screen(false), which comes at about the same time.
+            // The screen-off broadcast can come first, later, or not at all (the TV was already asleep when Jarvis
+            // started), so whichever comes first notes the sleep.
             if (on) note(WallWatch.leftFrontNote(true, System.currentTimeMillis() - lastKeyAt))
+            else noteSleep()
         }
         beat()
     }
@@ -74,11 +78,17 @@ object WallRecorder {
     /** ACTION_SCREEN_OFF / ACTION_SCREEN_ON. */
     fun screen(on: Boolean) {
         screenOn = on
+        if (on) sleepNoted = false
         if (wallUp()) {
-            if (!on) note(WallWatch.leftFrontNote(false, System.currentTimeMillis() - lastKeyAt))
-            else ScreenAwake.log("The TV woke up")
+            if (!on) noteSleep() else ScreenAwake.log("The TV woke up")
         }
         beat()
+    }
+
+    private fun noteSleep() {
+        if (sleepNoted) return
+        sleepNoted = true
+        note(WallWatch.leftFrontNote(false, System.currentTimeMillis() - lastKeyAt))
     }
 
     /** Records a crash while the Wall is up (written at once: the process is about to end), then the usual crash. */

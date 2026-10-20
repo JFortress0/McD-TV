@@ -252,11 +252,13 @@ class MainActivity : ComponentActivity() {
         }
         // Rebuilt while the Wall was up: open the Wall again. This wins over a deep link, because a rebuilt
         // activity gets its first launch intent again, which is old news by then.
+        // A rebuild gets its old launch intent again, so the Wall wins there. After Jarvis ended in front, a fresh
+        // launch with its own deep link wins; a plain launch (the Fire TV home screen) opens the Wall again.
         val rebuilt = savedInstanceState?.getBoolean(WALL_UP) == true
+        val reopen = rebuilt || (wallLost && startScreen == null)
         if (rebuilt) ScreenAwake.log("Wall reopened after the app was rebuilt")
-        else if (wallLost) ScreenAwake.log("Wall reopened after Jarvis ended while it was in front")
-        val wallWasUp = rebuilt || wallLost
-        setContent { McdTheme { App(if (wallWasUp) Screen.Wall else startScreen) } }
+        else if (reopen) ScreenAwake.log("Wall reopened after Jarvis ended while it was in front")
+        setContent { McdTheme { App(if (reopen) Screen.Wall else startScreen) } }
     }
 
     private companion object {

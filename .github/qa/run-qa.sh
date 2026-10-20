@@ -204,11 +204,16 @@ adb shell settings put system screen_off_timeout 2147483647
 # time with no remote use, even while a window holds keep-screen-on. Jarvis must warn about it and log the sleep.
 adb shell input keyevent KEYCODE_WAKEUP; sleep 2
 adb logcat -c
-adb shell settings put secure attentive_timeout 20000
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8
 keep_flag && pass "Wall 4x: window has FLAG_KEEP_SCREEN_ON before the inactivity test" || fail "Wall 4x: window has FLAG_KEEP_SCREEN_ON before the inactivity test"
+# A remote key now (RIGHT: next photo), then a 20 s inactivity sleep. Awake at 5 s, asleep at 45 s, Wall held.
+adb shell input keyevent KEYCODE_DPAD_RIGHT
+adb shell settings put secure attentive_timeout 20000
+sleep 5
+W=$(wake); echo "      wakefulness 5 s after the key, attentive_timeout=20000, Wall held: $W" | tee -a "$R"
+[ "$W" = "Awake" ] && pass "Wall 4x: awake and held right after a key" || fail "Wall 4x: awake and held right after a key ($W)"
 sleep 40
-W=$(wake); echo "      wakefulness 48 s after attentive_timeout=20000 with the Wall held: $W" | tee -a "$R"
+W=$(wake); echo "      wakefulness 45 s after the key with the Wall held: $W" | tee -a "$R"
 [ "$W" != "Awake" ] && pass "Inactivity sleep (attentive_timeout) overrides keep-screen-on" || fail "Inactivity sleep (attentive_timeout) overrides keep-screen-on (still $W)"
 adb shell settings delete secure attentive_timeout >/dev/null
 adb shell input keyevent KEYCODE_WAKEUP; sleep 4
@@ -221,7 +226,8 @@ adb logcat -d -s JarvisAwake:I | grep -q "The TV went to sleep while the Wall wa
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8
 adb logcat -c
 adb shell am force-stop com.mcd.tv; sleep 2
-adb shell am start -n com.mcd.tv/.MainActivity >/dev/null; sleep 10
+# "--ez qa true" is not a screen deep link (the Wall must come back by itself); it starts the setup page for 4b.
+adb shell am start -n com.mcd.tv/.MainActivity --ez qa true >/dev/null; sleep 10
 shot wall-ended-in-front
 if wall_shown && keep_flag; then pass "Wall 4x: back and held after Jarvis ended in front"; else fail "Wall 4x: back and held after Jarvis ended in front"; fi
 adb logcat -d -s JarvisAwake:I | sed 's/^/      awake: /' | tee -a "$R"
