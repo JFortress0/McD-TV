@@ -84,8 +84,12 @@ check_screen "person:6384" "Keanu"
 adb shell am start -S -n com.mcd.tv/.MainActivity --ez qa_mode true --es qa_watched "tv|The Civil War|1990" --es screen history >/dev/null
 sleep 25 # first visit: marquee, keyword and era lookups
 check_screen history "KEN BURNS"
-sleep 15; shot screen-history-loaded
+sleep 25; shot screen-history-loaded
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml qa-out/ui-history-loaded.xml >/dev/null 2>&1
+# For log readers (artifacts need a download): the hub's headings and the History log lines.
+echo "      [history] text: $(grep -o 'text="[^"]\+"' qa-out/ui-history-loaded.xml 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-700)"
+echo "      [history] posters: $(grep -o 'content-desc="[^"]\+"' qa-out/ui-history-loaded.xml 2>/dev/null | sed 's/content-desc=//' | tr '\n' ' ' | cut -c1-700)"
+adb logcat -d -s HistoryHub:I | tail -n 12 | sed 's/^/      [history] log: /'
 if grep -q "MORE LIKE THE CIVIL WAR" qa-out/ui-history-loaded.xml; then pass "History: More Like row seeded from a watched history title"; else fail "History: More Like row seeded from a watched history title"; fi
 if grep -q "HISTORICAL DRAMAS" qa-out/ui-history-loaded.xml; then pass "History: Historical Dramas shelf"; else fail "History: Historical Dramas shelf"; fi
 for i in 1 2 3 4 5; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 2; done
@@ -95,6 +99,12 @@ if grep -q 'content-desc="The Civil War"' qa-out/ui-history-kenburns.xml; then p
 check_screen history:era:civilwar "content-desc=\"(Lincoln|Glory|Gettysburg)\""
 check_screen history:era:founding "content-desc=\"(Young Washington|John Adams|The Patriot)\""
 check_screen history:dramas "content-desc=\"Young Washington\""
+check_screen history:era:worldwars "content-desc="
+check_screen history:era:coldwar "content-desc="
+check_screen history:era:west "content-desc="
+for g in kenburns era-founding era-civilwar era-worldwars era-coldwar era-west dramas; do
+  echo "      [history-$g] posters: $(grep -o 'content-desc="[^"]\+"' "qa-out/ui-history-$g.xml" 2>/dev/null | sed 's/content-desc=//' | tr '\n' ' ' | cut -c1-600)"
+done
 
 # 4a) Settings with the remote: a screenshot of each category, a D-pad walk through its rows (the keyboard must
 # never open on focus), the edit dialog (opens on OK, one BACK closes it) and the update check in two presses.

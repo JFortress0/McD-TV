@@ -316,6 +316,7 @@ object HistoryHub {
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        android.util.Log.w("HistoryHub", "More Like row failed: $e")
         null
     }
 
@@ -337,13 +338,21 @@ object HistoryHub {
         val verdict = stubs.associate { t ->
             keyOf(t) to HistoryEras.isHistoryTitle(t.genreIds.toSet(), cls[keyOf(t)]?.result ?: EraResult.NONE, keyOf(t) in kb)
         }
-        val seed = HistoryEras.pickSeed(recent) { verdict[it] == true } ?: return@coroutineScope null
+        val seed = HistoryEras.pickSeed(recent) { verdict[it] == true }
+        if (seed == null) {
+            android.util.Log.i("HistoryHub", "no seed: recent=${recent.map { it.key }} checked=$verdict")
+            return@coroutineScope null
+        }
         val type = seed.key.substringBefore(':')
         val id = seed.key.substringAfter(':').toInt()
         val like = Recommender.moreLikeThis(type, id, emptyList(), profile, 40).filter { t -> t.genreIds.any { it in HISTORYISH } }
-        // Few history titles in More Like This: add the seed's era shelf.
-        val seedEra = cls[seed.key]?.result?.eras?.firstOrNull()
-        val extra = if (like.size < 12 && seedEra != null) eraShelf(seedEra, profile) else emptyList()
+        // Few history titles in More Like This: add the seed's era shelf, and Ken Burns when it is one of his.
+        val seedStub = stubs.first { keyOf(it) == seed.key }
+        val seedEra = (cls[seed.key] ?: classifyAll(listOf(seedStub))[seed.key])?.result?.eras?.firstOrNull()
+        val extra = if (like.size >= 12) emptyList() else
+            (if (seedEra != null) eraShelf(seedEra, profile) else emptyList()) +
+                (if (seed.key in kb) runCatching { kenBurns(profile) }.getOrDefault(emptyList()) else emptyList())
+        android.util.Log.i("HistoryHub", "seed ${seed.key} ${seed.name} genres=${seedStub.genreIds} era=$seedEra like=${like.size} extra=${extra.size}")
         val seen = history.filter { it.finished || it.progress >= 0.6f }.map { it.meta.historyKey }.toSet() + seed.key
         val block = blocked(profile)
         val list = (like + extra).distinctBy(::keyOf).filter { keyOf(it) !in seen && !block(it, null) }.take(20)
@@ -396,7 +405,8 @@ object HistoryHub {
     suspend fun qaWatch(spec: String) {
         val p = spec.split("|")
         if (p.size < 2) return
-        val t = Tmdb.findTitle(p[0], p[1], p.getOrNull(2)?.toIntOrNull(), exact = true) ?: return
-        Library.markWatched(PlayMeta(t.type, t.id, t.name, t.poster, t.backdrop))
+        val t = Tmdb.findTitle(p[0], p[1], p.getOrNull(2)?.toIntOrNull(), exact = true)
+        android.util.Log.i("HistoryHub", "qa_watched $spec -> ${t?.type}:${t?.id}")
+        if (t != null) Library.markWatched(PlayMeta(t.type, t.id, t.name, t.poster, t.backdrop))
     }
 }
