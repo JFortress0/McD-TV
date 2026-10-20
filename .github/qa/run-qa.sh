@@ -238,7 +238,7 @@ adb shell dumpsys activity activities | grep -q "com.mcd.tv" && pass "Live chann
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings:sources >/dev/null
 sleep 8
 adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
-for i in $(seq 1 11); do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
+for i in $(seq 1 12); do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
 shot settings-myteams
 describe settings-myteams
 MISSING=""
