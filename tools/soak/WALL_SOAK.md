@@ -21,6 +21,14 @@ This test proves that Jarvis Wall keeps the Fire TV screen on for hours with no 
 
 The QA workflow (`.github/qa/run-qa.sh`, step 4w) runs a short version of this test in the Android TV emulator with a 15 second idle timeout. It runs the control, the Wall, the density change and the rebuild (a background kill, with a check that the process really changed). Use this soak test on the real Fire TV for the long runs.
 
+## Before you start: the TV's own inactivity sleep
+
+Keep-screen-on stops the screensaver, the normal screen timeout and `sleep_timeout`. It does not stop Android TV's `attentive_timeout` (Android 10 and later, so Fire OS 8). That setting turns the TV off after a time with no remote use, whatever the app does. QA step 4x shows this on the emulator.
+
+1. Read the settings: run `adb shell settings get secure attentive_timeout` and `adb shell settings get secure sleep_timeout`. `null`, `0` or `-1` means off. The script prints them too, with `dumpsys power`.
+2. If `attentive_timeout` is above 0, look in the TV's settings for an inactivity or sleep timer and set it to Never. If there is none, run `adb shell settings put secure attentive_timeout -1`, then read it again to check that it stayed.
+3. Jarvis also warns about it: Settings > Jarvis Wall shows a note, and the Wall writes it to Settings > About and help.
+
 ## Set up
 
 1. On the TV, open Settings > Display & Sounds > Screen Saver. Set Start Time to its shortest value. Write down that value as T. Amazon's documentation was not available when this protocol was written, so use what the TV shows and do not assume a value.
@@ -46,10 +54,14 @@ The soak run passes when all of these are true:
 
 - Every sample shows `mWakefulness=Awake`, Jarvis in front, and `KEEP_SCREEN_ON` on the Jarvis window (the script prints `PASS`).
 - The run lasts at least 6×T with no remote input, and the overnight run lasts at least 8 hours.
-- The `JarvisAwake` log has no `lapsed` lines, and no `left the front` lines except the one from the rebuild test.
+- The `JarvisAwake` log has no `lapsed` lines, no `went to sleep` lines, and no `left the front` lines except the one from the rebuild test.
 - After the rebuild test, the Wall is back and the samples still pass.
 
 The `wm_lock` column (the `WindowManager` screen wake lock in `dumpsys power`) is for information only. Its name can differ between Fire OS versions.
+
+## After an incident
+
+Do not reinstall or clear Jarvis first. Open Settings > About and help on the TV and read Recent errors, or run `adb logcat -d -s JarvisAwake`. The line that starts "The Wall stopped" names the cause: Jarvis crashed, Android ended it (with Android's reason on Fire OS 8), the TV went to sleep first, or something covered Jarvis first. It also gives the time since the last self-check and since the last remote key.
 
 ## Record the result
 

@@ -482,4 +482,6 @@ object Prefs {
     // ---- Raw JSON blobs used by Library ----
     fun json(key: String): String = sp.getString(key, "") ?: ""
     fun putJson(key: String, value: String) = sp.edit().putString(key, value).apply()
+    /** Like [putJson], but written before it returns (for a process that is about to end). */
+    fun putJsonNow(key: String, value: String) = sp.edit().putString(key, value).commit()
 }

@@ -18,6 +18,8 @@ say() { echo "$*" | tee -a "$LOG"; }
 
 say "# device: $(adb shell getprop ro.product.model | tr -d '\r') / Fire OS build $(adb shell getprop ro.build.version.name | tr -d '\r') / Android $(adb shell getprop ro.build.version.release | tr -d '\r')"
 say "# screen_off_timeout (ms): $(adb shell settings get system screen_off_timeout | tr -d '\r')"
+say "# sleep_timeout (ms): $(adb shell settings get secure sleep_timeout | tr -d '\r')  attentive_timeout (ms): $(adb shell settings get secure attentive_timeout | tr -d '\r')"
+say "# power: $(adb shell dumpsys power | tr -d '\r' | grep -o -E '(mAttentiveTimeoutSetting|mSleepTimeoutSetting|mScreenOffTimeoutSetting)=-?[0-9]+' | tr '\n' ' ')"
 say "# screensaver_enabled: $(adb shell settings get secure screensaver_enabled | tr -d '\r')  screensaver_components: $(adb shell settings get secure screensaver_components | tr -d '\r')"
 adb logcat -c
 say "# time  wakefulness  focus  keep_on  wm_lock"

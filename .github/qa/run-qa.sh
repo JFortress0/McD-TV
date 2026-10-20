@@ -199,6 +199,35 @@ adb logcat -d -s JarvisAwake:I | grep -q "Wall reopened after the app was rebuil
 adb logcat -d -s JarvisAwake:I | grep -q "lapsed" && fail "Wall: no keep-screen-on lapse" || pass "Wall: no keep-screen-on lapse"
 adb shell settings put system screen_off_timeout 2147483647
 
+# 4x) Why the Wall stopped (WallWatch): the paths keep-screen-on cannot cover, and the evidence Jarvis leaves.
+# (a) Inactivity sleep: Android TV's attentive_timeout (Android 10+, like Fire OS 8) puts the TV to sleep after a
+# time with no remote use, even while a window holds keep-screen-on. Jarvis must warn about it and log the sleep.
+adb shell input keyevent KEYCODE_WAKEUP; sleep 2
+adb logcat -c
+adb shell settings put secure attentive_timeout 20000
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8
+keep_flag && pass "Wall 4x: window has FLAG_KEEP_SCREEN_ON before the inactivity test" || fail "Wall 4x: window has FLAG_KEEP_SCREEN_ON before the inactivity test"
+sleep 40
+W=$(wake); echo "      wakefulness 48 s after attentive_timeout=20000 with the Wall held: $W" | tee -a "$R"
+[ "$W" != "Awake" ] && pass "Inactivity sleep (attentive_timeout) overrides keep-screen-on" || fail "Inactivity sleep (attentive_timeout) overrides keep-screen-on (still $W)"
+adb shell settings delete secure attentive_timeout >/dev/null
+adb shell input keyevent KEYCODE_WAKEUP; sleep 4
+adb logcat -d -s JarvisAwake:I | sed 's/^/      awake: /' | tee -a "$R"
+adb logcat -d -s JarvisAwake:I | grep -q "attentive_timeout=20000" && pass "Wall 4x: sleep settings logged" || fail "Wall 4x: sleep settings logged"
+adb logcat -d -s JarvisAwake:I | grep -q "turns itself off after" && pass "Wall 4x: inactivity sleep warning" || fail "Wall 4x: inactivity sleep warning"
+adb logcat -d -s JarvisAwake:I | grep -q "The TV went to sleep while the Wall was up" && pass "Wall 4x: sleep noted" || fail "Wall 4x: sleep noted"
+# (b) Jarvis ended while the Wall is in front (as a crash or a low-memory kill would): opening Jarvis again, with no
+# deep link, brings the Wall back, and the log says why it stopped.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8
+adb logcat -c
+adb shell am force-stop com.mcd.tv; sleep 2
+adb shell am start -n com.mcd.tv/.MainActivity >/dev/null; sleep 10
+shot wall-ended-in-front
+if wall_shown && keep_flag; then pass "Wall 4x: back and held after Jarvis ended in front"; else fail "Wall 4x: back and held after Jarvis ended in front"; fi
+adb logcat -d -s JarvisAwake:I | sed 's/^/      awake: /' | tee -a "$R"
+adb logcat -d -s JarvisAwake:I | grep -q "The Wall stopped" && pass "Wall 4x: why it stopped is logged" || fail "Wall 4x: why it stopped is logged"
+adb logcat -d -s JarvisAwake:I | grep -q "Wall reopened after Jarvis ended while it was in front" && pass "Wall 4x: reopen logged" || fail "Wall 4x: reopen logged"
+
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
 mkdir -p qa-m3u
 cat > qa-m3u/test.m3u <<'M3U'

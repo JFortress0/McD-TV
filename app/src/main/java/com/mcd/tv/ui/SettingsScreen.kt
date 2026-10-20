@@ -458,6 +458,9 @@ private fun WallCategory(ctx: SettingsCtx, changed: () -> Unit) {
         if (Wall.configured) "Photo frame and family calendar. Turn on Open in Wall on start on the wall TV."
         else "Photo frame and family calendar. Add the wall address and key on the Control page first.",
     )
+    // A TV that turns itself off after hours with no remote use (attentive_timeout) beats keep-screen-on.
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    com.mcd.tv.data.WallWatch.sleepWarning(com.mcd.tv.data.WallRecorder.attentiveMs(appCtx))?.let { SettingsNote(it) }
     Spacer(Modifier.height(Space.S))
     SettingsRow("Open Wall", { ctx.nav.push(Screen.Wall) }, ctx.row().modifier, value = "OK switches views. Back closes it.")
     ToggleRow(ctx.row(), "Open in Wall on start", "For a TV on the wall. Back goes to Home.", Prefs.wallStart) { Prefs.wallStart = it }
