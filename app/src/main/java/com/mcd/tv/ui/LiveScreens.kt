@@ -142,6 +142,8 @@ private const val KEY_ALL = "all"
 private const val SEC = "sec:"
 /** Live Games: one rail entry, the leagues are chips inside it. */
 private const val KEY_GAMES = "games"
+/** Live Games' My Teams chip (favorite-team games across leagues), stored in place of a league name. */
+private const val MY_TEAMS = "\u0001myteams"
 /** Non-focusable rail headings ("CHANNELS"). */
 private const val HDR = "hdr:"
 
@@ -199,6 +201,9 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
     val leagues = GameBoard.visibleLeagues()
     val leagueCounts = leagues.map { GameBoard.gameCount(it) }
     val league = leagues.firstOrNull { it.name == gameLeague } ?: leagues.firstOrNull() ?: League.NFL
+    // Favorite-team games this week across the shown leagues (the My Teams chip).
+    val myGames = GameBoard.myGames()
+    val myTeamsOpen = gameLeague == MY_TEAMS && myGames.isNotEmpty()
     val gamesTotal = if (leagueCounts.all { it == null }) null else leagueCounts.sumOf { it ?: 0 }
     // My Guide: channels picked for this profile (habits, taste, what's on now). Rebuilt when the guide arrives.
     var forYouResult by remember(index, Prefs.activeProfile) { mutableStateOf<com.mcd.tv.data.LiveForYou.Result?>(null) }
@@ -235,9 +240,9 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
         else -> index.sections.firstOrNull()?.let { SEC + it.name } ?: KEY_ALL
     }
     // A game's channel list closes when another rail entry or league is picked.
-    LaunchedEffect(sel, league) {
+    LaunchedEffect(sel, league, myTeamsOpen) {
         val p = gamesUi.picker
-        if (p != null && (sel != KEY_GAMES || p.league != league)) gamesUi.picker = null
+        if (p != null && (sel != KEY_GAMES || myTeamsOpen || p.league != league)) gamesUi.picker = null
     }
     // Favorites as listed when the section opened: un-starring a card keeps it in place (so focus does not jump).
     val favView = remember(index, sel == KEY_FAV) { index.indicesOf(Prefs.liveFavorites) }
@@ -337,9 +342,16 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
                         leagues = leagues,
                         counts = leagueCounts,
                         league = league,
+                        myGames = myGames,
+                        myTeamsOpen = myTeamsOpen,
                         chipFocus = leagueFocus,
                         railFocus = requesterFor(KEY_GAMES),
                         onLeague = { gameLeague = it.name },
+                        onMyTeams = { gameLeague = MY_TEAMS },
+                        openGame = { g ->
+                            gameLeague = g.league.name
+                            gamesUi.openPicker(g)
+                        },
                         index = index,
                         guide = guide,
                         gamesUi = gamesUi,
@@ -534,9 +546,13 @@ private fun LiveGamesPane(
     leagues: List<League>,
     counts: List<Int?>,
     league: League,
+    myGames: List<Game>,
+    myTeamsOpen: Boolean,
     chipFocus: FocusRequester,
     railFocus: FocusRequester,
     onLeague: (League) -> Unit,
+    onMyTeams: () -> Unit,
+    openGame: (Game) -> Unit,
     index: LiveIndex,
     guide: Map<String, List<Programme>>,
     gamesUi: GamesUi,
@@ -549,19 +565,100 @@ private fun LiveGamesPane(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 6.dp, end = 32.dp, top = 6.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // LEFT from the first chip goes to Live Games in the rail, not to Multiview above it.
+            val toRail = Modifier.focusProperties { left = railFocus }
+            if (myGames.isNotEmpty()) {
+                ActionButton(
+                    "★ My Teams  ${countText(myGames.size)}",
+                    onMyTeams,
+                    toRail.then(if (myTeamsOpen) Modifier.focusRequester(chipFocus) else Modifier),
+                    primary = myTeamsOpen,
+                )
+            }
             leagues.forEachIndexed { i, l ->
                 ActionButton(
                     l.railLabel + (counts[i]?.let { "  " + countText(it) } ?: ""),
                     { onLeague(l) },
-                    (if (l == league) Modifier.focusRequester(chipFocus) else Modifier)
-                        // LEFT from the first chip goes to Live Games in the rail, not to Multiview above it.
-                        .then(if (i == 0) Modifier.focusProperties { left = railFocus } else Modifier),
-                    primary = l == league,
+                    (if (l == league && !myTeamsOpen) Modifier.focusRequester(chipFocus) else Modifier)
+                        .then(if (i == 0 && myGames.isEmpty()) toRail else Modifier),
+                    primary = l == league && !myTeamsOpen,
                 )
             }
         }
-        // Keyed by league: each one starts at its own top (and focus target).
-        androidx.compose.runtime.key(league) { GamesPane(league, index, guide, gamesUi, onPlay, restoreFocus) }
+        if (myTeamsOpen) {
+            MyTeamsPane(myGames, index, guide, gamesUi, onPlay, openGame, restoreFocus)
+        } else {
+            // Keyed by league: each one starts at its own top (and focus target).
+            androidx.compose.runtime.key(league) { GamesPane(league, index, guide, gamesUi, onPlay, restoreFocus) }
+        }
+    }
+}
+
+/**
+ * My Teams: this week's games of the profile's favorite teams across the shown leagues, live first. OK plays the
+ * game's best channel; Menu (or a game with no channel) opens its league with the channel list.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun MyTeamsPane(
+    games: List<Game>,
+    index: LiveIndex,
+    guide: Map<String, List<Programme>>,
+    gamesUi: GamesUi,
+    onPlay: (IntArray, Int) -> Unit,
+    openGame: (Game) -> Unit,
+    restoreFocus: FocusRequester,
+) {
+    val matches = rememberGameChannels(games, index, guide)
+    val first = remember { FocusRequester() }
+    var firstShown by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.padding(start = 6.dp, top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
+            Text("MY TEAMS", style = broadcastStyle(18.sp))
+            Spacer(Modifier.width(10.dp))
+            val live = games.count { it.live }
+            Text(
+                if (live > 0) "$live live  ·  ${games.size} games this week" else "${games.size} games this week",
+                color = if (live > 0) McdColors.LiveRed else McdColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 2.dp),
+            )
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(320.dp),
+            contentPadding = PaddingValues(start = 6.dp, end = 32.dp, top = 6.dp, bottom = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .focusProperties { enter = { if (firstShown) first else FocusRequester.Default } }
+                .focusGroup(),
+        ) {
+            items(count = games.size, key = { games[it].key }) { i ->
+                val g = games[i]
+                if (i == 0) {
+                    androidx.compose.runtime.DisposableEffect(Unit) {
+                        firstShown = true
+                        onDispose { firstShown = false }
+                    }
+                }
+                var m: Modifier = if (i == 0) Modifier.focusRequester(first) else Modifier
+                if (g.key == gamesUi.lastGame) m = m.focusRequester(restoreFocus)
+                GameCard(
+                    g = g,
+                    channels = matches?.get(g.key),
+                    hasPlaylist = true,
+                    compact = false,
+                    withDay = true,
+                    mine = true,
+                    onClick = {
+                        gamesUi.lastGame = g.key
+                        val c = matches?.get(g.key)
+                        if (c != null && c.size > 0) onPlay(c.items, 0) else openGame(g)
+                    },
+                    onMenu = { openGame(g) },
+                    modifier = m,
+                )
+            }
+        }
     }
 }
 

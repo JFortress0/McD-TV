@@ -187,10 +187,26 @@ GAME_F=$(python3 .github/qa/focused.py qa-out/ui-live-a-first-game.xml)
 echo "$GAME_F" | grep -qE '@\[([5-9][0-9][0-9]|4[6-9][0-9]|1[0-9][0-9][0-9]),([3-9][0-9][0-9]|1[0-9][0-9][0-9])\]' && ! echo "$GAME_F" | grep -q 'NFL GAMES' \
   && pass "Live TV: DOWN from NFL Games reaches a game (2 presses to play)" || fail "Live TV: DOWN from NFL Games reaches a game"
 shot live-b-games
+# Dad's favorite teams (Eagles, Phillies, Flyers, 76ers by default) go first in their league, with a star.
+grep -q 'YOUR TEAMS' qa-out/ui-live-a-landing.xml && echo "      NFL: an Eagles game is pinned under YOUR TEAMS" | tee -a "$R"
 
-# (c) Entertainment: one row per network. Rail from Live Games: Search, Favorites, My Guide, Sports, Entertainment.
-adb shell input keyevent KEYCODE_DPAD_UP; sleep 1
+# (d) My Teams: the chip left of NFL Games collects favorite-team games across leagues. A fresh open focuses
+# NFL Games; LEFT is My Teams, OK opens it.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen live >/dev/null
+sleep 12
 adb shell input keyevent KEYCODE_DPAD_LEFT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 3
+shot live-d-myteams
+describe live-d-myteams
+if grep -q 'text="MY TEAMS"' qa-out/ui-live-d-myteams.xml && grep -q 'MY TEAM"' qa-out/ui-live-d-myteams.xml; then
+  pass "Live TV: My Teams lists favorite-team games with a star ($(grep -oE 'text="[^"]*(Eagles|Phillies|Flyers|76ers)"' qa-out/ui-live-d-myteams.xml | sort -u | tr '\n' ' '))"
+else
+  fail "Live TV: My Teams lists favorite-team games with a star"
+fi
+
+# (c) Entertainment: one row per network. BACK returns to Live Games in the rail; then Search, Favorites, My Guide,
+# Sports, Entertainment.
+adb shell input keyevent KEYCODE_BACK; sleep 1
 for i in 1 2 3 4 5; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
 shot live-c-entertainment
 describe live-c-entertainment
@@ -205,11 +221,11 @@ shot live-c-feeds
 describe live-c-feeds
 grep -q 'Hide the other feeds' qa-out/ui-live-c-feeds.xml && pass "Live TV: RIGHT opens a network's other feeds" || fail "Live TV: RIGHT opens a network's other feeds"
 
-# Play the first favorite with the remote and make sure the player opens: Live TV opens on NFL Games; LEFT to the
+# Play the first favorite with the remote and make sure the player opens: Live TV opens on NFL Games; BACK to the
 # rail (Live Games), DOWN x2 to Favorites, RIGHT to the first card (QA Test Channel), CENTER plays.
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen live >/dev/null
 sleep 12
-adb shell input keyevent KEYCODE_DPAD_LEFT; sleep 1
+adb shell input keyevent KEYCODE_BACK; sleep 1
 adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
 adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
 adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
@@ -217,6 +233,17 @@ describe live-play-target
 adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 10
 shot live-playing
 adb shell dumpsys activity activities | grep -q "com.mcd.tv" && pass "Live channel opens the player without leaving the app" || fail "Live channel opens the player without leaving the app"
+
+# Settings > Addons and Live TV > My teams: Dad's four Philadelphia teams (rows after the 8 league switches).
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings:sources >/dev/null
+sleep 8
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+for i in $(seq 1 11); do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
+shot settings-myteams
+describe settings-myteams
+MISSING=""
+for t in Eagles Phillies Flyers 76ers; do grep -q "text=\"[^\"]*  $t\"" qa-out/ui-settings-myteams.xml || MISSING="$MISSING $t"; done
+[ -z "$MISSING" ] && pass "Settings: My teams lists Eagles, Phillies, Flyers and 76ers" || fail "Settings: My teams lists the Philadelphia teams (missing:$MISSING)"
 
 # 4c) Remote walk-through: title page, Play, back out.
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "detail:movie:603" >/dev/null

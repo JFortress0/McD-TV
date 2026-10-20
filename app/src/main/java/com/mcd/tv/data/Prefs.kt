@@ -254,6 +254,15 @@ object Prefs {
 
     fun setHiddenLeagueNames(names: List<String>, profile: String = activeProfile) = putStrList("live_leagues_hidden@$profile", names)
 
+    /**
+     * Favorite teams of [profile] as "NFL:Eagles" (this TV only), or null when never set (then
+     * [FavoriteTeam.DEFAULTS] applies).
+     */
+    fun favoriteTeamNames(profile: String = activeProfile): List<String>? =
+        if (sp.contains("live_fav_teams@$profile")) strList("live_fav_teams@$profile") else null
+
+    fun setFavoriteTeamNames(names: List<String>, profile: String = activeProfile) = putStrList("live_fav_teams@$profile", names)
+
     /** The Live TV channel watched last ("" if none). */
     var liveLastUrl: String
         get() = str(profileKey("live_last_url"))
