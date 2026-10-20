@@ -219,8 +219,14 @@ adb shell settings delete secure attentive_timeout >/dev/null
 adb shell input keyevent KEYCODE_WAKEUP; sleep 4
 adb logcat -d -s JarvisAwake:I | sed 's/^/      awake: /' | tee -a "$R"
 adb logcat -d -s JarvisAwake:I | grep -q "attentive_timeout=20000" && pass "Wall 4x: sleep settings logged" || fail "Wall 4x: sleep settings logged"
-adb logcat -d -s JarvisAwake:I | grep -q "turns itself off after" && pass "Wall 4x: inactivity sleep warning" || fail "Wall 4x: inactivity sleep warning"
 adb logcat -d -s JarvisAwake:I | grep -q "The TV went to sleep while the Wall was up" && pass "Wall 4x: sleep noted" || fail "Wall 4x: sleep noted"
+adb logcat -d -s JarvisAwake:I | grep "The TV went to sleep" | grep -q "Cause: this TV sleeps after 20 s with no remote use (attentive_timeout)" && pass "Wall 4x: the sleep note names attentive_timeout" || fail "Wall 4x: the sleep note names attentive_timeout"
+# The warning when the Wall opens with attentive_timeout already on (the usual case on a TV).
+adb logcat -c
+adb shell settings put secure attentive_timeout 14400000
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8
+adb logcat -d -s JarvisAwake:I | grep -q "turns itself off after 4 h 0 min" && pass "Wall 4x: inactivity sleep warning when the Wall opens" || fail "Wall 4x: inactivity sleep warning when the Wall opens"
+adb shell settings delete secure attentive_timeout >/dev/null
 # (b) Jarvis ended while the Wall is in front (as a crash or a low-memory kill would): opening Jarvis again, with no
 # deep link, brings the Wall back, and the log says why it stopped.
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8

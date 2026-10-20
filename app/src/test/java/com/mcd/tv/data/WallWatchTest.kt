@@ -83,6 +83,15 @@ class WallWatchTest {
         assertFalse(w, w.contains("—"))
     }
 
+    @Test fun sleepCauseNamesTheInactivitySleep() {
+        val c = WallWatch.sleepCause(4 * h + 5_000, 4 * h)
+        assertTrue(c, c.contains("attentive_timeout") && c.contains("cannot stop"))
+        assertTrue(WallWatch.sleepCause(20_000, 20_000).contains("cannot stop")) // within a minute of the timeout
+        assertTrue(WallWatch.sleepCause(10 * 60_000, 4 * h).contains("something else turned the TV off"))
+        assertTrue(WallWatch.sleepCause(2 * h, null).contains("Not the inactivity sleep"))
+        assertTrue(WallWatch.sleepCause(2 * h, -1).contains("Not the inactivity sleep"))
+    }
+
     @Test fun leftFrontNotes() {
         assertTrue(WallWatch.leftFrontNote(true, 90 * 60_000).contains("screen on"))
         assertTrue(WallWatch.leftFrontNote(false, 2 * h).contains("went to sleep"))

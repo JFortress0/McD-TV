@@ -28,6 +28,7 @@ object WallRecorder {
     @Volatile private var crashHook = false
     /** This sleep is already noted (by the screen-off broadcast or by onStop, whichever comes first). */
     @Volatile private var sleepNoted = false
+    @Volatile private var app: Context? = null
 
     private fun wallUp() = ScreenAwake.holds.has(ScreenAwake.WALL)
 
@@ -88,7 +89,10 @@ object WallRecorder {
     private fun noteSleep() {
         if (sleepNoted) return
         sleepNoted = true
-        note(WallWatch.leftFrontNote(false, System.currentTimeMillis() - lastKeyAt))
+        val ago = System.currentTimeMillis() - lastKeyAt
+        // The settings as they are now, not as they were when the Wall opened.
+        val attentive = app?.let { checkSleepSettings(it, warn = false); attentiveMs(it) }
+        note(WallWatch.leftFrontNote(false, ago) + " " + WallWatch.sleepCause(ago, attentive))
     }
 
     /** Records a crash while the Wall is up (written at once: the process is about to end), then the usual crash. */
@@ -109,6 +113,7 @@ object WallRecorder {
      * open again (the last process ended while the Wall was in front).
      */
     fun diagnoseOnStart(context: Context): Boolean {
+        app = context.applicationContext
         if (diagnosed) return false
         diagnosed = true
         val last = WallWatch.decode(Prefs.json(BEAT))
@@ -130,12 +135,12 @@ object WallRecorder {
         runCatching { Settings.Secure.getLong(context.contentResolver, "attentive_timeout") }.getOrNull()
 
     /** Logs this TV's sleep settings when the Wall opens, and notes the one the Wall cannot stop. */
-    fun checkSleepSettings(context: Context) {
+    fun checkSleepSettings(context: Context, warn: Boolean = true) {
         val r = context.contentResolver
         val off = runCatching { Settings.System.getLong(r, Settings.System.SCREEN_OFF_TIMEOUT) }.getOrNull()
         val sleep = runCatching { Settings.Secure.getLong(r, "sleep_timeout") }.getOrNull()
         val attentive = attentiveMs(context)
         ScreenAwake.log("TV sleep settings (ms): screen_off_timeout=$off sleep_timeout=$sleep attentive_timeout=$attentive")
-        WallWatch.sleepWarning(attentive)?.let { note(it) }
+        if (warn) WallWatch.sleepWarning(attentive)?.let { note(it) }
     }
 }

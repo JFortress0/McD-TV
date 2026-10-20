@@ -106,6 +106,17 @@ object WallWatch {
         else "The TV went to sleep while the Wall was up. Last remote key ${span(lastKeyAgoMs)} ago."
 
     /**
+     * Why the TV went to sleep, from the inactivity setting read at that moment. [attentiveMs]: null or not above 0
+     * means this TV has no inactivity sleep, so something else turned it off.
+     */
+    fun sleepCause(lastKeyAgoMs: Long, attentiveMs: Long?): String {
+        val a = attentiveMs?.takeIf { it > 0 }
+            ?: return "Not the inactivity sleep (attentive_timeout is off): the TV, HDMI-CEC or a power button turned it off."
+        return if (lastKeyAgoMs >= a - 60_000) "Cause: this TV sleeps after ${span(a)} with no remote use (attentive_timeout). Keep-screen-on cannot stop that. Turn it off on the TV."
+        else "attentive_timeout is ${span(a)}, but a key came ${span(lastKeyAgoMs)} ago, so something else turned the TV off."
+    }
+
+    /**
      * Warning when this TV will sleep on its own after hours with no remote use, whatever the Wall does. Android
      * TV's attentive_timeout (Android 10+, so Fire OS 8) ignores keep-screen-on; sleep_timeout and the screen
      * timeout do not, so only attentive_timeout warns. Value in ms; null or not above 0 means off or unknown.
