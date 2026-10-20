@@ -30,7 +30,7 @@ object HistoryHub {
     private const val SHELF_TTL_MS = 15 * 60_000L
     private const val CLASS_MAX = 1500
     /** Bump when the rules in HistoryEras change, so saved eras are worked out again. */
-    private const val CLASS_VERSION = 1
+    private const val CLASS_VERSION = 2
 
     /** Genres the personal row keeps: History, Documentary, War, War & Politics, Western. */
     private val HISTORYISH = setOf(36, 99, 10752, 10768, 37)
@@ -347,12 +347,13 @@ object HistoryHub {
         }
         val type = seed.key.substringBefore(':')
         val id = seed.key.substringAfter(':').toInt()
-        // Keep history only: a documentary or History-genre title, or one its own keywords place in an era
-        // (a war or western genre alone is not enough: Shogun is War & Politics but 1600s Japan).
+        // Keep history only, by the same test as the seed: a History-genre title, or a documentary or war story its
+        // own keywords place in an era. A genre alone is not enough (Shogun is War & Politics but 1600s Japan;
+        // Top Gear is a documentary).
         val pool = Recommender.moreLikeThis(type, id, emptyList(), profile, 40).filter { t -> t.genreIds.any { it in HISTORYISH } }
         val poolCls = classifyAll(pool)
         val like = pool.filter { t ->
-            HistoryEras.DOCUMENTARY in t.genreIds || HistoryEras.HISTORY in t.genreIds || poolCls[keyOf(t)]?.result?.eras?.isNotEmpty() == true
+            HistoryEras.isHistoryTitle(t.genreIds.toSet(), poolCls[keyOf(t)]?.result ?: EraResult.NONE, keyOf(t) in kb)
         }
         // Few history titles in More Like This: add the seed's era shelf, and Ken Burns when it is one of his.
         val seedStub = stubs.first { keyOf(it) == seed.key }

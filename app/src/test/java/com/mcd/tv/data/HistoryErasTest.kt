@@ -77,6 +77,21 @@ class HistoryErasTest {
         assertEquals(listOf(Era.WORLD_WARS), eras(listOf("holocaust (shoah)")))
     }
 
+    @Test fun modernStoriesThatReachBackStayOff() {
+        // National Treasure: a present-day treasure hunt for the founding fathers' clues.
+        assertTrue(eras(listOf("treasure hunt", "declaration of independence", "founding fathers", "freemason")).isEmpty())
+        // Sahara: a Confederate ironclad, found today.
+        assertTrue(eras(listOf("treasure hunter", "confederate army", "africa"), genres = setOf(28, 12)).isEmpty())
+        // A comedy about time travel to 1776.
+        assertTrue(eras(listOf("time travel", "american revolution"), genres = setOf(35)).isEmpty())
+    }
+
+    @Test fun frenchRevolutionIsNotTheAmericanOne() {
+        // Napoleon (1927): "french revolutionary wars" contains "revolutionary war".
+        assertTrue(Era.FOUNDING !in eras(listOf("french revolutionary wars", "napoleon bonaparte", "18th century", "1790s"), lang = "fr"))
+        assertEquals(listOf(Era.FOUNDING), eras(listOf("revolutionary war")))
+    }
+
     @Test fun westernsNeedThePeriodNotJustTheGenre() {
         assertEquals(listOf(Era.WEST), eras(listOf("cowboy", "horse"), genres = setOf(37)))
         assertTrue(eras(listOf("neo-western", "texas", "bank robbery"), genres = setOf(37, 80)).isEmpty())

@@ -66,6 +66,15 @@ object HistoryEras {
     private val VETO_GENRES = setOf(14, 878, 27, 16, 10765, 10762)
 
     /**
+     * Stories set today that only reach back to the past (a treasure hunt for a founding father's clue, a film
+     * crew shooting a Revolution picture, time travel) never land on an era shelf.
+     */
+    private val MODERN_FRAME = listOf(
+        "treasure hunt", "treasure hunter", "time travel", "time traveler", "time machine", "filmmaking",
+        "film within a film", "film making", "historical reenactment", "present day",
+    )
+
+    /**
      * Keyword rules per era. Terms are TMDB keyword names, normalized (see [norm]). A term matches a keyword
      * that equals it or contains it as whole words; a term starting with "=" must equal the keyword.
      * strong = 2 points, weak = 1 point, decades = 1 point at most in total, veto = never this era.
@@ -84,13 +93,14 @@ object HistoryEras {
     private val RULES: Map<Era, Rules> = mapOf(
         Era.FOUNDING to Rules(
             strong = listOf(
-                "american revolution", "american revolutionary war", "revolutionary war", "george washington", "john adams",
+                "american revolution", "american revolutionary war", "=revolutionary war", "george washington", "john adams",
                 "thomas jefferson", "benjamin franklin", "alexander hamilton", "founding fathers", "declaration of independence",
                 "continental army", "continental congress", "valley forge", "boston tea party", "colonial america",
                 "thirteen colonies", "lewis and clark",
             ),
             weak = listOf("18th century", "redcoat", "redcoats", "loyalist"),
             decades = listOf("1760s", "1770s", "1780s", "1790s", "1775", "1776", "1777", "1781"),
+            veto = listOf("french revolution", "french revolutionary wars", "napoleon", "napoleon bonaparte", "napoleonic wars"),
             placeNeeded = true,
         ),
         Era.CIVIL_WAR to Rules(
@@ -260,7 +270,7 @@ object HistoryEras {
     /** Points for one era (0 when vetoed). [kws] are normalized keyword names. */
     internal fun score(era: Era, kws: List<String>, genres: Set<Int>, language: String): Int {
         val r = RULES.getValue(era)
-        if (anyMatch(kws, r.veto)) return 0
+        if (anyMatch(kws, r.veto) || anyMatch(kws, MODERN_FRAME)) return 0
         val strong = kws.count { k -> r.strong.any { matches(k, it) } }
         val weak = kws.count { k -> r.weak.any { matches(k, it) } } +
             (if (anyMatch(kws, r.decades)) 1 else 0) +
