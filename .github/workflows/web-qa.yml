@@ -44,6 +44,7 @@ jobs:
         run: |
           command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
           bash mkstreams.sh
-          python3 srv.py &
+          # The server from the step above may still be up (same code; it reads the streams on each request).
+          curl -s -o /dev/null http://127.0.0.1:8781/index.html || (python3 srv.py &)
           sleep 1
           node qf-net.mjs

@@ -244,7 +244,7 @@ object QualityFallback {
         val rate = if (br > 0) br else DEFAULT_BITRATE
         val fresh = est > 0 && now - estAt <= FRESH_MS
         return if (down > 0 && now - down <= MEMORY_MS) {
-            if (fresh && est >= CLEAR_RATIO * rate) StartPick("4k", "fast_again", true) else StartPick("1080", "froze_before", false)
+            if (fresh && estAt > down && est >= CLEAR_RATIO * rate) StartPick("4k", "fast_again", true) else StartPick("1080", "froze_before", false)
         } else if (fresh && est < UP_RATIO * rate) {
             StartPick("1080", "slow_network", false)
         } else {

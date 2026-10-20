@@ -1142,6 +1142,22 @@
     "why": "",
     "clear": false
    }
+  },
+  {
+   "name": "froze after the last fast measurement: stays 1080p (only a speed measured after the freeze can clear it)",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 239000000.0,
+    "estAt": 863400000,
+    "br": 0,
+    "down": 863940000
+   },
+   "out": {
+    "tier": "1080",
+    "why": "froze_before",
+    "clear": false
+   }
   }
  ]
 }

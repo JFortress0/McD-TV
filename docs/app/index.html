@@ -3515,7 +3515,7 @@ async function renderSources(v, tok, type, id, q) {
 // 2. estimator: download speed like hls.js and ExoPlayer: two moving averages (3 s and 9 s half-life), the lower wins.
 // 3. startTier: the quality to open with. 1080p when this channel froze in 4K here in the last 7 days, or when the
 //    last measured speed (30 min at most) is under 1.2x the stream's bitrate. A remembered freeze is forgotten
-//    only when the speed reaches 1.5x. Live sports: Jarvis drops resolution, it never grows the buffer (delay).
+//    only when a speed measured after it reaches 1.5x (iPhone measures only in the probe, which may be older). Live sports: Jarvis drops resolution, it never grows the buffer (delay).
 const QF = (() => {
   const T = { windowMs: 60000, stalls: 3, totalMs: 12000, longMs: 8000, graceMs: 10000, gapMs: 3000, lowSamples: 4, severeSamples: 2,
     severeRatio: 0.7, resetRatio: 1.1, halfLifeFastS: 3, halfLifeSlowS: 9, minDelayMs: 50, defaultBitrate: 16e6, freshMs: 1800000,
@@ -3587,7 +3587,7 @@ const QF = (() => {
     const br = o.br > 0 ? o.br : T.defaultBitrate;
     const fresh = o.est > 0 && o.now - o.estAt <= T.freshMs;
     if (o.down > 0 && o.now - o.down <= T.memoryMs) {
-      return fresh && o.est >= T.clearRatio * br ? { tier: "4k", why: "fast_again", clear: true } : { tier: "1080", why: "froze_before", clear: false };
+      return fresh && o.estAt > o.down && o.est >= T.clearRatio * br ? { tier: "4k", why: "fast_again", clear: true } : { tier: "1080", why: "froze_before", clear: false };
     }
     if (fresh && o.est < T.upRatio * br) return { tier: "1080", why: "slow_network", clear: false };
     return { tier: "4k", why: "", clear: false };
@@ -4804,6 +4804,9 @@ const LV = (() => {
     return hlsPromise;
   }
   const nativeHls = () => { try { return !!document.createElement("video").canPlayType("application/vnd.apple.mpegurl"); } catch { return false; } };
+  // Apple's own player on iPhone, iPad and Safari. Elsewhere hls.js, even where the browser now plays HLS itself
+  // (newer Chrome): hls.js gives the per-segment speed and bitrate the quality fallback measures.
+  const appleHls = () => { const ua = navigator.userAgent; return /iP(hone|ad|od)/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) || (/Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Android|Edg/.test(ua)); };
   const playsHere = (c) => !st.ext && !mixedBlocked(c.url);
   /** The 1080p or HD copy of a 4K channel in the playlist (same guide key), or null. */
   const lowerChannel = (c) => { const j = QF.liveSibling(st.list, c, gkey, playsHere); return j >= 0 ? st.list[j] : null; };
@@ -4965,17 +4968,18 @@ const LV = (() => {
       if (!prevUrl) { fail(text); return; }
       const u = prevUrl; prevUrl = ""; attach(u);
     };
-    let Hls = null;
+    let Hls = null, native = false;
     async function attach(u) {
       try { if (hls) hls.destroy(); } catch {}
-      hls = null; segBr = []; lastH = 0;
+      hls = null; segBr = []; lastH = 0; native = false;
       mon.restart(Date.now());
-      if (nativeHls()) { vid.src = u; start(); return; }
+      const useNative = () => { native = true; vid.src = u; start(); };
+      if (nativeHls() && appleHls()) { useNative(); return; }
       if (!Hls) {
-        try { Hls = await loadHls(); } catch { fail("The video player could not load. Check your internet connection."); return; }
+        try { Hls = await loadHls(); } catch { if (nativeHls()) useNative(); else fail("The video player could not load. Check your internet connection."); return; }
         if (done) return;
-        if (!Hls.isSupported()) { fail(LIVE_NO); return; }
       }
+      if (!Hls.isSupported()) { if (nativeHls()) useNative(); else fail(LIVE_NO); return; }
       // Start from the last speed measured here, and move up only with a wide margin (hysteresis). The buffer
       // stays at hls.js's normal size: for live sports Jarvis drops resolution, it never adds delay.
       const m = qmem(), fresh = m.est > 0 && Date.now() - m.estAt <= QF.T.freshMs;
@@ -5009,7 +5013,7 @@ const LV = (() => {
       h.loadSource(u);
       h.attachMedia(vid);
     }
-    if (nativeHls()) vid.addEventListener("error", () => failOrBack(LIVE_NO));
+    vid.addEventListener("error", () => { if (native) failOrBack(LIVE_NO); });
     if (note) playerNote(vid, note);
     attach(url);
   }
@@ -5799,7 +5803,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-19.4";
+const BUILD = "2026-10-20.1";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;
