@@ -347,14 +347,20 @@ object HistoryHub {
         }
         val type = seed.key.substringBefore(':')
         val id = seed.key.substringAfter(':').toInt()
-        val like = Recommender.moreLikeThis(type, id, emptyList(), profile, 40).filter { t -> t.genreIds.any { it in HISTORYISH } }
+        // Keep history only: a documentary or History-genre title, or one its own keywords place in an era
+        // (a war or western genre alone is not enough: Shogun is War & Politics but 1600s Japan).
+        val pool = Recommender.moreLikeThis(type, id, emptyList(), profile, 40).filter { t -> t.genreIds.any { it in HISTORYISH } }
+        val poolCls = classifyAll(pool)
+        val like = pool.filter { t ->
+            HistoryEras.DOCUMENTARY in t.genreIds || HistoryEras.HISTORY in t.genreIds || poolCls[keyOf(t)]?.result?.eras?.isNotEmpty() == true
+        }
         // Few history titles in More Like This: add the seed's era shelf, and Ken Burns when it is one of his.
         val seedStub = stubs.first { keyOf(it) == seed.key }
         val seedEra = (cls[seed.key] ?: classifyAll(listOf(seedStub))[seed.key])?.result?.eras?.firstOrNull()
         val extra = if (like.size >= 12) emptyList() else
             (if (seedEra != null) eraShelf(seedEra, profile) else emptyList()) +
                 (if (seed.key in kb) runCatching { kenBurns(profile) }.getOrDefault(emptyList()) else emptyList())
-        android.util.Log.i("HistoryHub", "seed ${seed.key} ${seed.name} genres=${seedStub.genreIds} era=$seedEra like=${like.size} extra=${extra.size}")
+        android.util.Log.i("HistoryHub", "seed ${seed.key} ${seed.name} genres=${seedStub.genreIds} era=$seedEra like=${like.size} of ${pool.size} extra=${extra.size}")
         val seen = history.filter { it.finished || it.progress >= 0.6f }.map { it.meta.historyKey }.toSet() + seed.key
         val block = blocked(profile)
         val list = (like + extra).distinctBy(::keyOf).filter { keyOf(it) !in seen && !block(it, null) }.take(20)
