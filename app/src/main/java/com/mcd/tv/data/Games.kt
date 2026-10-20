@@ -94,6 +94,18 @@ enum class League(
     val railLabel: String get() = if (this == NFL) "$emoji NFL Games" else "$emoji $label"
 
     fun inSeason(month: Int): Boolean = month in months
+
+    companion object {
+        /** Hidden from Live Games until a profile changes it (Settings > Addons and Live TV > Live Games). */
+        val DEFAULT_HIDDEN: Set<League> = setOf(WNBA, MLS, EPL)
+
+        /**
+         * Hidden leagues from their stored names ([stored] null = never set: [DEFAULT_HIDDEN]). Unknown names are
+         * skipped, so a league removed later never breaks the setting.
+         */
+        fun hiddenFrom(stored: List<String>?): Set<League> =
+            stored?.mapNotNull { n -> entries.firstOrNull { it.name == n } }?.toSet() ?: DEFAULT_HIDDEN
+    }
 }
 
 /** One side of a game. [nickname] is "Packers", [location] "Green Bay", [short] "Packers" (college: "Alabama"). */

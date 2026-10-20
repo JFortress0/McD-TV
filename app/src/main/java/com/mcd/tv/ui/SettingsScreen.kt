@@ -50,6 +50,7 @@ import com.mcd.tv.Nav
 import com.mcd.tv.Screen
 import com.mcd.tv.data.Addons
 import com.mcd.tv.data.HouseSync
+import com.mcd.tv.data.League
 import com.mcd.tv.data.LiveStats
 import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.OriginFilter
@@ -435,6 +436,14 @@ private fun SourcesCategory(ctx: SettingsCtx, changed: () -> Unit) {
     InfoRow("Live TV playlist", if (Prefs.m3uUrl.isNotBlank()) "Set" else "None")
     InfoRow("Websites", Prefs.websites.joinToString(", ") { it.first }.ifBlank { "None" })
     SettingsNote("Long text such as links and keys stays on the Control page, so you never type it with the remote.")
+
+    // Per profile, this TV. Hiding a league only hides it in Live Games; the playlist stays as it is.
+    SettingsSection("Live Games")
+    SettingsNote("Leagues ${Prefs.activeProfileName} sees in Live TV > Live Games. Hidden leagues stay in your playlist.")
+    val hiddenLeagues = remember(Prefs.activeProfile) { GameBoard.hidden() }
+    League.entries.forEach { l ->
+        ToggleRow(ctx.row(), "${l.emoji}  ${l.label}", null, l !in hiddenLeagues) { GameBoard.setShown(l, it) }
+    }
 
     SettingsSection("Live TV health")
     InfoRow("This TV", remember { LiveStats.device(c) })

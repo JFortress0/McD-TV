@@ -119,15 +119,37 @@ object GameBoard {
         }
     }
 
-    /** Loads (or refreshes from cache) every league at once. */
-    suspend fun refreshAll() = coroutineScope {
-        League.entries.forEach { l -> launch { refresh(l) } }
+    /** Bumped when a profile shows or hides a league, so Live Games redraws. */
+    private var hiddenVersion by mutableIntStateOf(0)
+    private var hiddenCache: Pair<String, Set<League>>? = null
+
+    /** Leagues the watching profile hid from Live Games (Settings > Addons and Live TV). */
+    fun hidden(): Set<League> {
+        hiddenVersion // read, so a change redraws the screens that call this
+        val p = Prefs.activeProfile
+        hiddenCache?.let { if (it.first == p) return it.second }
+        return League.hiddenFrom(Prefs.hiddenLeagueNames(p)).also { hiddenCache = p to it }
     }
 
-    /** Leagues for the rail: NFL first during its season, others while they have games this week. */
+    fun setShown(league: League, shown: Boolean) {
+        val now = if (shown) hidden() - league else hidden() + league
+        Prefs.setHiddenLeagueNames(League.entries.filter { it in now }.map { it.name })
+        hiddenCache = null
+        hiddenVersion++ // a league shown again loads the next time Live TV or Games opens (refreshAll)
+    }
+
+    /** Loads (or refreshes from cache) every shown league at once. Hidden leagues cost no ESPN requests. */
+    suspend fun refreshAll() = coroutineScope {
+        val skip = hidden()
+        League.entries.filter { it !in skip }.forEach { l -> launch { refresh(l) } }
+    }
+
+    /** Leagues for Live Games: NFL first during its season, others while they have games this week. Hidden ones never. */
     fun visibleLeagues(): List<League> {
         val month = Calendar.getInstance().get(Calendar.MONTH) + 1
+        val skip = hidden()
         return League.entries.filter { l ->
+            if (l in skip) return@filter false
             when (val s = state[l]) {
                 is LeagueLoad.Ok -> s.schedule.games.isNotEmpty() || (l == League.NFL && l.inSeason(month))
                 else -> l in MAIN && l.inSeason(month)
