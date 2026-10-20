@@ -86,6 +86,7 @@ dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sd
 describe() {
   dump "ui-$1"
   echo "      [$1] focused: $(grep -o '<node [^>]*focused="true"[^>]*>' "qa-out/ui-$1.xml" 2>/dev/null | grep -o 'text="[^"]*"\|content-desc="[^"]*"\|bounds="[^"]*"' | tr '\n' ' ' | cut -c1-300)"
+  echo "      [$1] focused holds: $(python3 .github/qa/focused.py "qa-out/ui-$1.xml" | cut -c1-300)"
   echo "      [$1] text: $(grep -o 'text="[^"]\+"' "qa-out/ui-$1.xml" 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-700)"
 }
 KB_FAIL=""
@@ -167,7 +168,7 @@ adb shell am start -S -n com.mcd.tv/.MainActivity --es screen live >/dev/null
 sleep 12
 shot live-a-landing
 describe live-a-landing
-grep -o '<node [^>]*focused="true"[^>]*>' qa-out/ui-live-a-landing.xml | grep -q 'NFL GAMES' \
+python3 .github/qa/focused.py qa-out/ui-live-a-landing.xml | grep -q 'NFL GAMES' \
   && pass "Live TV: opens with focus on NFL Games" || fail "Live TV: opens with focus on NFL Games"
 grep -qE 'text="[^"]*Favorites[^"]*7[^"]*"|text="7"' qa-out/ui-live-a-landing.xml \
   && pass "Live TV: 7 favorites saved through the relay" || fail "Live TV: 7 favorites saved through the relay"
@@ -181,8 +182,9 @@ fi
 adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 2
 shot live-a-first-game
 describe live-a-first-game
-grep -o '<node [^>]*focused="true"[^>]*>' qa-out/ui-live-a-first-game.xml | grep -q 'bounds' \
-  && ! grep -o '<node [^>]*focused="true"[^>]*>' qa-out/ui-live-a-first-game.xml | grep -q 'NFL GAMES' \
+# The focused card holds a team name or a time and sits below the league chips (y > 300 of 1080), not in the rail.
+GAME_F=$(python3 .github/qa/focused.py qa-out/ui-live-a-first-game.xml)
+echo "$GAME_F" | grep -qE '@\[([5-9][0-9][0-9]|1[0-9][0-9][0-9]),([3-9][0-9][0-9]|1[0-9][0-9][0-9])\]' && ! echo "$GAME_F" | grep -q 'NFL GAMES' \
   && pass "Live TV: DOWN from NFL Games reaches a game (2 presses to play)" || fail "Live TV: DOWN from NFL Games reaches a game"
 shot live-b-games
 
