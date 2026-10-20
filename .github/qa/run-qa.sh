@@ -182,9 +182,9 @@ fi
 adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 2
 shot live-a-first-game
 describe live-a-first-game
-# The focused card holds a team name or a time and sits below the league chips (y > 300 of 1080), not in the rail.
+# The focused card holds a team name or a time, right of the rail (x > 460) and below the league chips (y > 300 of 1080).
 GAME_F=$(python3 .github/qa/focused.py qa-out/ui-live-a-first-game.xml)
-echo "$GAME_F" | grep -qE '@\[([5-9][0-9][0-9]|1[0-9][0-9][0-9]),([3-9][0-9][0-9]|1[0-9][0-9][0-9])\]' && ! echo "$GAME_F" | grep -q 'NFL GAMES' \
+echo "$GAME_F" | grep -qE '@\[([5-9][0-9][0-9]|4[6-9][0-9]|1[0-9][0-9][0-9]),([3-9][0-9][0-9]|1[0-9][0-9][0-9])\]' && ! echo "$GAME_F" | grep -q 'NFL GAMES' \
   && pass "Live TV: DOWN from NFL Games reaches a game (2 presses to play)" || fail "Live TV: DOWN from NFL Games reaches a game"
 shot live-b-games
 

@@ -907,8 +907,9 @@ private fun LiveChannelListRow(
                     if (e.type == KeyEventType.KeyUp) onMenu()
                     true
                 } else if (e.key == Key.DirectionRight && onFeeds != null) {
-                    // RIGHT opens (or closes) this network's other feeds under it.
-                    if (e.type == KeyEventType.KeyUp) onFeeds()
+                    // RIGHT opens (or closes) this network's other feeds under it. On key down: the RIGHT that moved
+                    // focus here from the rail ends its key up on this row, and must not open them.
+                    if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) onFeeds()
                     true
                 } else {
                     false
