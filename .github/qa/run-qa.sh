@@ -146,27 +146,72 @@ else
 fi
 
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
+# The playlist has an Entertainment block where most networks come in several feeds (make_m3u.py), and 7 channels
+# are starred through the relay first, like J's 7 favorites.
 mkdir -p qa-m3u
-cat > qa-m3u/test.m3u <<'M3U'
-#EXTM3U
-#EXTINF:-1 tvg-logo="" group-title="QA Sports",QA Test Channel
-https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
-#EXTINF:-1 group-title="QA Movies",QA Movie Entry
-http://example.com/movie/user/pass/1.mp4
-M3U
+python3 .github/qa/make_m3u.py qa-m3u/test.m3u qa-m3u/favs.txt | tee -a "$R"
 python3 -m http.server 8765 --directory qa-m3u >/dev/null 2>&1 < /dev/null &
 M3U_SERVER=$!
 sleep 2
 curl -sf -m 15 --data "m3u=http%3A%2F%2F10.0.2.2%3A8765%2Ftest.m3u" http://127.0.0.1:8642/ -o /dev/null \
   && pass "Setup page saves an M3U playlist" || fail "Setup page saves an M3U playlist"
 sleep 3 # let Android write the setting to disk before the app is restarted
-check_screen live "QA Test Channel"
+check_screen live "QA Test Channel|Live Games|NFL"
 if grep -q "QA Movie Entry" qa-out/ui-live.xml 2>/dev/null; then fail "Live TV hides movie entries"; else pass "Live TV hides movie entries"; fi
-# Play the first channel with the remote and make sure the player opens.
-# With no addon live catalogs there is no source row. Once the playlist loads, focus sits on the selected
-# entry of the left rail: with no favorites or recents that is the first section ("Sports": the QA channel is
-# in group "QA Sports"). RIGHT -> first channel card in the grid, CENTER -> play.
+LINK=$(curl -sf -m 10 http://127.0.0.1:8642/qa-relay)
+[ -n "$LINK" ] && python3 .github/qa/live_favs.py "$LINK" qa-m3u/favs.txt | tee -a "$R"
+sleep 15
+
+# (a) A fresh open of Live TV lands at the top: focus on the NFL Games chip inside Live Games, with favorites saved.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen live >/dev/null
+sleep 12
+shot live-a-landing
+describe live-a-landing
+grep -o '<node [^>]*focused="true"[^>]*>' qa-out/ui-live-a-landing.xml | grep -q 'NFL GAMES' \
+  && pass "Live TV: opens with focus on NFL Games" || fail "Live TV: opens with focus on NFL Games"
+grep -qE 'text="[^"]*Favorites[^"]*7[^"]*"|text="7"' qa-out/ui-live-a-landing.xml \
+  && pass "Live TV: 7 favorites saved through the relay" || fail "Live TV: 7 favorites saved through the relay"
+# (b) Live Games is one rail entry; the leagues are chips inside it. WNBA and soccer are hidden by default.
+if grep -q 'Live Games' qa-out/ui-live-a-landing.xml && ! grep -qiE 'text="[^"]*(WNBA|MLS|PREMIER LEAGUE)' qa-out/ui-live-a-landing.xml; then
+  pass "Live TV: Live Games holds the leagues, no WNBA or soccer"
+else
+  fail "Live TV: Live Games holds the leagues, no WNBA or soccer"
+fi
+# D-pad: one DOWN reaches the first game (live, else the next one). OK would play it.
+adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 2
+shot live-a-first-game
+describe live-a-first-game
+grep -o '<node [^>]*focused="true"[^>]*>' qa-out/ui-live-a-first-game.xml | grep -q 'bounds' \
+  && ! grep -o '<node [^>]*focused="true"[^>]*>' qa-out/ui-live-a-first-game.xml | grep -q 'NFL GAMES' \
+  && pass "Live TV: DOWN from NFL Games reaches a game (2 presses to play)" || fail "Live TV: DOWN from NFL Games reaches a game"
+shot live-b-games
+
+# (c) Entertainment: one row per network. Rail from Live Games: Search, Favorites, My Guide, Sports, Entertainment.
+adb shell input keyevent KEYCODE_DPAD_UP; sleep 1
+adb shell input keyevent KEYCODE_DPAD_LEFT; sleep 1
+for i in 1 2 3 4 5; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
+shot live-c-entertainment
+describe live-c-entertainment
+grep -qE 'text="[0-9,]+ networks  ·  [0-9,]+ channels"' qa-out/ui-live-c-entertainment.xml \
+  && pass "Live TV: Entertainment lists networks ($(grep -oE '[0-9,]+ networks  ·  [0-9,]+ channels' qa-out/ui-live-c-entertainment.xml | head -1))" \
+  || fail "Live TV: Entertainment lists networks"
+grep -q 'text="★ YOURS' qa-out/ui-live-c-entertainment.xml && pass "Live TV: Entertainment pins your networks" || fail "Live TV: Entertainment pins your networks"
+# RIGHT into the list (the first pinned network), RIGHT again opens its other feeds under it.
 adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 2
+shot live-c-feeds
+describe live-c-feeds
+grep -q 'Hide the other feeds' qa-out/ui-live-c-feeds.xml && pass "Live TV: RIGHT opens a network's other feeds" || fail "Live TV: RIGHT opens a network's other feeds"
+
+# Play the first favorite with the remote and make sure the player opens: Live TV opens on NFL Games; LEFT to the
+# rail (Live Games), DOWN x2 to Favorites, RIGHT to the first card (QA Test Channel), CENTER plays.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen live >/dev/null
+sleep 12
+adb shell input keyevent KEYCODE_DPAD_LEFT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+describe live-play-target
 adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 10
 shot live-playing
 adb shell dumpsys activity activities | grep -q "com.mcd.tv" && pass "Live channel opens the player without leaving the app" || fail "Live channel opens the player without leaving the app"
