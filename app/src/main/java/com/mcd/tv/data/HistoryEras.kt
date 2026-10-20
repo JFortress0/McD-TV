@@ -55,6 +55,7 @@ object HistoryEras {
     const val WAR = 10752
     const val WAR_POLITICS = 10768
     const val WESTERN = 37
+    const val COMEDY = 35
 
     /** A title needs this many points for an era. A strong keyword alone is enough; weak ones need company. */
     const val MIN_SCORE = 2
@@ -297,7 +298,11 @@ object HistoryEras {
             return EraResult(eras, presidential, eras.associateWith { MARQUEE_SCORE })
         }
         if (genres.any { it in VETO_GENRES }) return EraResult(emptyList(), presidential)
-        val scored = Era.entries.map { it to score(it, kws, genres, language) }.filter { it.second >= MIN_SCORE }
+        // A comedy with no History, War or Drama genre needs twice the points: one passing mention (Zoolander) is
+        // not a period piece, a comedy set in the era (A Million Ways to Die in the West) still is.
+        val comedyOnly = COMEDY in genres && genres.none { it == HISTORY || it == WAR || it == WAR_POLITICS || it == DRAMA }
+        val need = if (comedyOnly) MIN_SCORE * 2 else MIN_SCORE
+        val scored = Era.entries.map { it to score(it, kws, genres, language) }.filter { it.second >= need }
             .sortedByDescending { it.second }
         return EraResult(scored.map { it.first }, presidential, scored.toMap())
     }

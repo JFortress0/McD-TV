@@ -86,6 +86,13 @@ class HistoryErasTest {
         assertTrue(eras(listOf("time travel", "american revolution"), genres = setOf(35)).isEmpty())
     }
 
+    @Test fun comediesNeedMoreThanAPassingMention() {
+        assertTrue(eras(listOf("abraham lincoln", "fashion model"), genres = setOf(35)).isEmpty())
+        assertEquals(listOf(Era.WEST), eras(listOf("wild west", "cowboy", "gunslinger"), genres = setOf(35, 37)))
+        // A comedy-drama counts like any drama.
+        assertEquals(listOf(Era.CIVIL_WAR), eras(listOf("abraham lincoln"), genres = setOf(35, 18)))
+    }
+
     @Test fun frenchRevolutionIsNotTheAmericanOne() {
         // Napoleon (1927): "french revolutionary wars" contains "revolutionary war".
         assertTrue(Era.FOUNDING !in eras(listOf("french revolutionary wars", "napoleon bonaparte", "18th century", "1790s"), lang = "fr"))

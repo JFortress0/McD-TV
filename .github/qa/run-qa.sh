@@ -91,12 +91,16 @@ echo "      [history] text: $(grep -o 'text="[^"]\+"' qa-out/ui-history-loaded.x
 echo "      [history] posters: $(grep -o 'content-desc="[^"]\+"' qa-out/ui-history-loaded.xml 2>/dev/null | sed 's/content-desc=//' | tr '\n' ' ' | cut -c1-700)"
 adb logcat -d -s HistoryHub:I | grep -v "^---" | tail -n 20 | sed 's/^/      [history] log: /'
 if grep -q "MORE LIKE THE CIVIL WAR" qa-out/ui-history-loaded.xml; then pass "History: More Like row seeded from a watched history title"; else fail "History: More Like row seeded from a watched history title"; fi
-for i in 1 2 3 4 5; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 2; done
-sleep 4; shot screen-history-eras
-adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml qa-out/ui-history-eras.xml >/dev/null 2>&1
-echo "      [history-scrolled] text: $(grep -o 'text="[^"]\+"' qa-out/ui-history-eras.xml 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-700)"
-# The More Like row sits on top, so the Historical Dramas heading shows once the page scrolls.
-if grep -q "HISTORICAL DRAMAS" qa-out/ui-history-loaded.xml qa-out/ui-history-eras.xml; then pass "History: Historical Dramas shelf"; else fail "History: Historical Dramas shelf"; fi
+# The More Like row sits on top and the eras the profile watches move up, so look for the Historical Dramas
+# heading after each press of DOWN.
+for i in 1 2 3 4 5; do
+  adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 3
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "qa-out/ui-history-down$i.xml" >/dev/null 2>&1
+  [ "$i" = 2 ] && shot screen-history-scrolled
+done
+sleep 2; shot screen-history-eras
+echo "      [history-scrolled] headings: $(cat qa-out/ui-history-down*.xml 2>/dev/null | grep -o 'text="[A-Z][A-Z &amp;;IVX]\{6,\}"' | sort -u | sed 's/text=//' | tr '\n' ' ' | cut -c1-500)"
+if grep -q "HISTORICAL DRAMAS" qa-out/ui-history-loaded.xml qa-out/ui-history-down*.xml; then pass "History: Historical Dramas shelf"; else fail "History: Historical Dramas shelf"; fi
 check_screen history:kenburns "content-desc=\"The American Revolution\""
 if grep -q 'content-desc="The Civil War"' qa-out/ui-history-kenburns.xml; then pass "History: Ken Burns shows The Civil War"; else fail "History: Ken Burns shows The Civil War"; fi
 check_screen history:era:civilwar "content-desc=\"(Lincoln|Glory|Gettysburg)\""

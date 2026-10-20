@@ -30,7 +30,7 @@ object HistoryHub {
     private const val SHELF_TTL_MS = 15 * 60_000L
     private const val CLASS_MAX = 1500
     /** Bump when the rules in HistoryEras change, so saved eras are worked out again. */
-    private const val CLASS_VERSION = 2
+    private const val CLASS_VERSION = 3
 
     /** Genres the personal row keeps: History, Documentary, War, War & Politics, Western. */
     private val HISTORYISH = setOf(36, 99, 10752, 10768, 37)
