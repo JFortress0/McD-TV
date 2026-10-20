@@ -57,10 +57,12 @@ sealed interface Screen {
     /** Catalog menu: Trending, Top Rated, New Releases, By Year, By Language, Genres, Collections, services, Sports, Noise. */
     data object Browse : Screen
     /**
-     * A full poster grid with "See more" paging. kind: trending, popular, top, new, year, lang, collections, collection.
-     * param: kind-specific (type "movie"/"tv" for popular/top, a language code, a collection id…). title: page heading.
+     * A full poster grid with "See more" paging. kind: trending, popular, top, new, year, lang, collections, collection, history.
+     * param: kind-specific (type "movie"/"tv" for popular/top, a language code, a collection id, a History shelf id…). title: page heading.
      */
     data class BrowseGrid(val kind: String, val param: String = "", val title: String = "") : Screen
+    /** Browse > History: Ken Burns, Historical Dramas, the eras and More Like <a history title this profile watched>. */
+    data object History : Screen
     data object Sports : Screen
     data object Live : Screen
     /** Live TV multiview: 1, 2 or 4 playlist channels at once. */
@@ -148,6 +150,10 @@ class MainActivity : ComponentActivity() {
             // "settings:updates": Settings open on one category (QA screenshots of each).
             com.mcd.tv.ui.SettingsLaunch.requested = com.mcd.tv.ui.SettingsCategory.fromId(screenExtra.substringAfter(":"))
             Screen.Settings
+        } else if (screenExtra.startsWith("history:")) {
+            // "history:kenburns", "history:era:civilwar": one History shelf's See all grid.
+            val shelf = screenExtra.substringAfter(":")
+            Screen.BrowseGrid("history", shelf, com.mcd.tv.ui.historyShelfLabel(shelf))
         } else if (screenExtra.startsWith("person:")) {
             screenExtra.substringAfter(":").toIntOrNull()?.let { Screen.Person(it) }
         } else when (screenExtra) {
@@ -159,6 +165,7 @@ class MainActivity : ComponentActivity() {
             "noise" -> Screen.Noise
             "library" -> Screen.Library
             "browse" -> Screen.Browse
+            "history" -> Screen.History
             "live" -> Screen.Live
             "multiview" -> Screen.Multiview
             "games" -> Screen.Games(com.mcd.tv.data.League.NFL)
@@ -167,6 +174,14 @@ class MainActivity : ComponentActivity() {
             "ask" -> Screen.AskJarvis(askExtra)
             "wall" -> Screen.Wall
             else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
+        }
+        // Automated QA only: "--ez qa_mode true --es qa_watched 'tv|The Civil War|1990'" marks a title watched,
+        // so the History hub's personal row can be checked against real history in the emulator.
+        val qaWatched = intent?.getStringExtra("qa_watched") ?: ""
+        if (qaWatched.isNotBlank() && intent?.getBooleanExtra("qa_mode", false) == true) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
+                runCatching { com.mcd.tv.data.HistoryHub.qaWatch(qaWatched) }
+            }
         }
         setContent { McdTheme { App(startScreen) } }
     }
@@ -305,6 +320,7 @@ private fun ScreenContent(screen: Screen, nav: Nav, isOnlyEntry: Boolean) {
         Screen.Library -> LibraryScreen(nav)
         Screen.Browse -> BrowseScreen(nav)
         is Screen.BrowseGrid -> BrowseGridScreen(nav, s.kind, s.param, s.title)
+        Screen.History -> com.mcd.tv.ui.HistoryScreen(nav)
         Screen.Sports -> SportsScreen(nav)
         Screen.Live -> LiveTvScreen(nav)
         Screen.Multiview -> com.mcd.tv.ui.MultiviewScreen(nav)

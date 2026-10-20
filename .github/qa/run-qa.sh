@@ -78,6 +78,24 @@ check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
 
+# 4-history) History hub on the QA profile (Dad). First mark Ken Burns' The Civil War watched (QA-only extra), so the
+# personal row is seeded from real history; then the hub, its Ken Burns grid and two era grids.
+# Poster names are in content-desc; rail headings are upper case text.
+adb shell am start -S -n com.mcd.tv/.MainActivity --ez qa_mode true --es qa_watched "tv|The Civil War|1990" --es screen history >/dev/null
+sleep 25 # first visit: marquee, keyword and era lookups
+check_screen history "KEN BURNS"
+sleep 15; shot screen-history-loaded
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml qa-out/ui-history-loaded.xml >/dev/null 2>&1
+if grep -q "MORE LIKE THE CIVIL WAR" qa-out/ui-history-loaded.xml; then pass "History: More Like row seeded from a watched history title"; else fail "History: More Like row seeded from a watched history title"; fi
+if grep -q "HISTORICAL DRAMAS" qa-out/ui-history-loaded.xml; then pass "History: Historical Dramas shelf"; else fail "History: Historical Dramas shelf"; fi
+for i in 1 2 3 4 5; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 2; done
+sleep 4; shot screen-history-eras
+check_screen history:kenburns "content-desc=\"The American Revolution\""
+if grep -q 'content-desc="The Civil War"' qa-out/ui-history-kenburns.xml; then pass "History: Ken Burns shows The Civil War"; else fail "History: Ken Burns shows The Civil War"; fi
+check_screen history:era:civilwar "content-desc=\"(Lincoln|Glory|Gettysburg)\""
+check_screen history:era:founding "content-desc=\"(Young Washington|John Adams|The Patriot)\""
+check_screen history:dramas "content-desc=\"Young Washington\""
+
 # 4a) Settings with the remote: a screenshot of each category, a D-pad walk through its rows (the keyboard must
 # never open on focus), the edit dialog (opens on OK, one BACK closes it) and the update check in two presses.
 kb_shown() { adb shell dumpsys input_method | grep -q "mInputShown=true"; }

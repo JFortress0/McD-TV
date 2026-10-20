@@ -350,13 +350,32 @@ object Tmdb {
         return all.firstOrNull { norm(it.name) == want } ?: if (exact) null else all.firstOrNull()
     }
 
-    /** The TMDB id of a plot keyword ("stand-up comedy"), or null. Used for Settings > Taste topics. */
-    suspend fun keywordId(name: String): Int? {
+    /**
+     * The TMDB id of a plot keyword ("stand-up comedy"), or null. Used for Settings > Taste topics.
+     * [exact] = only a keyword with exactly this name (the History hub), else TMDB's best match.
+     */
+    suspend fun keywordId(name: String, exact: Boolean = false): Int? {
         val q = name.trim()
         if (q.isEmpty()) return null
         val arr = get("/search/keyword", mapOf("query" to q)).optJSONArray("results") ?: return null
         val all = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
-        return (all.firstOrNull { it.optString("name").equals(q, ignoreCase = true) } ?: all.firstOrNull())?.optInt("id")?.takeIf { it > 0 }
+        val hit = all.firstOrNull { it.optString("name").equals(q, ignoreCase = true) } ?: if (exact) null else all.firstOrNull()
+        return hit?.optInt("id")?.takeIf { it > 0 }
+    }
+
+    /** A title's plot keyword names ("american civil war", "1860s"), for the History hub's eras. */
+    suspend fun keywordNames(type: String, id: Int): List<String> {
+        val o = get("/$type/$id/keywords")
+        val a = o.optJSONArray("keywords") ?: o.optJSONArray("results") ?: return emptyList()
+        return (0 until a.length()).mapNotNull { a.optJSONObject(it)?.s("name") }
+    }
+
+    /** A person's TMDB id by exact name (most popular first), or null. [department] prefers e.g. "Directing". */
+    suspend fun findPerson(name: String, department: String? = null): Int? {
+        val arr = get("/search/person", mapOf("query" to name, "include_adult" to "false")).optJSONArray("results") ?: return null
+        val same = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }.filter { it.optString("name").equals(name, ignoreCase = true) }
+        val hit = same.firstOrNull { department != null && it.optString("known_for_department") == department } ?: same.firstOrNull()
+        return hit?.optInt("id")?.takeIf { it > 0 }
     }
 
     private fun region(): Map<String, String> = if (Prefs.usOnly) mapOf("region" to "US") else emptyMap()
