@@ -256,6 +256,8 @@ object HistoryHub {
         val rest = found.distinctBy(::keyOf)
             .filter { keyOf(it) !in leadKeys && cls[keyOf(it)]?.result?.eras?.contains(era) == true }
             .sortedByDescending { HistoryEras.rank(cls[keyOf(it)]?.result?.scores?.get(era) ?: 0, it.votes, it.rating, american(it)) }
+        android.util.Log.i("HistoryHub", "era ${era.id}: ${lead.size} marquee, found by keywords: " +
+            rest.take(12).joinToString { "${it.name} (${it.year}, ${cls[keyOf(it)]?.result?.scores?.get(era)})" })
         (lead + rest).filterNot { block(it, cls[keyOf(it)]) }.take(60)
     }
 
@@ -404,7 +406,7 @@ object HistoryHub {
      */
     suspend fun qaWatch(spec: String) {
         val p = spec.split("|")
-        if (p.size < 2) return
+        if (p.size < 2) { android.util.Log.w("HistoryHub", "qa_watched: expected type|name|year, got $spec"); return }
         val t = Tmdb.findTitle(p[0], p[1], p.getOrNull(2)?.toIntOrNull(), exact = true)
         android.util.Log.i("HistoryHub", "qa_watched $spec -> ${t?.type}:${t?.id}")
         if (t != null) Library.markWatched(PlayMeta(t.type, t.id, t.name, t.poster, t.backdrop))

@@ -79,9 +79,9 @@ check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
 
 # 4-history) History hub on the QA profile (Dad). First mark Ken Burns' The Civil War watched (QA-only extra), so the
-# personal row is seeded from real history; then the hub, its Ken Burns grid and two era grids.
+# personal row is seeded from real history (inner quotes: adb runs this through the device shell, where | is a pipe); then the hub, its Ken Burns grid and two era grids.
 # Poster names are in content-desc; rail headings are upper case text.
-adb shell am start -S -n com.mcd.tv/.MainActivity --ez qa_mode true --es qa_watched "tv|The Civil War|1990" --es screen history >/dev/null
+adb shell am start -S -n com.mcd.tv/.MainActivity --ez qa_mode true --es qa_watched "'tv|The Civil War|1990'" --es screen history >/dev/null
 sleep 25 # first visit: marquee, keyword and era lookups
 check_screen history "KEN BURNS"
 sleep 25; shot screen-history-loaded
@@ -89,7 +89,7 @@ adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.x
 # For log readers (artifacts need a download): the hub's headings and the History log lines.
 echo "      [history] text: $(grep -o 'text="[^"]\+"' qa-out/ui-history-loaded.xml 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-700)"
 echo "      [history] posters: $(grep -o 'content-desc="[^"]\+"' qa-out/ui-history-loaded.xml 2>/dev/null | sed 's/content-desc=//' | tr '\n' ' ' | cut -c1-700)"
-adb logcat -d -s HistoryHub:I | tail -n 12 | sed 's/^/      [history] log: /'
+adb logcat -d -s HistoryHub:I | grep -v "^---" | tail -n 20 | sed 's/^/      [history] log: /'
 if grep -q "MORE LIKE THE CIVIL WAR" qa-out/ui-history-loaded.xml; then pass "History: More Like row seeded from a watched history title"; else fail "History: More Like row seeded from a watched history title"; fi
 if grep -q "HISTORICAL DRAMAS" qa-out/ui-history-loaded.xml; then pass "History: Historical Dramas shelf"; else fail "History: Historical Dramas shelf"; fi
 for i in 1 2 3 4 5; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 2; done

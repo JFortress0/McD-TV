@@ -327,7 +327,8 @@ object HistoryEras {
 
     /**
      * The Ken Burns shelf from his real crew credits: every documentary he directed, created, wrote or
-     * produced (acting credits, such as interviews in other films, are left out). Order: anything released
+     * produced (acting credits, such as interviews in other films, are left out; a film listed twice shows
+     * once). Order: anything released
      * in the last 18 months first (newest first), then films he directed before ones he only produced, each
      * by how many people rated them. Unreleased titles go last. [today] = "yyyy-MM-dd".
      */
@@ -336,6 +337,8 @@ object HistoryEras {
         val kept = credits
             .filter { c -> c.jobs.any { it in KEN_BURNS_JOBS } && (c.genres.isEmpty() || DOCUMENTARY in c.genres) }
             .distinctBy { it.key }
+            // TMDB sometimes lists one film twice (as a movie and as a series): keep the better known one.
+            .groupBy { normName(it.name) + "|" + it.date.take(4) }.values.map { same -> same.maxByOrNull { it.votes }!! }
         fun released(c: Credit) = c.date.isNotBlank() && c.date <= today
         val (out, upcoming) = kept.partition(::released)
         val (recent, older) = out.partition { it.date >= recentFrom }
