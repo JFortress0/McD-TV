@@ -184,10 +184,11 @@ class LiveOrganizerTest {
 
     @Test
     fun chipRowIsCappedWithMore() {
-        val list = (1..30).map { ch("Channel $it", "US| GROUP$it") }
+        // Movies (Entertainment browses by network instead of group chips).
+        val list = (1..30).map { ch("Cinema $it", "US| GROUP$it") }
         val idx = LiveOrganizer.build(list)
         val ent = idx.sections.single()
-        assertEquals(ENTERTAINMENT, ent.name)
+        assertEquals(MOVIES, ent.name)
         assertEquals(24, ent.subgroups.size)
         assertEquals("More", ent.subgroups.last().label)
         assertEquals(30, ent.subgroups.sumOf { it.items.size })

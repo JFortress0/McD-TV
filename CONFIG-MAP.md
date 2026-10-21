@@ -42,6 +42,8 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 | Guide (XMLTV) | no field | taken from the playlist header (`url-tvg`, `x-tvg-url`) or Xtream `xmltv.php`; kept in memory on the TV; phone cache `mcdtv_web_epg` | none | through the link |
 | Live TV favorites | star on the TV or phone | `live_favorites@pN`; phone `mcdtv_web_plists` | ProfileSync, `web_init` | no |
 | Recents, last channel, channel stats | automatic | `live_recents@pN`, `live_last_url@pN`, `live_stats` | this TV only | no |
+| My teams (favorite teams) | TV Settings > Addons and Live TV > My teams | `live_fav_teams@pN` (JSON list like `"NFL:Eagles"`). Not set = Dad (p1) has Eagles, Phillies, Flyers and 76ers; other profiles none. | this TV only | no |
+| Leagues in Live Games | TV Settings > Addons and Live TV > Live Games | `live_leagues_hidden@pN` (JSON list of league names). Not set = WNBA, MLS and Premier League hidden. The playlist is never changed. | this TV only | no |
 
 ## Profiles and the house
 

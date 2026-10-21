@@ -30,7 +30,7 @@ MAIN="$ROOT/app/src/main/java/com/mcd/tv/data"
 TEST_ROOT="$ROOT/app/src/test/java"
 STUBS="$ROOT/tools/jvm-stubs"
 OUT="$ROOT/app/build/local-unit-tests"
-MAIN_FILES=(LiveCatalog.kt Live.kt Games.kt StreamInfo.kt Epg.kt Http.kt Taste.kt SourceQueue.kt BabyCountdown.kt RdErrors.kt RdFilter.kt RdLimiter.kt SeekAccumulator.kt StillWatching.kt ContinueRules.kt LiveFavMerge.kt TvLink.kt XtreamVod.kt TvIdentity.kt NowPlaying.kt RecentErrors.kt WallCycle.kt PlaybackRescue.kt SourceHealth.kt ProgressMerge.kt)
+MAIN_FILES=(LiveCatalog.kt Live.kt Games.kt StreamInfo.kt Epg.kt Http.kt Taste.kt SourceQueue.kt BabyCountdown.kt RdErrors.kt RdFilter.kt RdLimiter.kt SeekAccumulator.kt StillWatching.kt ContinueRules.kt LiveFavMerge.kt TvLink.kt XtreamVod.kt TvIdentity.kt NowPlaying.kt RecentErrors.kt WallCycle.kt KeepAwake.kt WallWatch.kt PlaybackRescue.kt SourceHealth.kt ProgressMerge.kt)
 # Pure UI logic (no Compose) under ui/.
 UI_FILES=(SettingsModel.kt)
 

@@ -16,9 +16,26 @@ import java.util.Locale
 /** A sub-group chip inside a section: [items] are indices into [LiveIndex.channels]. */
 class LiveSubgroup(val label: String, val items: IntArray)
 
-/** One section of the Live TV rail. [items] are indices into [LiveIndex.channels], in playlist order. */
-class LiveSection(val name: String, val items: IntArray, val subgroups: List<LiveSubgroup>) {
+/**
+ * One section of the Live TV rail. [items] are indices into [LiveIndex.channels], in playlist order.
+ * [networks]: the same channels with every feed of one network under one entry (Entertainment only, else empty).
+ */
+class LiveSection(
+    val name: String,
+    val items: IntArray,
+    val subgroups: List<LiveSubgroup>,
+    val networks: List<LiveNetwork> = emptyList(),
+) {
     val count: Int get() = items.size
+}
+
+/**
+ * Every feed of one network ("AMC", "US| AMC FHD", "AMC West", "AMC RAW 60fps"): [feeds] are indices into
+ * [LiveIndex.channels], best first. [us]: at least one feed is marked as from the US.
+ */
+class LiveNetwork(val key: String, val feeds: IntArray, val us: Boolean) {
+    val primary: Int get() = feeds[0]
+    val alternates: Int get() = feeds.size - 1
 }
 
 /**
@@ -214,6 +231,9 @@ object LiveOrganizer {
         t = t.trim()
         return t.ifEmpty { original.ifEmpty { "Channel" } }
     }
+
+    /** A feed's own name, tags kept so feeds of one network tell apart: "US| AMC FHD" -> "AMC FHD", "AT&T: AMC West" -> "AMC West". */
+    fun feedLabel(raw: String): String = SPACES.replace(stripPrefixes(raw), " ").trim().ifEmpty { raw.trim() }
 
     /** Group label for chips: "US| AT&T RAW 60fps" -> "AT&T", "SPORTS| UFC" -> "Sports · UFC", "US| NEWS" -> "NEWS". */
     fun cleanGroup(raw: String): String {
@@ -428,6 +448,111 @@ object LiveOrganizer {
         }
     }
 
+    // ---------------------------------------------------------------- networks (same channel, several feeds)
+
+    /** "(2)", "[3]", "#2", "(E)", "(W)", "(East)": feed markers, not part of the network's name. */
+    private val FEED_MARKS = Regex("(?i)[(\\[]\\s*(?:\\d{1,2}|E|W|EAST|WEST|PACIFIC)\\s*[)\\]]|#\\d{1,2}\\b")
+
+    /** Words that name a feed of a network, not the network: "AMC East", "AMC West", "AMC Alt". */
+    private val FEED_WORDS = setOf("EAST", "WEST", "PACIFIC", "MOUNTAIN", "CENTRAL", "ALT", "ALTERNATE", "FEED", "BACKUP", "OPT", "OPTION")
+
+    /** Trailing words that do not change the network: "Travel Channel" = "Travel", "USA Network" = "USA". */
+    private val NETWORK_SUFFIX = setOf("NETWORK", "CHANNEL", "TV")
+
+    private val TIMESHIFT = Regex("\\+\\d$")
+
+    /**
+     * The network a clean channel name belongs to: "AMC", "AMC HD", "AMC West", "AMC (2)" and "AMC Channel" are all
+     * "AMC". "FX" and "FXX" stay apart, and so do "AMC+" and "AMC". Only whole words are dropped, so "Discovery Science"
+     * never joins "Discovery".
+     */
+    fun networkKey(cleanName: String): String {
+        var t = FEED_MARKS.replace(cleanName, " ")
+        t = QUALITY.replace(t, " ")
+        val w = tokens(t.uppercase(Locale.ROOT)).toMutableList()
+        // "AMC +1" / "AMC+1": a time-shifted feed of AMC.
+        if (w.size > 1 && TIMESHIFT.matches(w.last()) && w.last().length == 2) w.removeAt(w.size - 1)
+        if (w.isNotEmpty() && w.last().length > 2 && TIMESHIFT.containsMatchIn(w.last())) w[w.size - 1] = w.last().dropLast(2)
+        w.removeAll { it in FEED_WORDS }
+        // A lone trailing "E" or "W" after the name: "AMC E", "AMC W".
+        if (w.size > 1 && (w.last() == "E" || w.last() == "W")) w.removeAt(w.size - 1)
+        while (w.size > 1 && w.last() in NETWORK_SUFFIX) w.removeAt(w.size - 1)
+        return w.joinToString(" ").ifEmpty { cleanName.uppercase(Locale.ROOT).trim() }
+    }
+
+    private val Q_4K = Regex("(?i)(?<![\\p{L}\\p{N}])(?:4K|UHD|2160P?)(?![\\p{L}\\p{N}])")
+    private val Q_FHD = Regex("(?i)(?<![\\p{L}\\p{N}])(?:FHD|1080[PI]?)(?![\\p{L}\\p{N}])")
+    private val Q_HD = Regex("(?i)(?<![\\p{L}\\p{N}])(?:HD|720P?|ᴴᴰ)(?![\\p{L}\\p{N}])")
+    private val Q_SD = Regex("(?i)(?<![\\p{L}\\p{N}])(?:SD|480P?|360P?)(?![\\p{L}\\p{N}])")
+    private val Q_FPS = Regex("(?i)(?:50|60)\\s?FPS")
+    private val Q_RAW = Regex("(?i)(?<![\\p{L}\\p{N}])RAW(?![\\p{L}\\p{N}])|ᴿᴬᵂ|ʀᴀᴡ")
+    private val Q_BACKUP = Regex("(?i)(?<![\\p{L}\\p{N}])(?:BACKUP|ALT|ALTERNATE|OPT|OPTION)(?![\\p{L}\\p{N}])|[(\\[]\\s*\\d{1,2}\\s*[)\\]]")
+    private val Q_WEST = Regex("(?i)(?<![\\p{L}\\p{N}])(?:WEST|PACIFIC|MOUNTAIN)(?![\\p{L}\\p{N}])|[(\\[]\\s*W\\s*[)\\]]|\\sW$")
+    private val Q_SHIFT = Regex("\\+\\s?\\d(?![\\p{N}])")
+
+    /**
+     * How good one feed of a network looks from its name: 4K over FHD over HD over SD, 60 fps and RAW feeds up,
+     * backups, West / Pacific and time-shifted (+1) feeds down, a feed marked US up.
+     */
+    fun feedScore(rawName: String, group: String, country: String): Int {
+        val t = "$rawName $group"
+        var s = when {
+            Q_4K.containsMatchIn(t) -> 40
+            Q_FHD.containsMatchIn(t) -> 30
+            Q_HD.containsMatchIn(t) -> 20
+            Q_SD.containsMatchIn(t) -> -10
+            else -> 0
+        }
+        if (Q_FPS.containsMatchIn(t)) s += 6
+        if (Q_RAW.containsMatchIn(t)) s += 4
+        if (Q_BACKUP.containsMatchIn(rawName)) s -= 30
+        if (Q_WEST.containsMatchIn(rawName)) s -= 8
+        if (Q_SHIFT.containsMatchIn(rawName)) s -= 15
+        if (country == "US") s += 10
+        return s
+    }
+
+    /**
+     * Groups [items] by network. Each network's feeds are best first ([feedScore], then playlist order). Networks with a
+     * US feed come first, each part A to Z by the best feed's clean name.
+     */
+    internal fun groupNetworks(items: List<Int>, channels: List<Channel>, names: List<String>, countries: List<String>): List<LiveNetwork> {
+        val byKey = LinkedHashMap<String, ArrayList<Int>>()
+        for (i in items) byKey.getOrPut(networkKey(names[i])) { ArrayList() }.add(i)
+        val out = byKey.map { (key, feeds) ->
+            val scores = feeds.associateWith { feedScore(channels[it].name, channels[it].group, countries[it]) }
+            val sorted = feeds.sortedWith(compareByDescending<Int> { scores.getValue(it) }.thenBy { it })
+            LiveNetwork(key, sorted.toIntArray(), feeds.any { countries[it] == "US" })
+        }
+        return out.sortedWith(compareByDescending<LiveNetwork> { it.us }.thenBy { names[it.primary].lowercase(Locale.ROOT) })
+    }
+
+    /** Jump letter for a network name: "A" to "Z", "#" for anything else ("123 GO!", "¡Hola!"). */
+    fun letterOf(name: String): String {
+        val c = name.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar() ?: return "#"
+        return if (c in 'A'..'Z') c.toString() else "#"
+    }
+
+    /**
+     * [networks] for one profile: networks holding a favorite channel come first (in favorites order), then ones
+     * watched lately (most recent first), then the rest as they were. In a pinned network the feed the profile picked
+     * becomes the first feed. Returns the list and how many of its networks are pinned.
+     */
+    fun personalize(networks: List<LiveNetwork>, channels: List<Channel>, favorites: List<String>, recents: List<String>): Pair<List<LiveNetwork>, Int> {
+        if (favorites.isEmpty() && recents.isEmpty()) return networks to 0
+        val where = HashMap<String, Int>() // stream URL -> network position
+        networks.forEachIndexed { n, net -> for (f in net.feeds) where[channels[f].url] = n }
+        val pinned = LinkedHashMap<Int, String>() // network position -> the URL that pinned it
+        for (u in favorites + recents) { val n = where[u] ?: continue; if (n !in pinned) pinned[n] = u }
+        if (pinned.isEmpty()) return networks to 0
+        val first = pinned.map { (n, url) ->
+            val net = networks[n]
+            val pick = net.feeds.first { channels[it].url == url }
+            LiveNetwork(net.key, intArrayOf(pick) + net.feeds.filter { it != pick }, net.us)
+        }
+        return (first + networks.filterIndexed { n, _ -> n !in pinned }) to first.size
+    }
+
     // ---------------------------------------------------------------- index
 
     @Volatile private var cached: LiveIndex? = null
@@ -455,6 +580,7 @@ object LiveOrganizer {
         val names = ArrayList<String>(n)
         val sectionOf = ArrayList<String>(n)
         val subOf = ArrayList<String>(n)
+        val countries = ArrayList<String>(n)
         val seen = HashSet<String>(n * 2)
         val groupLabels = HashMap<String, String>()
         for (ch in source) {
@@ -473,6 +599,7 @@ object LiveOrganizer {
             names.add(cleanName(ch.name))
             sectionOf.add(sec)
             subOf.add(sub)
+            countries.add(c)
         }
 
         // Bucket indices by section, then by sub-group (both keep playlist order).
@@ -495,10 +622,13 @@ object LiveOrganizer {
                 val rest = ordered.drop(MAX_CHIPS - 1).flatMap { it.second }.sorted()
                 ordered.take(MAX_CHIPS - 1) + ("More" to rest)
             }
+            // Entertainment: one entry per network (its other feeds nested under it), browsed A to Z.
+            val networks = if (name == ENTERTAINMENT) groupNetworks(idx, channels, names, countries) else emptyList()
             LiveSection(
                 name = name,
                 items = idx.toIntArray(),
-                subgroups = if (chips.size > 1) chips.map { LiveSubgroup(it.first, it.second.toIntArray()) } else emptyList(),
+                subgroups = if (chips.size > 1 && networks.isEmpty()) chips.map { LiveSubgroup(it.first, it.second.toIntArray()) } else emptyList(),
+                networks = networks,
             )
         }
         return LiveIndex(source, channels, names.toTypedArray(), sections)

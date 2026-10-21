@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
@@ -17,6 +18,7 @@ import com.mcd.tv.data.RemoteNav
 import com.mcd.tv.data.PlayMeta
 import kotlinx.coroutines.launch
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.ScreenAwake
 import com.mcd.tv.data.Service
 import com.mcd.tv.player.PlayerScreen
 import com.mcd.tv.ui.AskJarvisScreen
@@ -117,13 +119,93 @@ class Nav(
 class MainActivity : ComponentActivity() {
     /** Any remote key means someone is watching: resets the "Still watching?" count. */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (event.action == android.view.KeyEvent.ACTION_DOWN) com.mcd.tv.data.StillWatching.counter.keyPressed()
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            com.mcd.tv.data.StillWatching.counter.keyPressed()
+            com.mcd.tv.data.WallRecorder.lastKeyAt = System.currentTimeMillis()
+        }
         return super.dispatchKeyEvent(event)
+    }
+
+    /** This activity's window, as the keep-screen-on guard sees it. */
+    private val keepOnWindow = object : com.mcd.tv.data.KeepOnWindow {
+        override var keepOn: Boolean
+            get() = (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
+            set(on) {
+                if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+    }
+
+    // The keep-screen-on self-check: about once a minute while Jarvis is in front (see KeepAwakeGuard).
+    private val awakeCheck = android.os.Handler(android.os.Looper.getMainLooper())
+    private val awakeTick = object : Runnable {
+        override fun run() {
+            ScreenAwake.guard.check()
+            com.mcd.tv.data.WallRecorder.tick()
+            awakeCheck.postDelayed(this, ScreenAwake.CHECK_EVERY_MS)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ScreenAwake.guard.resumed()
+        com.mcd.tv.data.WallRecorder.resumed()
+        awakeCheck.removeCallbacks(awakeTick)
+        awakeCheck.postDelayed(awakeTick, ScreenAwake.CHECK_EVERY_MS)
+    }
+
+    override fun onPause() {
+        awakeCheck.removeCallbacks(awakeTick)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        ScreenAwake.guard.stopped(isChangingConfigurations)
+        com.mcd.tv.data.WallRecorder.stopped(this, isChangingConfigurations)
+        super.onStop()
+    }
+
+    // The window can be rebuilt (a display change, or Android restoring the app). The back stack starts over
+    // then, so remember that the Wall was up and open it again.
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(WALL_UP, ScreenAwake.holds.has(ScreenAwake.WALL))
+    }
+
+    // Screen off with the Wall up is Fire OS sleep (or the TV turning the stick off over HDMI-CEC).
+    private val screenEvents = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+            when (intent.action) {
+                android.content.Intent.ACTION_SCREEN_OFF -> com.mcd.tv.data.WallRecorder.screen(false)
+                android.content.Intent.ACTION_SCREEN_ON -> com.mcd.tv.data.WallRecorder.screen(true)
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(screenEvents) }
+        ScreenAwake.guard.detach(keepOnWindow)
+        super.onDestroy()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Lapses go to logcat (adb logcat -s JarvisAwake) and to Settings > About and help.
+        ScreenAwake.log = { msg ->
+            android.util.Log.i("JarvisAwake", msg)
+            if (msg.contains("lapsed")) com.mcd.tv.data.RecentErrors.note(msg)
+        }
+        ScreenAwake.guard.attach(keepOnWindow)
         Prefs.init(this)
+        // Why the Wall stopped last time (sleep, the screensaver, a crash, Android ending Jarvis), and whether to
+        // open it again because Jarvis ended while the Wall was in front. See WallWatch.
+        com.mcd.tv.data.WallRecorder.installCrashHook()
+        val wallLost = com.mcd.tv.data.WallRecorder.diagnoseOnStart(this)
+        // Not exported: only the system sends these.
+        androidx.core.content.ContextCompat.registerReceiver(this, screenEvents, android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_SCREEN_OFF)
+            addAction(android.content.Intent.ACTION_SCREEN_ON)
+        }, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
         com.mcd.tv.data.IptvVod.init(this)
         com.mcd.tv.ui.AppImages.install(this)
         if (intent?.getBooleanExtra("qa_mode", false) == true) { LocalWeb.qaMode = true; Prefs.qaMode = true }
@@ -168,9 +250,20 @@ class MainActivity : ComponentActivity() {
             "wall" -> Screen.Wall
             else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
         }
-        setContent { McdTheme { App(startScreen) } }
+        // Rebuilt while the Wall was up: open the Wall again. This wins over a deep link, because a rebuilt
+        // activity gets its first launch intent again, which is old news by then.
+        // A rebuild gets its old launch intent again, so the Wall wins there. After Jarvis ended in front, a fresh
+        // launch with its own deep link wins; a plain launch (the Fire TV home screen) opens the Wall again.
+        val rebuilt = savedInstanceState?.getBoolean(WALL_UP) == true
+        val reopen = rebuilt || (wallLost && startScreen == null)
+        if (rebuilt) ScreenAwake.log("Wall reopened after the app was rebuilt")
+        else if (reopen) ScreenAwake.log("Wall reopened after Jarvis ended while it was in front")
+        setContent { McdTheme { App(if (reopen) Screen.Wall else startScreen) } }
     }
 
+    private companion object {
+        const val WALL_UP = "wall_up"
+    }
 }
 
 @Composable
@@ -213,6 +306,21 @@ private fun App(startScreen: Screen? = null) {
     }
 
     BackHandler(enabled = stack.size > 1) { pop() }
+
+    // Wall mode: the screen stays on for as long as the Wall is anywhere in the back stack, also while a title
+    // opened from the phone plays on top of it. Held here, not in WallScreen, so no other screen can clear it.
+    val wallUp = stack.contains(Screen.Wall)
+    val wallCtx = androidx.compose.ui.platform.LocalContext.current
+    DisposableEffect(wallUp) {
+        val hold = if (wallUp) ScreenAwake.holds.acquire(ScreenAwake.WALL) else null
+        // A beat on each change, so a Wall closed with BACK is never taken for a lost one.
+        com.mcd.tv.data.WallRecorder.beat()
+        if (wallUp) com.mcd.tv.data.WallRecorder.checkSleepSettings(wallCtx)
+        onDispose {
+            hold?.release()
+            com.mcd.tv.data.WallRecorder.beat()
+        }
+    }
 
     // A new version is out: open "Update Jarvis" once per launch, on the Home screen (never mid-movie).
     // Skipped in the automated QA run, which drives screens itself.
