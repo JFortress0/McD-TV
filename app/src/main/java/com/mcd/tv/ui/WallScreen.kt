@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,7 +48,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,7 +73,7 @@ import java.util.Locale
  * Now and then it shows the whole month instead: by default the last minute of every half hour (pref wall_cycle, set
  * on the Control page or in Settings, see WallCycle). Remote: OK switches views (and stops the automatic switch
  * for 10 minutes), LEFT / RIGHT change the photo, BACK leaves.
- * The screen stays on while this page is open. From 11 PM to 6 AM it dims.
+ * The screen stays on while the Wall is open (MainActivity, ScreenAwake). From 11 PM to 6 AM it dims.
  */
 
 private const val PHOTO_MS = 30_000L
@@ -87,12 +85,7 @@ private enum class WallView { Agenda, Month }
 
 @Composable
 fun WallScreen(nav: Nav) {
-    // Keep the TV awake while the wall is up.
-    val view = LocalView.current
-    DisposableEffect(Unit) {
-        view.keepScreenOn = true
-        onDispose { view.keepScreenOn = false }
-    }
+    // The screen stays on while the Wall is in the back stack: MainActivity holds it (ScreenAwake.WALL).
 
     var feed by remember { mutableStateOf(Wall.cachedFeed()) }
     var feedError by remember { mutableStateOf<String?>(null) }

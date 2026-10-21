@@ -145,6 +145,101 @@ else
   fail "Settings: one BACK closes the keyboard and the editor"
 fi
 
+# 4w) The Wall keeps the screen on past the idle timeout, also after an HDMI-style density change and after Android
+# rebuilds the activity. A screen with no hold must go to sleep first (control), so this test can fail.
+# Soak protocol for a real Fire TV: tools/soak/WALL_SOAK.md.
+wake() { adb shell dumpsys power | grep -o 'mWakefulness=[A-Za-z]*' | head -1 | cut -d= -f2; }
+keep_flag() { adb shell dumpsys window windows | grep -A40 'com.mcd.tv/com.mcd.tv.MainActivity' | grep -q KEEP_SCREEN_ON; }
+wall_shown() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml qa-out/ui-wall-now.xml >/dev/null 2>&1; grep -q "JARVIS WALL\|Not set up yet" qa-out/ui-wall-now.xml; }
+adb shell settings put system screen_off_timeout 15000
+# Emulators often stay awake while "plugged in": turn that off so the idle timeout can act.
+adb shell settings put global stay_on_while_plugged_in 0
+adb shell svc power stayon false
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen browse >/dev/null
+sleep 35
+CTRL=$(wake); echo "      control (Browse, no hold) after 35 s: $CTRL" | tee -a "$R"
+[ "$CTRL" != "Awake" ] && pass "Wall test control: a screen with no hold goes to sleep" || fail "Wall test control: a screen with no hold goes to sleep (still $CTRL)"
+adb shell input keyevent KEYCODE_WAKEUP; sleep 2
+adb logcat -c
+# Open the Wall the way a person does (Settings > Jarvis Wall > Open Wall), not with "--es screen wall": a rebuilt
+# activity gets its launch intent again, so a deep link would bring the Wall back even without the fix.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen settings:wall >/dev/null
+sleep 8
+# Two RIGHTs: the first may only end touch mode (focus then goes to the rail), the second reaches Open Wall.
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 6
+wall_shown && pass "Wall: opens from Settings" || fail "Wall: opens from Settings"
+keep_flag && pass "Wall: window has FLAG_KEEP_SCREEN_ON" || fail "Wall: window has FLAG_KEEP_SCREEN_ON"
+sleep 30
+W=$(wake); shot wall-idle
+[ "$W" = "Awake" ] && pass "Wall: screen stays on past the idle timeout" || fail "Wall: screen stays on past the idle timeout ($W)"
+# An HDMI mode change can change the display density. The Wall must stay up and held, with no rebuild.
+adb shell wm density 240; sleep 6
+if wall_shown && keep_flag; then pass "Wall: stays up and held after a density change"; else fail "Wall: stays up and held after a density change"; fi
+adb shell wm density reset; sleep 4
+# Android rebuilds the activity: HOME, then the system kills the app in the background (as low memory does), then
+# it is opened again. Android restores the task from saved state, with its first launch intent (Settings) again:
+# the Wall must win. ("settings put global always_finish_activities 1" does not take effect without the
+# Developer options screen, so it is not used.)
+PID_BEFORE=$(adb shell pidof com.mcd.tv | tr -d '\r')
+adb shell input keyevent KEYCODE_HOME; sleep 4
+adb shell am kill com.mcd.tv; sleep 2
+adb shell am start -n com.mcd.tv/.MainActivity >/dev/null; sleep 10
+PID_AFTER=$(adb shell pidof com.mcd.tv | tr -d '\r')
+echo "      app process before $PID_BEFORE, after $PID_AFTER" | tee -a "$R"
+[ -n "$PID_AFTER" ] && [ "$PID_BEFORE" != "$PID_AFTER" ] && pass "Wall: the app process was really replaced" || fail "Wall: the app process was really replaced"
+shot wall-rebuilt
+if wall_shown && keep_flag; then pass "Wall: comes back held after the activity is rebuilt"; else fail "Wall: comes back held after the activity is rebuilt"; fi
+sleep 30
+W=$(wake); [ "$W" = "Awake" ] && pass "Wall: still awake after the rebuild" || fail "Wall: still awake after the rebuild ($W)"
+# The guard's log: the rebuild is noted, and the self-check found no lapse while Jarvis was in front.
+adb logcat -d -s JarvisAwake:I | sed 's/^/      awake: /' | tee -a "$R"
+adb logcat -d -s JarvisAwake:I | grep -q "Wall reopened after the app was rebuilt" && pass "Wall: rebuild logged" || fail "Wall: rebuild logged"
+adb logcat -d -s JarvisAwake:I | grep -q "lapsed" && fail "Wall: no keep-screen-on lapse" || pass "Wall: no keep-screen-on lapse"
+adb shell settings put system screen_off_timeout 2147483647
+
+# 4x) Why the Wall stopped (WallWatch): the paths keep-screen-on cannot cover, and the evidence Jarvis leaves.
+# (a) Inactivity sleep: Android TV's attentive_timeout (Android 10+, like Fire OS 8) puts the TV to sleep after a
+# time with no remote use, even while a window holds keep-screen-on. Jarvis must warn about it and log the sleep.
+adb shell input keyevent KEYCODE_WAKEUP; sleep 2
+adb logcat -c
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8
+keep_flag && pass "Wall 4x: window has FLAG_KEEP_SCREEN_ON before the inactivity test" || fail "Wall 4x: window has FLAG_KEEP_SCREEN_ON before the inactivity test"
+# A remote key now (RIGHT: next photo), then a 20 s inactivity sleep. Awake at 5 s, asleep at 45 s, Wall held.
+adb shell input keyevent KEYCODE_DPAD_RIGHT
+adb shell settings put secure attentive_timeout 20000
+sleep 5
+W=$(wake); echo "      wakefulness 5 s after the key, attentive_timeout=20000, Wall held: $W" | tee -a "$R"
+[ "$W" = "Awake" ] && pass "Wall 4x: awake and held right after a key" || fail "Wall 4x: awake and held right after a key ($W)"
+sleep 40
+W=$(wake); echo "      wakefulness 45 s after the key with the Wall held: $W" | tee -a "$R"
+[ "$W" != "Awake" ] && pass "Inactivity sleep (attentive_timeout) overrides keep-screen-on" || fail "Inactivity sleep (attentive_timeout) overrides keep-screen-on (still $W)"
+adb shell settings delete secure attentive_timeout >/dev/null
+adb shell input keyevent KEYCODE_WAKEUP; sleep 4
+adb logcat -d -s JarvisAwake:I | sed 's/^/      awake: /' | tee -a "$R"
+adb logcat -d -s JarvisAwake:I | grep -q "attentive_timeout=20000" && pass "Wall 4x: sleep settings logged" || fail "Wall 4x: sleep settings logged"
+adb logcat -d -s JarvisAwake:I | grep -q "The TV went to sleep while the Wall was up" && pass "Wall 4x: sleep noted" || fail "Wall 4x: sleep noted"
+adb logcat -d -s JarvisAwake:I | grep "The TV went to sleep" | grep -q "Cause: this TV sleeps after 20 s with no remote use (attentive_timeout)" && pass "Wall 4x: the sleep note names attentive_timeout" || fail "Wall 4x: the sleep note names attentive_timeout"
+# The warning when the Wall opens with attentive_timeout already on (the usual case on a TV).
+adb logcat -c
+adb shell settings put secure attentive_timeout 14400000
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8
+adb logcat -d -s JarvisAwake:I | grep -q "turns itself off after 4 h 0 min" && pass "Wall 4x: inactivity sleep warning when the Wall opens" || fail "Wall 4x: inactivity sleep warning when the Wall opens"
+adb shell settings delete secure attentive_timeout >/dev/null
+# (b) Jarvis ended while the Wall is in front (as a crash or a low-memory kill would): opening Jarvis again, with no
+# deep link, brings the Wall back, and the log says why it stopped.
+adb shell am start -S -n com.mcd.tv/.MainActivity --es screen wall >/dev/null; sleep 8
+adb logcat -c
+adb shell am force-stop com.mcd.tv; sleep 2
+# "--ez qa true" is not a screen deep link (the Wall must come back by itself); it starts the setup page for 4b.
+adb shell am start -n com.mcd.tv/.MainActivity --ez qa true >/dev/null; sleep 10
+shot wall-ended-in-front
+if wall_shown && keep_flag; then pass "Wall 4x: back and held after Jarvis ended in front"; else fail "Wall 4x: back and held after Jarvis ended in front"; fi
+adb logcat -d -s JarvisAwake:I | sed 's/^/      awake: /' | tee -a "$R"
+adb logcat -d -s JarvisAwake:I | grep -q "The Wall stopped" && pass "Wall 4x: why it stopped is logged" || fail "Wall 4x: why it stopped is logged"
+adb logcat -d -s JarvisAwake:I | grep -q "Wall reopened after Jarvis ended while it was in front" && pass "Wall 4x: reopen logged" || fail "Wall 4x: reopen logged"
+
 # 4b) Live TV with a sample M3U playlist served from the test machine (emulator sees it at 10.0.2.2).
 mkdir -p qa-m3u
 cat > qa-m3u/test.m3u <<'M3U'
