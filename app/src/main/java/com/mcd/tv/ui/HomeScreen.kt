@@ -118,7 +118,7 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
     val suggestions by rememberLoad(Prefs.activeProfile) { com.mcd.tv.data.Recommender.forYou() }
     // Because You Watched: More Like This for the latest title this profile finished.
     val because by rememberLoad(Prefs.activeProfile) { com.mcd.tv.data.Recommender.becauseYouWatched() }
-    // History: More Like <a history title this profile watched>, else Ken Burns. Profiles whose Taste likes history (Dad).
+    // History: Ken Burns, for profiles whose Taste likes history (Dad). Never built from what was watched.
     val historyRow by rememberLoad(Prefs.activeProfile) {
         if (kids || !com.mcd.tv.data.HistoryHub.homeRowFor()) null else com.mcd.tv.data.HistoryHub.homeRow()
     }

@@ -11,32 +11,30 @@ import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 
 /**
- * The History hub (Browse > History, and the History row on Home). Gathers the shelves from TMDB and the
- * profile's own history; the rules live in HistoryEras.kt.
+ * The History hub (Browse > History, and the History row on Home). Gathers candidates from TMDB; the rules
+ * that pick and order each section live in HistoryEras.kt.
+ *  - Documentaries: Documentary-genre titles about history, and every Ken Burns film.
+ *  - History: history-genre programming (History-genre movies, history series).
+ *  - History Movies: fiction films set in a historical period; the hand-placed marquee dramas lead.
  *  - Ken Burns: his real crew credits (TMDB person lookup), every documentary he made.
- *  - Historical Dramas: History-genre dramas found by era and presidential plot keywords, kept only when the
- *    keywords say they depict one of the eras (or a president); the hand-placed marquee dramas lead.
- *  - By Era: titles found by each era's plot keywords, kept only when their own keywords place them there.
- *  - More Like <title>: More Like This (Recommender) for the newest history title the profile watched.
+ *  - By Era: titles whose own plot keywords place them in the era, in story order.
+ * Every section comes from catalog metadata only (genres, plot keywords, credits). Nothing here reads what
+ * a profile watched, liked or favorited, so a new profile sees the same sections as everyone else.
+ * Crime and plain biopics are left out (HistoryEras.exclusion). The two profile settings still apply:
+ * "Not for me" titles and Settings > Taste "Topics to skip" (Ken Burns keeps his whole filmography apart
+ * from "Not for me").
  * Every shelf lists titles whether or not a source has them yet, like the rest of Jarvis: Detail and
- * Sources show what can play. "Not for me" titles and Settings > Taste "Topics to skip" are left out
- * (Ken Burns keeps his whole filmography apart from "Not for me").
+ * Sources show what can play.
  *
- * Lookups that never change (keyword ids, marquee title ids, Ken Burns' id, each title's eras) are kept on
- * the TV, so only the first visit makes many small requests.
+ * Lookups that never change (keyword ids, marquee title ids, Ken Burns' id, each title's keywords) are kept
+ * on the TV, so only the first visit makes many small requests.
  */
 object HistoryHub {
     private val net = Semaphore(6) // parallel TMDB requests
     private const val SHELF_TTL_MS = 15 * 60_000L
     private const val CLASS_MAX = 1500
-    /** Bump when the rules in HistoryEras change, so saved eras are worked out again. */
-    private const val CLASS_VERSION = 3
-
-    /** Genres the personal row keeps: History, Documentary, War, War & Politics, Western. */
-    private val HISTORYISH = setOf(36, 99, 10752, 10768, 37)
-
-    /** A shelf of the hub. [id]: "more", "kenburns", "dramas" or "era:<era id>". */
-    data class Shelf(val id: String, val label: String, val titles: List<Title>)
+    /** Bump when the saved keyword format changes. 4: every title's keywords (the exclusions need them). */
+    private const val CLASS_VERSION = 4
 
     private fun keyOf(t: Title) = "${t.type}:${t.id}"
 
@@ -142,80 +140,75 @@ object HistoryHub {
         return id
     }
 
-    // ---------------------------------------------------------------- eras of each title
+    // ---------------------------------------------------------------- keywords of each title
 
-    private class Classified(val result: EraResult, val keywords: List<String>)
-    private val classCache = LinkedHashMap<String, Classified>()
-    @Volatile private var classLoaded = false
+    private val kwCache = LinkedHashMap<String, List<String>>()
+    @Volatile private var kwLoaded = false
 
-    private fun loadClassCache() {
-        if (classLoaded) return
-        synchronized(classCache) {
-            if (classLoaded) return
+    private fun loadKwCache() {
+        if (kwLoaded) return
+        synchronized(kwCache) {
+            if (kwLoaded) return
             runCatching {
                 val o = JSONObject(Prefs.json("history_class").ifBlank { "{}" })
                 if (o.optInt("v") == CLASS_VERSION) {
                     val m = o.optJSONObject("m") ?: JSONObject()
-                    m.keys().forEach { k -> classCache[k] = decode(m.optString(k)) }
+                    m.keys().forEach { k -> kwCache[k] = m.optString(k).split(";").filter { it.isNotBlank() } }
                 }
             }
-            classLoaded = true
+            kwLoaded = true
         }
     }
 
-    private fun saveClassCache() = synchronized(classCache) {
-        while (classCache.size > CLASS_MAX) classCache.remove(classCache.keys.first())
+    private fun saveKwCache() = synchronized(kwCache) {
+        while (kwCache.size > CLASS_MAX) kwCache.remove(kwCache.keys.first())
         val m = JSONObject()
-        classCache.forEach { (k, c) -> m.put(k, encode(c)) }
+        kwCache.forEach { (k, kws) -> m.put(k, kws.joinToString(";")) }
         Prefs.putJson("history_class", JSONObject().put("v", CLASS_VERSION).put("m", m).toString())
     }
 
-    /** "founding:4,civilwar:2|p|keyword;keyword". Keywords are kept only for titles on a shelf (Topics to skip). */
-    private fun encode(c: Classified): String =
-        c.result.eras.joinToString(",") { "${it.id}:${c.result.scores[it] ?: 0}" } + "|" + (if (c.result.presidential) "p" else "") + "|" +
-            c.keywords.take(30).joinToString(";") { it.replace(";", " ").replace("|", " ") }
-
-    private fun decode(s: String): Classified {
-        val parts = s.split("|")
-        val scores = parts.getOrElse(0) { "" }.split(",").mapNotNull { e ->
-            val era = Era.fromId(e.substringBefore(":")) ?: return@mapNotNull null
-            era to (e.substringAfter(":").toIntOrNull() ?: HistoryEras.MIN_SCORE)
-        }
-        val kws = parts.getOrElse(2) { "" }.split(";").filter { it.isNotBlank() }
-        return Classified(EraResult(scores.map { it.first }, parts.getOrElse(1) { "" } == "p", scores.toMap()), kws)
-    }
-
-    /** Eras of each title, from its plot keywords (one small request per title the TV has not seen). */
-    private suspend fun classifyAll(titles: List<Title>): Map<String, Classified> = coroutineScope {
-        loadClassCache()
-        val out = HashMap<String, Classified>()
+    /** Plot keywords of each title, normalized (one small request per title the TV has not seen). */
+    private suspend fun keywordsOf(titles: List<Title>): Map<String, List<String>> = coroutineScope {
+        loadKwCache()
+        val out = HashMap<String, List<String>>()
         val missing = ArrayList<Title>()
-        synchronized(classCache) {
-            titles.distinctBy(::keyOf).forEach { t -> classCache[keyOf(t)]?.let { out[keyOf(t)] = it } ?: missing.add(t) }
+        synchronized(kwCache) {
+            titles.distinctBy(::keyOf).forEach { t -> kwCache[keyOf(t)]?.let { out[keyOf(t)] = it } ?: missing.add(t) }
         }
         val fetched = missing.map { t -> async { t to runCatching { net.withPermit { Tmdb.keywordNames(t.type, t.id) } }.getOrNull() } }.awaitAll()
         var changed = false
         for ((t, names) in fetched) {
-            val r = HistoryEras.classify(t.name, t.year.toIntOrNull() ?: 0, t.genreIds.toSet(), names ?: emptyList(), t.language)
-            val c = Classified(r, if (r.eras.isNotEmpty() || r.presidential) names.orEmpty().map(HistoryEras::norm) else emptyList())
-            out[keyOf(t)] = c
-            if (names != null) { synchronized(classCache) { classCache[keyOf(t)] = c }; changed = true } // offline: try again next time
+            val kws = names.orEmpty().map(HistoryEras::norm).filter { it.isNotEmpty() }.take(30)
+            out[keyOf(t)] = kws
+            if (names != null) { synchronized(kwCache) { kwCache[keyOf(t)] = kws }; changed = true } // offline: try again next time
         }
-        if (changed) saveClassCache()
+        if (changed) saveKwCache()
         out
+    }
+
+    /** Titles as the section rules see them: catalog metadata only. */
+    private suspend fun catalog(titles: List<Title>): List<CatalogTitle> {
+        val kws = keywordsOf(titles)
+        val kb = kenBurnsKeys()
+        return titles.distinctBy(::keyOf).map { t ->
+            CatalogTitle(
+                keyOf(t), t.name, t.year.toIntOrNull() ?: 0, t.genreIds.toSet(), kws[keyOf(t)].orEmpty(),
+                t.language, t.votes, t.rating, american(t), keyOf(t) in kb,
+            )
+        }
     }
 
     // ---------------------------------------------------------------- filters
 
     /** "Not for me" titles, and titles whose keywords or name hit a Settings > Taste "Topics to skip" word. */
-    private fun blocked(profile: String): (Title, Classified?) -> Boolean {
+    private fun blocked(profile: String): (Title, List<String>) -> Boolean {
         val hidden = Library.hidden(profile).map(::keyOf).toSet()
         val words = Recommender.choicesJson(profile).optJSONArray("avoidWords")
         val avoid = if (words == null) emptyList() else (0 until words.length()).map { HistoryEras.norm(words.optString(it)) }.filter { it.isNotEmpty() }
-        return { t, c ->
+        return { t, kws ->
             keyOf(t) in hidden || avoid.any { w ->
                 val name = " ${HistoryEras.norm(t.name)} "
-                name.contains(" $w ") || c?.keywords.orEmpty().any { k -> " $k ".contains(" $w ") }
+                name.contains(" $w ") || kws.any { k -> " $k ".contains(" $w ") }
             }
         }
     }
@@ -224,6 +217,28 @@ object HistoryHub {
 
     // ---------------------------------------------------------------- shelves
 
+    private const val NOT_KIDS_MOVIE = "16,10751,14,878,27"
+    private const val NOT_KIDS_TV = "16,10762,10765"
+
+    /** TMDB discover pages, in parallel; a failed page is left out. (type, page, params) */
+    private suspend fun discoverAll(queries: List<Triple<String, Int, Map<String, String>>>): List<Title> = coroutineScope {
+        queries.map { (type, page, p) ->
+            async { runCatching { net.withPermit { Tmdb.discover(type, p + ("sort_by" to "vote_count.desc"), page) } }.getOrDefault(emptyList()) }
+        }.awaitAll().flatten()
+    }
+
+    /**
+     * One section: candidates from TMDB, picked and ordered by [pick] (HistoryEras), then the profile's
+     * "Not for me" and "Topics to skip" taken out.
+     */
+    private suspend fun build(profile: String, candidates: List<Title>, pick: (List<CatalogTitle>) -> List<String>): List<Title> {
+        val byKey = candidates.associateBy(::keyOf)
+        val cat = catalog(candidates)
+        val kws = cat.associate { it.key to it.keywords }
+        val block = blocked(profile)
+        return pick(cat).mapNotNull(byKey::get).filterNot { block(it, kws[keyOf(it)].orEmpty()) }.take(60)
+    }
+
     /** Titles that depict [era]: the marquee titles first, then the best keyword matches. */
     suspend fun eraShelf(era: Era, profile: String = Prefs.activeProfile, max: Int = 30): List<Title> =
         cached(profile, "era:${era.id}") { eraShelfInner(era, profile) }.take(max)
@@ -231,185 +246,128 @@ object HistoryHub {
     private suspend fun eraShelfInner(era: Era, profile: String): List<Title> = coroutineScope {
         val marquee = async { marqueeTitles().filter { era in it.first.eras }.map { it.second } }
         val ids = keywordIds(HistoryEras.DISCOVER_TERMS.getValue(era)).joinToString("|")
-        val pools = if (ids.isEmpty()) emptyList() else listOf("movie" to 1, "movie" to 2, "tv" to 1).map { (type, page) ->
-            async {
-                runCatching {
-                    net.withPermit {
-                        Tmdb.discover(
-                            type,
-                            mapOf(
-                                "with_keywords" to ids, "sort_by" to "vote_count.desc",
-                                "vote_count.gte" to (if (type == "movie") "40" else "10"),
-                                "without_genres" to (if (type == "movie") "16,10751,14,878,27" else "16,10762,10765"),
-                            ),
-                            page,
-                        )
-                    }
-                }.getOrDefault(emptyList())
-            }
-        }
-        val lead = marquee.await()
-        val found = pools.awaitAll().flatten()
-        val cls = classifyAll(lead + found)
-        val block = blocked(profile)
-        val leadKeys = lead.map(::keyOf).toSet()
-        val rest = found.distinctBy(::keyOf)
-            .filter { keyOf(it) !in leadKeys && cls[keyOf(it)]?.result?.eras?.contains(era) == true }
-            .sortedByDescending { HistoryEras.rank(cls[keyOf(it)]?.result?.scores?.get(era) ?: 0, it.votes, it.rating, american(it)) }
-        android.util.Log.i("HistoryHub", "era ${era.id}: ${lead.size} marquee, found by keywords: " +
-            rest.take(12).joinToString { "${it.name} (${it.year}, ${cls[keyOf(it)]?.result?.scores?.get(era)})" })
-        (lead + rest).filterNot { block(it, cls[keyOf(it)]) }.take(60)
-    }
-
-    /** Biopics and period dramas: Young Washington and its kin (founding era, wars, presidents). */
-    suspend fun dramas(profile: String = Prefs.activeProfile, max: Int = 30): List<Title> =
-        cached(profile, "dramas") { dramasInner(profile) }.take(max)
-
-    private suspend fun dramasInner(profile: String): List<Title> = coroutineScope {
-        val marquee = async { marqueeTitles().filter { it.first.drama }.map { it.second } }
-        val terms = HistoryEras.DISCOVER_TERMS.filterKeys { it != Era.WEST }.values.flatten() + HistoryEras.PRESIDENTIAL_TERMS
-        val ids = keywordIds(terms).joinToString("|")
-        val queries = listOf(
-            Triple("movie", 1, mapOf("with_genres" to "36", "without_genres" to "99,16,10751,14,878,27", "vote_count.gte" to "150")),
-            Triple("movie", 2, mapOf("with_genres" to "36", "without_genres" to "99,16,10751,14,878,27", "vote_count.gte" to "150")),
-            Triple("tv", 1, mapOf("with_genres" to "18", "without_genres" to "99,16,10762,10765", "vote_count.gte" to "30")),
+        val found = if (ids.isEmpty()) emptyList() else discoverAll(
+            listOf("movie" to 1, "movie" to 2, "tv" to 1).map { (type, page) ->
+                Triple(
+                    type, page,
+                    mapOf(
+                        "with_keywords" to ids, "vote_count.gte" to (if (type == "movie") "40" else "10"),
+                        "without_genres" to (if (type == "movie") NOT_KIDS_MOVIE else NOT_KIDS_TV),
+                    ),
+                )
+            },
         )
-        val pools = if (ids.isEmpty()) emptyList() else queries.map { (type, page, p) ->
-            async {
-                runCatching { net.withPermit { Tmdb.discover(type, p + mapOf("with_keywords" to ids, "sort_by" to "vote_count.desc"), page) } }
-                    .getOrDefault(emptyList())
-            }
-        }
-        val lead = marquee.await()
-        val found = pools.awaitAll().flatten()
-        val cls = classifyAll(lead + found)
-        val block = blocked(profile)
-        val leadKeys = lead.map(::keyOf).toSet()
-        val rest = found.distinctBy(::keyOf)
-            .filter { t -> keyOf(t) !in leadKeys && cls[keyOf(t)]?.let { HistoryEras.isHistoricalDrama(t.genreIds.toSet(), it.result) } == true }
-            .sortedByDescending { HistoryEras.rank(cls[keyOf(it)]?.result?.best ?: 0, it.votes, it.rating, american(it)) }
-        (lead + rest).filterNot { block(it, cls[keyOf(it)]) }.take(60)
+        build(profile, marquee.await() + found) { HistoryEras.eraShelf(era, it) }
     }
 
-    /** Every documentary Ken Burns made, from his TMDB credits (see HistoryEras.kenBurnsOrder). */
-    suspend fun kenBurns(profile: String = Prefs.activeProfile): List<Title> = cached(profile, "kenburns") {
+    /** Documentaries: history documentaries (movies and series) and every Ken Burns film. */
+    suspend fun documentaries(profile: String = Prefs.activeProfile, max: Int = 30): List<Title> =
+        cached(profile, "docs") { documentariesInner(profile) }.take(max)
+
+    private suspend fun documentariesInner(profile: String): List<Title> = coroutineScope {
+        val marquee = async { marqueeTitles().map { it.second } }
+        val kb = async { kenBurnsOrNone() }
+        val ids = keywordIds(HistoryEras.HISTORY_DISCOVER_TERMS + HistoryEras.DISCOVER_TERMS.values.flatten()).joinToString("|")
+        val found = discoverAll(
+            listOf(
+                Triple("movie", 1, mapOf("with_genres" to "99,36", "vote_count.gte" to "20")),
+                Triple("movie", 2, mapOf("with_genres" to "99,36", "vote_count.gte" to "20")),
+            ) + (if (ids.isEmpty()) emptyList() else listOf(
+                Triple("movie", 1, mapOf("with_genres" to "99", "with_keywords" to ids, "vote_count.gte" to "20")),
+                Triple("tv", 1, mapOf("with_genres" to "99", "with_keywords" to ids, "vote_count.gte" to "5")),
+                Triple("tv", 2, mapOf("with_genres" to "99", "with_keywords" to ids, "vote_count.gte" to "5")),
+            )),
+        )
+        build(profile, marquee.await() + kb.await() + found, HistoryEras::documentaries)
+    }
+
+    /** History: history-genre programming, movies and series. */
+    suspend fun historyPrograms(profile: String = Prefs.activeProfile, max: Int = 30): List<Title> =
+        cached(profile, "history") { historyProgramsInner(profile) }.take(max)
+
+    private suspend fun historyProgramsInner(profile: String): List<Title> = coroutineScope {
+        val marquee = async { marqueeTitles().map { it.second } }
+        val ids = keywordIds(HistoryEras.HISTORY_DISCOVER_TERMS + HistoryEras.DISCOVER_TERMS.values.flatten()).joinToString("|")
+        val found = discoverAll(
+            listOf(
+                Triple("movie", 1, mapOf("with_genres" to "36", "without_genres" to NOT_KIDS_MOVIE, "vote_count.gte" to "150")),
+                Triple("movie", 2, mapOf("with_genres" to "36", "without_genres" to NOT_KIDS_MOVIE, "vote_count.gte" to "150")),
+            ) + (if (ids.isEmpty()) emptyList() else listOf(
+                Triple("tv", 1, mapOf("with_genres" to "99|10768|18", "with_keywords" to ids, "without_genres" to NOT_KIDS_TV, "vote_count.gte" to "10")),
+                Triple("tv", 2, mapOf("with_genres" to "99|10768|18", "with_keywords" to ids, "without_genres" to NOT_KIDS_TV, "vote_count.gte" to "10")),
+            )),
+        )
+        build(profile, marquee.await() + found, HistoryEras::historyPrograms)
+    }
+
+    /** History Movies: fiction films set in a historical period. Young Washington and its kin lead. */
+    suspend fun historyMovies(profile: String = Prefs.activeProfile, max: Int = 30): List<Title> =
+        cached(profile, "movies") { historyMoviesInner(profile) }.take(max)
+
+    private suspend fun historyMoviesInner(profile: String): List<Title> = coroutineScope {
+        val marquee = async { marqueeTitles().filter { it.first.type == "movie" }.map { it.second } }
+        val terms = HistoryEras.DISCOVER_TERMS.filterKeys { it != Era.WEST }.values.flatten() +
+            HistoryEras.PRESIDENTIAL_TERMS + HistoryEras.PERIOD_DISCOVER_TERMS
+        val ids = keywordIds(terms).joinToString("|")
+        val noDocs = "99,$NOT_KIDS_MOVIE"
+        val found = discoverAll(
+            listOf(Triple("movie", 1, mapOf("with_genres" to "36", "without_genres" to noDocs, "vote_count.gte" to "300"))) +
+                (if (ids.isEmpty()) emptyList() else listOf(1, 2).map { page ->
+                    Triple("movie", page, mapOf("with_genres" to "36|10752", "with_keywords" to ids, "without_genres" to noDocs, "vote_count.gte" to "150"))
+                }),
+        )
+        build(profile, marquee.await() + found, HistoryEras::historyMovies)
+    }
+
+    /** Ken Burns' whole filmography from his TMDB credits, in shelf order (see HistoryEras.kenBurnsOrder). */
+    private suspend fun kenBurnsAll(): List<Title> = kenBurnsLock.withLock { cached("", "kenburns") { kenBurnsLoad() } }
+    private val kenBurnsLock = Mutex() // every shelf asks for his films at once on the first visit; look them up once
+
+    private suspend fun kenBurnsLoad(): List<Title> {
         val id = kenBurnsId() ?: throw IllegalStateException("Couldn't find Ken Burns on TMDB.")
         val p = net.withPermit { Tmdb.person(id) }
         val byKey = p.crew.associate { keyOf(it.first) to it.first }
         val credits = p.crew.map { (t, jobs) -> Credit(keyOf(t), t.name, t.releaseDate, t.genreIds.toSet(), jobs.split(", "), t.votes) }
+        return HistoryEras.kenBurnsOrder(credits, today()).mapNotNull(byKey::get)
+    }
+
+    /** Ken Burns' films, or none when TMDB can't be reached (the other shelves still load). */
+    private suspend fun kenBurnsOrNone(): List<Title> = try {
+        kenBurnsAll()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /** Keys of Ken Burns' films (they are history whatever their genres say). */
+    private suspend fun kenBurnsKeys(): Set<String> = kenBurnsOrNone().map(::keyOf).toSet()
+
+    /** Every documentary Ken Burns made, less this profile's "Not for me" titles. */
+    suspend fun kenBurns(profile: String = Prefs.activeProfile): List<Title> {
         val hidden = Library.hidden(profile).map(::keyOf).toSet()
-        HistoryEras.kenBurnsOrder(credits, today()).filter { it !in hidden }.mapNotNull(byKey::get)
+        return kenBurnsAll().filter { keyOf(it) !in hidden }
     }
 
     private fun today(): String = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
 
-    // ---------------------------------------------------------------- personal
-
-    /** A title from the TV's cached features (genres, year, language), for classification. */
-    private fun stub(type: String, id: Int, name: String, f: Features) =
-        Title(id, type, name, "", null, null, f.rating, if (f.year > 0) f.year.toString() else "", language = f.language, genreIds = f.genres.toList(), votes = f.votes)
-
-    /**
-     * The newest history title this profile watched (then its favorites and likes) and the titles most like
-     * it that are history too. Null when it has watched no history yet.
-     */
-    suspend fun moreLike(profile: String = Prefs.activeProfile): Pair<String, List<Title>>? = try {
-        moreLikeInner(profile)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        android.util.Log.w("HistoryHub", "More Like row failed: $e")
-        null
-    }
-
-    private suspend fun moreLikeInner(profile: String): Pair<String, List<Title>>? = coroutineScope {
-        val history = Library.history(profile)
-        val watched = history.map { Watched(it.meta.historyKey, it.meta.name, it.progress, it.finished, it.updatedAt) } +
-            (Library.likes(profile) + Library.favorites(profile)).map { Watched(keyOf(it), it.name, 1f, true, 0L) }
-        // Check the newest dozen the profile got into: genres from the cached features, eras from keywords.
-        val recent = watched.filter { it.finished || it.progress >= 0.25f }.sortedByDescending { it.at }.distinctBy { it.key }.take(12)
-        val stubs = recent.map { w ->
-            async {
-                val type = w.key.substringBefore(':')
-                val id = w.key.substringAfter(':').toIntOrNull() ?: 0
-                Recommender.features(type, id)?.let { stub(type, id, w.name, it) }
-            }
-        }.awaitAll().filterNotNull()
-        val kb = runCatching { kenBurns(profile).map(::keyOf).toSet() }.getOrDefault(emptySet())
-        val cls = classifyAll(stubs.filter { t -> t.genreIds.any { it in HISTORYISH } })
-        val verdict = stubs.associate { t ->
-            keyOf(t) to HistoryEras.isHistoryTitle(t.genreIds.toSet(), cls[keyOf(t)]?.result ?: EraResult.NONE, keyOf(t) in kb)
-        }
-        val seed = HistoryEras.pickSeed(recent) { verdict[it] == true }
-        if (seed == null) {
-            android.util.Log.i("HistoryHub", "no seed: recent=${recent.map { it.key }} checked=$verdict")
-            return@coroutineScope null
-        }
-        val type = seed.key.substringBefore(':')
-        val id = seed.key.substringAfter(':').toInt()
-        // Keep history only, by the same test as the seed: a History-genre title, or a documentary or war story its
-        // own keywords place in an era. A genre alone is not enough (Shogun is War & Politics but 1600s Japan;
-        // Top Gear is a documentary).
-        val pool = Recommender.moreLikeThis(type, id, emptyList(), profile, 40).filter { t -> t.genreIds.any { it in HISTORYISH } }
-        val poolCls = classifyAll(pool)
-        val like = pool.filter { t ->
-            HistoryEras.isHistoryTitle(t.genreIds.toSet(), poolCls[keyOf(t)]?.result ?: EraResult.NONE, keyOf(t) in kb)
-        }
-        // Few history titles in More Like This: add the seed's era shelf, and Ken Burns when it is one of his.
-        val seedStub = stubs.first { keyOf(it) == seed.key }
-        val seedEra = (cls[seed.key] ?: classifyAll(listOf(seedStub))[seed.key])?.result?.eras?.firstOrNull()
-        val extra = if (like.size >= 12) emptyList() else
-            (if (seedEra != null) eraShelf(seedEra, profile) else emptyList()) +
-                (if (seed.key in kb) runCatching { kenBurns(profile) }.getOrDefault(emptyList()) else emptyList())
-        android.util.Log.i("HistoryHub", "seed ${seed.key} ${seed.name} genres=${seedStub.genreIds} era=$seedEra like=${like.size} of ${pool.size} extra=${extra.size}")
-        val seen = history.filter { it.finished || it.progress >= 0.6f }.map { it.meta.historyKey }.toSet() + seed.key
-        val block = blocked(profile)
-        val list = (like + extra).distinctBy(::keyOf).filter { keyOf(it) !in seen && !block(it, null) }.take(20)
-        if (list.size >= 4) seed.name to list else null
-    }
-
-    /** Era shelves in order: the eras this profile watched most first (so the hub follows what it watches). */
-    suspend fun eraOrder(profile: String = Prefs.activeProfile): List<Era> = try {
-        coroutineScope {
-            val recent = Library.history(profile).filter { it.finished || it.progress >= 0.25f }.take(40)
-            val stubs = recent.map { h ->
-                async { Recommender.features(h.meta.type, h.meta.tmdbId)?.let { stub(h.meta.type, h.meta.tmdbId, h.meta.name, it) } }
-            }.awaitAll().filterNotNull().filter { t -> t.genreIds.any { it in HISTORYISH } }
-            val counts = HashMap<Era, Int>()
-            classifyAll(stubs).values.forEach { c -> c.result.eras.forEach { counts[it] = (counts[it] ?: 0) + 1 } }
-            HistoryEras.orderEras(counts)
-        }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Era.entries.toList()
-    }
-
-    /**
-     * Home's History row: More Like <the latest history title>, else Ken Burns. When Home's Because You Watched
-     * already shows that same title, Ken Burns is shown instead, so the two rows never repeat each other.
-     */
-    suspend fun homeRow(profile: String = Prefs.activeProfile): Pair<String, List<Title>>? {
-        val now = System.currentTimeMillis()
-        val because = Library.history(profile)
-            .filter { (it.finished || it.progress >= 0.7f) && now - it.updatedAt < 60 * 86_400_000L }
-            .maxByOrNull { it.updatedAt }?.meta?.name
-        moreLike(profile)?.let { (name, list) -> if (name != because) return "History · More Like $name" to list }
-        return runCatching { kenBurns(profile) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { "History · Ken Burns" to it.take(20) }
-    }
+    /** Home's History row: Ken Burns. The same for every profile; it never depends on what was watched. */
+    suspend fun homeRow(profile: String = Prefs.activeProfile): Pair<String, List<Title>>? =
+        runCatching { kenBurns(profile) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { "History · Ken Burns" to it.take(20) }
 
     /** A shelf by id, for its See all grid. */
     suspend fun shelf(id: String, profile: String = Prefs.activeProfile): List<Title> = when {
-        id == "kenburns" -> kenBurns(profile)
-        id == "dramas" -> dramas(profile, 60)
-        id == "more" -> moreLike(profile)?.second ?: emptyList()
+        id == HubSection.DOCUMENTARIES.id -> documentaries(profile, 60)
+        id == HubSection.HISTORY.id -> historyPrograms(profile, 60)
+        id == HubSection.MOVIES.id -> historyMovies(profile, 60)
+        id == HubSection.KEN_BURNS.id -> kenBurns(profile)
         id.startsWith("era:") -> Era.fromId(id.substringAfter(':'))?.let { eraShelf(it, profile, 60) } ?: emptyList()
         else -> emptyList()
     }
 
     /**
-     * Automated QA only: marks one title watched ("tv|The Civil War|1990"), so the emulator run can show the
-     * personal row seeded from real history.
+     * Automated QA only: marks one title watched ("movie|The Irishman|2019"), so the emulator run can prove
+     * the hub does not change with what a profile watched.
      */
     suspend fun qaWatch(spec: String) {
         val p = spec.split("|")
