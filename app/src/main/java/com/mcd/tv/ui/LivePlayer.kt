@@ -57,8 +57,13 @@ import java.util.Date
  * Kept in memory so Screen.LivePlay only carries an index.
  */
 object LiveSession {
+    /** Setting a new list clears [feedsOf]; set that after it. */
     var channels: List<Channel> = emptyList()
+        set(v) { field = v; feedsOf = null }
     var guide by mutableStateOf<Map<String, List<Programme>>>(emptyMap())
+
+    /** When [channels] are the feeds of one network or game (What's On, All Channels A-Z): its name, else null. */
+    var feedsOf: String? = null
 }
 
 /**
@@ -113,6 +118,7 @@ internal fun programmeProgress(p: Programme, now: Long): Float {
 @Composable
 fun LivePlayerScreen(nav: Nav, index: Int) {
     val channels = remember { LiveSession.channels }
+    val feedsOf = remember { LiveSession.feedsOf }
     if (channels.isEmpty()) {
         // Channel list is gone (should not happen): go back to the Live TV page.
         LaunchedEffect(Unit) { nav.back() }
@@ -277,6 +283,7 @@ fun LivePlayerScreen(nav: Nav, index: Int) {
                 ch = ch,
                 favorite = ch.url in favorites,
                 guide = LiveSession.guide,
+                feedsOf = feedsOf,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 28.dp, end = 40.dp),
             )
         }
@@ -291,10 +298,12 @@ private fun ChannelOverlay(
     favorite: Boolean,
     guide: Map<String, List<Programme>>,
     modifier: Modifier = Modifier,
+    feedsOf: String? = null,
 ) {
     val now = System.currentTimeMillis()
     val (cur, next) = remember(guide, ch.url, now / 60_000L) { LiveFill.nowNext(ch, guide, now) }
-    val name = remember(ch.name) { LiveOrganizer.cleanName(ch.name) }
+    // One network's feeds: the feed's own name ("FOX 29 WTXF Philadelphia HD") tells them apart.
+    val name = remember(ch.name, feedsOf) { if (feedsOf != null) LiveOrganizer.feedLabel(ch.name) else LiveOrganizer.cleanName(ch.name) }
     val group = remember(ch.group) { LiveOrganizer.cleanGroup(ch.group) }
     Column(
         modifier
@@ -310,7 +319,10 @@ private fun ChannelOverlay(
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(name, style = broadcastStyle(22.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("$group  •  $number of $total", color = McdColors.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (feedsOf != null) "$feedsOf  •  feed $number of $total" else "$group  •  $number of $total",
+                    color = McdColors.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         if (cur != null) {
@@ -336,7 +348,7 @@ private fun ChannelOverlay(
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            (if (favorite) "★ Favorite" else "☆ Favorite") + "  (Menu ☰ to change)    ▲ ▼ change channel",
+            (if (favorite) "★ Favorite" else "☆ Favorite") + "  (Menu ☰ to change)    ▲ ▼ " + if (feedsOf != null) "other feeds" else "change channel",
             color = if (favorite) McdColors.RedBright else McdColors.Muted,
             fontSize = 12.sp,
         )

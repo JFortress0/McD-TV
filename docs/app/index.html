@@ -591,6 +591,32 @@ nav.tabbar{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-in
   .lv-row .lv-logo{grid-row:span 2;height:46px}
   .lv-next{display:none}
 }
+/* Live TV default view (LH): rows of network and game tiles, All Channels A-Z at the bottom */
+.lh-row{margin:4px 0 18px}
+.lh-row h2{font-size:13px;letter-spacing:1.4px;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+.lh-strip{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding:2px 0 6px;scroll-snap-type:x proximity}
+.lh-strip::-webkit-scrollbar{display:none}
+.lh-tile{flex:0 0 auto;width:min(70vw,236px);min-height:108px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;border:1px solid var(--line);background:var(--card);clip-path:var(--cut);color:var(--white);text-align:left;font:inherit;cursor:pointer;scroll-snap-align:start}
+.lh-tile:hover,.lh-tile:focus-visible{border-color:var(--accent);outline:none;filter:drop-shadow(0 0 8px rgba(0,229,255,.45))}
+.lh-tile[disabled]{cursor:default;opacity:.8;filter:none}
+.lh-badge{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--muted);text-transform:uppercase}
+.lh-tile.live .lh-badge{color:var(--accent)}
+.lh-tile.mine{border-color:var(--warn)}
+.lh-tile.mine .lh-badge{color:var(--warn)}
+.lh-tile b{font-size:15px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.lh-tile small{color:var(--muted);font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lh-feeds{margin-top:auto;font-size:11px;color:var(--muted)}
+.lh-empty{color:var(--muted);font-size:13px;margin:0 0 4px}
+.lh-az{margin-top:20px;border-top:1px solid var(--line);padding-top:10px}
+.lh-az summary{cursor:pointer;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:15px;list-style:none;padding:8px 0}
+.lh-az summary::-webkit-details-marker{display:none}
+.lh-az summary::before{content:"\25B8";color:var(--accent)}
+.lh-az[open] summary::before{content:"\25BE"}
+.lh-az summary .muted{font-size:13px}
+.lh-net{display:flex;flex-direction:column;gap:6px}
+.lh-more{align-self:flex-end;margin-top:-4px;border:0;background:none;color:var(--accent);font:inherit;font-size:12px;cursor:pointer;padding:2px 6px}
+.lh-sub{margin:0 0 8px 16px}
+.pl-feed{max-width:min(60vw,320px);margin-top:4px;background:#0b1220;color:var(--white);border:1px solid var(--line);font:inherit;font-size:13px;padding:4px 6px}
 .lv-player{position:fixed;inset:0;z-index:100;background:#000;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .lv-player .pl-stage video{max-height:calc(100dvh - 90px)}
 
@@ -4182,7 +4208,6 @@ async function renderList(v, tok, tab) {
 const IPTV_RELAY_URL = "https://jarvis-rd.netlify.app/iptv";
 const LIVE_NO = "Your provider's channels can't play in a web browser. Live TV works in the Jarvis TV app.";
 const HLS_JS = "https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js";
-const LIVE_SECTIONS = ["Favorites", "Recent", "Sports", "News", "Kids", "Movies", "Entertainment", "24/7", "Local", "International", "All"];
 const mixedBlocked = (u) => { try { return location.protocol === "https:" && new URL(u).protocol === "http:"; } catch { return true; } };
 
 const LO = (() => {
@@ -4253,6 +4278,10 @@ const LO = (() => {
   reg("Balkans", "EX-YU", "EXYU", "YU", "BALKAN", "BALKANS"); reg("Nordic", "SE", "SWE", "NO", "NOR", "DK", "DEN", "FI", "FIN", "NORDIC", "SCANDINAVIA");
   reg("Korea", "KR", "KOR", "KOREA", "KOREAN"); reg("Japan", "JP", "JPN", "JAPAN"); reg("China", "CN", "CHN", "CHINA", "CHINESE"); reg("Asia", "ASIA", "ASIAN");
   reg("Albania", "AL", "ALB", "ALBANIA"); reg("Romania", "RO", "ROM", "ROMANIA"); reg("Iran", "IR", "IRAN", "PERSIAN", "FARSI"); reg("Vietnam", "VN", "VIET");
+  // The rest of the TV's list (data/LiveCatalog.kt), so both apps file a channel under the same country.
+  reg("New Zealand", "NZ"); reg("Belgium", "BE", "BEL"); reg("Switzerland", "CH", "SUI"); reg("Austria", "AT", "AUT"); reg("Hungary", "HU", "HUN");
+  reg("Czech & Slovak", "CZ", "SK", "CZE"); reg("Israel", "IL", "ISR", "ISRAEL"); reg("Kurdish", "KU", "KURD", "KURDISH"); reg("Thailand", "TH", "THAI");
+  reg("Africa", "NG", "ZA"); reg("Caribbean", "JM");
   const PROVIDERS = new Set(["AT&T", "ATT", "PRIME", "AMAZON", "TUBI", "PLUTO", "PLUTO TV", "PLUTOTV", "SLING", "DIRECTV", "DTV", "ROKU", "SAMSUNG",
     "SAMSUNG TV PLUS", "XUMO", "PEACOCK", "FUBO", "FUBOTV", "HULU", "PHILO", "DISH", "SPECTRUM", "VERIZON", "FIOS", "XFINITY", "YOUTUBE TV", "YTTV",
     "VIZIO", "PLEX", "STIRR", "DISTRO", "FREEVEE", "LG", "TVE", "VIP", "FAST"]);
@@ -4268,20 +4297,27 @@ const LO = (() => {
   const domestic = (c) => c === "US" || c === "";
   // Huntsville stations (same call signs as LV's HOME_RE): "WHNT News 19" is Local, not News.
   const HOME_SIGN = /(?:^|[^a-z0-9])(?:whnt|waay|waff|wzdx|whdf)(?:-?(?:tv|dt|cd|ld)?\d{0,2})?(?![a-z0-9])/;
-  function section(group, name) {
+  /** The TV's section (LiveOrganizer.sectionFor): Events & PPV and Music apart, "Other" when nothing fits. */
+  function sectionTV(group, name) {
     const c = country(group, name);
     const bits = keywordBits(group + " " + name);
     if (bits & H24) return "24/7";
-    if (bits & (EVENTS | SPORTS)) return "Sports";
+    if (bits & EVENTS) return "Events & PPV";
+    if (bits & SPORTS) return "Sports";
     if (HOME_SIGN.test(String(name || "").toLowerCase())) return "Local";
     if (bits & NEWS) return "News";
     if (bits & KIDS) return "Kids";
     if (bits & MOVIES) return "Movies";
-    if (bits & MUSIC) return "Entertainment";
+    if (bits & MUSIC) return "Music";
     if (domestic(c) && ((bits & LOCAL) || CALL_SIGN.test(name.toUpperCase()))) return "Local";
     if (!domestic(c)) return "International";
     if ((bits & ENT) || c === "US") return "Entertainment";
-    return "";
+    return "Other";
+  }
+  /** The web app's own sections: events count as Sports, music as Entertainment. */
+  function section(group, name) {
+    const s = sectionTV(group, name);
+    return s === "Events & PPV" ? "Sports" : s === "Music" ? "Entertainment" : s === "Other" ? "" : s;
   }
   function stripPrefixes(s) {
     let t = s.trim();
@@ -4308,8 +4344,453 @@ const LO = (() => {
     return alnum === 0 || alnum * 10 < t.length * 4;
   }
   const isSeparator = (name) => { const t = String(name || "").trim(); return looksLikeSeparator(t) || looksLikeSeparator(stripPrefixes(t)); };
-  return { section, cleanName, isSeparator };
+  return { section, sectionTV, cleanName, isSeparator, country };
 })();
+
+// >>> LiveHome (pure; tools/webtest/livehome-test.mjs runs it, the TV's data/LiveHome.kt follows the same rules)
+// Live TV's default view, "what's on for J": one tile per network (every HD, SD, 4K, East, West, backup, mirror
+// and local-affiliate feed sits behind its network and is picked at play time), and rows built from the guide:
+// My Teams, Live Games (NFL, college football, MLB, NHL, NBA only), History & Docs, Military, Cyber/AI/Tech and
+// Primetime Entertainment (curated networks). Everything else waits behind "All Channels A-Z". Classification
+// comes from who the channel is (the network catalog below) and what the guide says is on, not from the
+// provider's group names.
+const LH = (() => {
+  // id|label|kind|tags|keys. Keys are network keys (nkey below). Same text as LiveHome.CATALOG on the TV.
+  const CATALOG = `
+abc|ABC|local|prime|ABC
+cbs|CBS|local|prime|CBS
+nbc|NBC|local|prime|NBC
+fox|FOX|local|prime|FOX
+cw|The CW|local|prime|CW,THE CW
+pbs|PBS|local|docs,tech|PBS
+ion|ION|local||ION
+amc|AMC|ent|prime|AMC
+fx|FX|ent|prime|FX
+fxx|FXX|ent|prime|FXX
+tnt|TNT|ent|prime|TNT
+tbs|TBS|ent|prime|TBS
+usa|USA Network|ent|prime|USA
+bravo|Bravo|ent|prime|BRAVO
+ae|A&E|ent|prime|A&E,A AND E,AE
+hgtv|HGTV|ent|prime|HGTV
+food|Food Network|ent|prime|FOOD
+tlc|TLC|ent|prime|TLC
+paramount|Paramount Network|ent|prime|PARAMOUNT
+comedy|Comedy Central|ent|prime|COMEDY CENTRAL
+syfy|Syfy|ent|prime|SYFY,SCI FI
+discovery|Discovery|docs|prime,docs|DISCOVERY
+history|History|docs|prime,docs,military|HISTORY
+natgeo|National Geographic|docs|prime,docs|NATIONAL GEOGRAPHIC,NAT GEO
+hallmark|Hallmark Channel|ent|prime|HALLMARK
+lifetime|Lifetime|ent|prime|LIFETIME
+freeform|Freeform|ent|prime|FREEFORM
+trutv|truTV|ent|prime|TRUTV,TRU
+tvland|TV Land|ent|prime|TV LAND
+e|E!|ent|prime|E!
+bet|BET|ent|prime|BET
+hbo|HBO|movies|prime|HBO
+showtime|Showtime|movies|prime|SHOWTIME
+starz|Starz|movies|prime|STARZ
+own|OWN|ent||OWN
+we|WE tv|ent||WE
+ifc|IFC|ent||IFC
+sundance|Sundance TV|ent||SUNDANCE
+magnolia|Magnolia Network|ent||MAGNOLIA
+oxygen|Oxygen|ent||OXYGEN
+id|Investigation Discovery|ent||INVESTIGATION DISCOVERY,ID
+ahc|American Heroes Channel|docs|docs,military|AMERICAN HEROES,AHC
+mhc|Military History Channel|docs|docs,military|MILITARY HISTORY
+smithsonian|Smithsonian Channel|docs|docs,military|SMITHSONIAN
+science|Science Channel|docs|docs,tech|SCIENCE
+natgeowild|Nat Geo Wild|docs|docs|NAT GEO WILD
+animalplanet|Animal Planet|docs|docs|ANIMAL PLANET
+vice|Vice|docs|docs|VICE
+curiosity|CuriosityStream|docs|docs,tech|CURIOSITYSTREAM,CURIOSITY
+cnn|CNN|news||CNN
+foxnews|Fox News|news||FOX NEWS
+msnbc|MSNBC|news||MSNBC
+cnbc|CNBC|news|tech|CNBC
+bloomberg|Bloomberg TV|news|tech|BLOOMBERG
+espn|ESPN|sports||ESPN
+espn2|ESPN2|sports||ESPN2,ESPN 2
+espnu|ESPNU|sports||ESPNU
+secn|SEC Network|sports||SEC
+accn|ACC Network|sports||ACC
+btn|Big Ten Network|sports||BIG TEN,BTN,BIG 10
+cbssn|CBS Sports Network|sports||CBS SPORTS,CBSSN
+fs1|FS1|sports||FS1,FOX SPORTS 1
+fs2|FS2|sports||FS2,FOX SPORTS 2
+nfln|NFL Network|sports||NFL,NFL NET,NFLN
+redzone|NFL RedZone|sports||NFL REDZONE,REDZONE,NFL RED ZONE,RED ZONE
+mlbn|MLB Network|sports||MLB,MLBN,MLB NET
+nhln|NHL Network|sports||NHL,NHLN,NHL NET
+nbatv|NBA TV|sports||NBA,NBATV
+golf|Golf Channel|sports||GOLF
+nbcsp|NBC Sports Philadelphia|sports||NBC SPORTS PHILADELPHIA,NBCSP
+nbcspp|NBC Sports Philadelphia Plus|sports||NBC SPORTS PHILADELPHIA PLUS,NBCSP+
+`;
+  const NET = new Map(), BY_KEY = new Map(), ORDER = [];
+  for (const line of CATALOG.trim().split("\n")) {
+    const [id, label, kind, tags, keys] = line.split("|");
+    const n = { id, label, kind, tags: new Set(tags ? tags.split(",") : []), keys: keys.split(","), rank: ORDER.length };
+    NET.set(id, n); ORDER.push(n);
+    for (const k of n.keys) BY_KEY.set(k, n);
+  }
+  // Broadcast networks, Philadelphia stations and the family names of event and free channels.
+  const BROADCAST = /(?:^| )(ABC|CBS|NBC|FOX|CW|PBS)(?=\d{0,2}(?: |$))/;
+  const NOT_AFFILIATE = /\b(?:NEWS|SPORTS?|BUSINESS|DEPORTES|WEATHER|KIDS|FAMILY|LIFE|SOUL|MOVIES|CLASSIC|PLUS|NOW|LIVE|REALITY|DRAMA|MYSTERY|COMEDY|SOCCER|NATION|EXTRA|COLLEGE|LATINO|ESPANOL|24 7)\b/;
+  const PHILLY = { WPVI: "abc", KYW: "cbs", WCAU: "nbc", WTXF: "fox", WPSG: "cw", WHYY: "pbs" };
+  const HOME = { WHNT: "cbs", WAAY: "abc", WAFF: "nbc", WZDX: "fox", WHDF: "cw", WHIQ: "pbs" };
+  const FAST = ["PLUTO TV", "PLUTO", "TUBI", "SAMSUNG TV PLUS", "XUMO", "ROKU", "PLEX", "FREEVEE", "VIZIO", "LG CHANNELS", "STIRR", "DISTRO", "FAST"];
+  const FAST_RE = new RegExp("^\\s*[|\\[(]?\\s*(?:US\\s*[|:]\\s*)?(" + FAST.join("|") + ")\\s*[|:\\])]", "i");
+  const EVENT_RE = /^(NFL SUNDAY TICKET|NBA LEAGUE PASS|NHL CENTER ICE|MLB EXTRA INNINGS|ESPN EVENTS|ESPN\+|NFL|NCAAF|NCAAB|NBA|NHL|MLB|WNBA|MLS|PEACOCK|PARAMOUNT\+|DAZN|FLOSPORTS|B1G\+|SEC\+|ACCNX|VICTORY\+|PPV|UFC)\s*(?:EVENTS?\s*)?#?\s*(\d{1,3})(?!\d)\s*(?:$|[:|\-–])/i;
+  const SUFFIX_TAG = /\s*(?:[([]\s*(?:HULU|PHILO|SLING|FUBO|DTV|DIRECTV|AT&T|ATT|YTTV|YOUTUBE TV|PLUTO|TUBI|XUMO|ROKU|PLEX|VIZIO|STIRR|US|USA|COPY|ALT)\s*[)\]]|\s[|\-–]\s*(?:HULU|PHILO|SLING|FUBO|DTV|DIRECTV|AT&T|YTTV))\s*$/i;
+  const FEED_MARKS = /[([]\s*(?:\d{1,2}|E|W|EAST|WEST|PACIFIC)\s*[)\]]|#\d{1,2}\b/gi;
+  const QUALITY = /(^|[^\p{L}\p{N}])(?:RAW|\d{2,3}\s?FPS|FHD|UHD|HD|SD|HQ|4K|8K|2160P|1080P|1080I|720P|480P|HEVC|H\.?26[45]|HDR10\+?|HDR|BACKUP|VIP|LOW|MULTI-?AUDIO)(?![\p{L}\p{N}])/giu;
+  const FEED_WORDS = new Set(["EAST", "WEST", "PACIFIC", "MOUNTAIN", "CENTRAL", "ALT", "ALTERNATE", "FEED", "BACKUP", "OPT", "OPTION"]);
+  const SUFFIX = new Set(["NETWORK", "CHANNEL", "TV"]);
+  const words = (s) => String(s || "").toUpperCase().split(/[^\p{L}\p{N}&+!]+/u).filter(Boolean);
+
+  /** Network key of a clean name: "AMC West", "AMC (2)", "AMC Channel", "AMC +1" -> "AMC"; "FX" and "FXX" stay apart. */
+  function netKey(clean) {
+    let t = String(clean || "");
+    for (let i = 0; i < 2; i++) t = t.replace(SUFFIX_TAG, "");
+    t = t.replace(FEED_MARKS, " ").replace(QUALITY, "$1 ");
+    const w = words(t);
+    if (w.length > 1 && /^\+\d$/.test(w[w.length - 1])) w.pop();
+    if (w.length && w[w.length - 1].length > 2 && /\+\d$/.test(w[w.length - 1])) w[w.length - 1] = w[w.length - 1].slice(0, -2);
+    for (let i = w.length - 1; i >= 0; i--) if (FEED_WORDS.has(w[i])) w.splice(i, 1);
+    if (w.length > 1 && (w[w.length - 1] === "E" || w[w.length - 1] === "W")) w.pop();
+    while (w.length > 1 && SUFFIX.has(w[w.length - 1])) w.pop();
+    return w.join(" ") || String(clean || "").toUpperCase().trim();
+  }
+
+  /** Feed quality from its own name (the TV's LiveOrganizer.feedScore). */
+  function feedScore(raw, group, us) {
+    const t = raw + " " + group;
+    let s = /(?<![\p{L}\p{N}])(?:4K|UHD|2160P?)(?![\p{L}\p{N}])/iu.test(t) ? 40 : /(?<![\p{L}\p{N}])(?:FHD|1080[PI]?)(?![\p{L}\p{N}])/iu.test(t) ? 30
+      : /(?<![\p{L}\p{N}])(?:HD|720P?)(?![\p{L}\p{N}])/iu.test(t) ? 20 : /(?<![\p{L}\p{N}])(?:SD|480P?|360P?|LOW)(?![\p{L}\p{N}])/iu.test(t) ? -10 : 0;
+    if (/(?:50|60)\s?FPS/i.test(t)) s += 6;
+    if (/(?<![\p{L}\p{N}])RAW(?![\p{L}\p{N}])/iu.test(t)) s += 4;
+    if (/(?<![\p{L}\p{N}])(?:BACKUP|ALT|ALTERNATE|OPT|OPTION|COPY)(?![\p{L}\p{N}])|[([]\s*\d{1,2}\s*[)\]]/iu.test(raw)) s -= 30;
+    if (/(?<![\p{L}\p{N}])(?:WEST|PACIFIC|MOUNTAIN)(?![\p{L}\p{N}])|[([]\s*W\s*[)\]]|\sW$/iu.test(raw)) s -= 8;
+    if (/\+\s?\d(?!\p{N})/u.test(raw)) s -= 15;
+    if (us) s += 10;
+    return s;
+  }
+
+  /**
+   * Who a channel is. { key, label, kind, net (catalog entry or null), region ("home", "philly", "national", ""),
+   * family (true for a folder of separate channels: event channels, a free service, a country) }.
+   * [section] is the old organizer's section for this channel, the fallback kind.
+   */
+  function identify(raw, group, country, section) {
+    const us = country === "US" || country === "" || country === "Other";
+    if (!us) return { key: "intl:" + country, label: country + " channels", kind: "intl", net: null, region: "", family: true };
+    const clean = LO.cleanName(raw);
+    const ev = EVENT_RE.exec(clean) || EVENT_RE.exec(String(raw).replace(/^\s*[|[(]?\s*(?:US|USA)\s*[|:\])]\s*/i, ""));
+    if (ev) { const p = ev[1].toUpperCase(); return { key: "ev:" + p, label: p.replace("PPV", "PPV") + " event channels", kind: "events", net: null, region: "", family: true }; }
+    if (/(?:^|[^\d])24\s*[/x×-]?\s*7(?!\d)/i.test(raw + " " + group)) return { key: "f:247", label: "24/7 channels", kind: "247", net: null, region: "", family: true };
+    const k = netKey(clean);
+    const hit = BY_KEY.get(k);
+    if (hit) return { key: hit.id, label: hit.label, kind: hit.kind, net: hit, region: "national", family: false };
+    // Local stations: "FOX 54 WZDX Huntsville", "6ABC WPVI Philadelphia", "CBS 2 New York" belong to their network.
+    const w = words(clean);
+    for (const x of w) {
+      const sign = x.replace(/(?:TV|DT|CD|LD)?\d*$/, "");
+      if (HOME[sign]) return affiliate(HOME[sign], "home");
+      if (PHILLY[sign]) return affiliate(PHILLY[sign], "philly");
+    }
+    const kk = w.join(" ");
+    const b = BROADCAST.exec(kk) || /^\d{1,2}(ABC|CBS|NBC|FOX)$/.exec(w[0] || "");
+    if (b && !NOT_AFFILIATE.test(kk)) return affiliate(b[1].toLowerCase(), /\bPHILADELPHIA\b/.test(kk) ? "philly" : w.length > 1 ? "market" : "national");
+    const fast = FAST_RE.exec(raw) || FAST_RE.exec(group.replace(/^\s*US\s*[|:]\s*/i, "") + ":");
+    if (fast) { const p = fast[1].toUpperCase().replace(/^PLUTO$/, "PLUTO TV"); return { key: "fast:" + p, label: title(p) + " (free channels)", kind: "free", net: null, region: "", family: true }; }
+    const kind = { Sports: "sports", News: "news", Entertainment: "ent", Movies: "movies", Kids: "kids", Local: "local", Music: "music", "24/7": "247", "Events & PPV": "events" }[section] || "other";
+    return { key: k, label: "", kind, net: null, region: "", family: false };
+  }
+  /** A to Z with numbers in number order ("NFL 2" before "NFL 10"); the same on the TV, so both list alike. */
+  function cmpLabel(a, b) {
+    const x = String(a).toLowerCase().match(/\d+|\D+/g) || [], y = String(b).toLowerCase().match(/\d+|\D+/g) || [];
+    for (let i = 0; i < Math.min(x.length, y.length); i++) {
+      if (x[i] === y[i]) continue;
+      const dx = /^\d/.test(x[i]), dy = /^\d/.test(y[i]);
+      if (dx && dy) { const d = +x[i] - +y[i]; if (d) return d < 0 ? -1 : 1; return x[i].length - y[i].length; }
+      return x[i] < y[i] ? -1 : 1;
+    }
+    return x.length - y.length;
+  }
+  function affiliate(id, region) { const n = NET.get(id); return { key: id, label: n.label, kind: n.kind, net: n, region, family: false }; }
+  const title = (s) => s.split(" ").map((x) => (x.length > 3 ? x[0] + x.slice(1).toLowerCase() : x)).join(" ");
+  const REGION_RANK = { home: 0, national: 1, philly: 2, market: 3, "": 1 };
+
+  /**
+   * Groups a playlist by network: [{ id, label, kind, net, feeds: [channel index, best first], family }].
+   * Every channel is in exactly one group. [chs]: [{ name (raw), group, url }]; [country] and [section] per channel.
+   */
+  function groups(chs, countryOf, sectionOf) {
+    const by = new Map(), info = new Array(chs.length);
+    chs.forEach((c, i) => {
+      const country = countryOf(i);
+      const id = identify(c.name, c.group, country, sectionOf(i));
+      info[i] = { id, us: country === "US", score: 0 };
+      let g = by.get(id.key);
+      if (!g) by.set(id.key, (g = { id: id.key, label: id.label, kind: id.kind, net: id.net, family: id.family, feeds: [] }));
+      g.feeds.push(i);
+    });
+    // Numbered series of one name ("Music Choice 01" to "60"): one folder.
+    const series = new Map();
+    for (const g of by.values()) { if (g.family || g.net) continue; const m = /^(.*\D) ?\d{1,3}$/.exec(g.id); if (m && m[1].trim().length > 1) { const p = m[1].trim(); (series.get(p) || series.set(p, []).get(p)).push(g); } }
+    for (const [p, gs] of series) {
+      if (gs.length < 4) continue;
+      const f = { id: "num:" + p, label: "", kind: gs[0].kind, net: null, family: true, feeds: gs.flatMap((g) => g.feeds) };
+      for (const g of gs) by.delete(g.id);
+      by.set(f.id, f);
+    }
+    const out = [...by.values()];
+    for (const g of out) {
+      for (const i of g.feeds) info[i].score = feedScore(chs[i].name, chs[i].group, info[i].us);
+      if (g.family) g.feeds.sort((a, b) => cmpLabel(LO.cleanName(chs[a].name), LO.cleanName(chs[b].name)) || a - b);
+      else g.feeds.sort((a, b) => (REGION_RANK[info[a].id.region] ?? 1) - (REGION_RANK[info[b].id.region] ?? 1) || info[b].score - info[a].score || a - b);
+      if (!g.label) g.label = g.id.startsWith("num:") ? title(g.id.slice(4)) + " channels" : LO.cleanName(chs[g.feeds[0]].name).replace(SUFFIX_TAG, "").trim();
+    }
+    out.sort((a, b) => cmpLabel(a.label, b.label) || cmpLabel(a.id, b.id));
+    return { list: out, info };
+  }
+
+  // ---------------------------------------------------------------- what a programme is
+  const LEAGUE_TITLE = [
+    ["NFL", /^(?:NFL(?: Football)?|(?:Sunday|Monday|Thursday) Night Football)\b/i],
+    ["NCAAF", /^(?:College Football|NCAA Football|NCAAF|CFB)\b/i],
+    ["MLB", /^(?:MLB(?: Baseball)?|World Series|ALCS|NLCS|ALDS|NLDS|MLB Postseason|MLB Wild Card)\b/i],
+    ["NHL", /^(?:NHL(?: Hockey)?|Stanley Cup)\b/i],
+    ["NBA", /^(?:NBA(?: Basketball)?|NBA Finals|NBA Playoffs|NBA Cup)\b/i],
+  ];
+  const NOT_GAME = /\b(?:replay|re-?air|encore|rebroadcast|classic|classics|highlights|condensed|in 60|pre-?game|post-?game|preview|recap|countdown|kickoff show|tonight|live from|draft|combine|press conference)\b/i;
+  const MATCHUP = /^(.+?)\s+(?:at|vs\.?|v\.?|versus|@)\s+(.+?)$/i;
+  /** A live-game listing in one of J's five leagues: { league, away, home } or null. WNBA, MLS and soccer never pass. */
+  function gameOf(p, leagueHint) {
+    if (!p || !p.title) return null;
+    const t = String(p.title).trim();
+    if (/\b(?:WNBA|MLS|soccer|premier league|futbol|f[uú]tbol|liga|serie a|bundesliga|uefa|champions league|nwsl|women'?s)\b/i.test(t + " " + (p.cats || []).join(" "))) return null;
+    if (p.rerun || NOT_GAME.test(t) || NOT_GAME.test(String(p.sub || "")) || /\b(?:replay|re-?air|rebroadcast|encore presentation)\b/i.test(String(p.desc || ""))) return null;
+    let league = "";
+    for (const [id, re] of LEAGUE_TITLE) if (re.test(t)) { league = id; break; }
+    const cats = (p.cats || []).join(" ").toLowerCase();
+    if (!league && leagueHint) league = leagueHint;
+    if (!league && /\bnfl\b/.test(cats)) league = "NFL";
+    if (!league && /college football/.test(cats)) league = "NCAAF";
+    if (!league) return null;
+    const rest = t.replace(/^[^:]*:\s*/, "");
+    const m = MATCHUP.exec(rest === t && !/:/.test(t) ? t : rest) || MATCHUP.exec(String(p.sub || ""));
+    // "MLB Baseball: World Series Game 3": a game with no teams named, when the guide marks it live or a sports event.
+    if (!m) return rest !== t && (p.live || /sports event/i.test(cats)) && /\p{L}{3}/u.test(rest) ? { league, away: rest, home: "" } : null;
+    const away = m[1].replace(/^\(\d+\)\s*|\s*\(\d+\)$/g, "").trim(), home = m[2].replace(/\s*\(.*\)\s*$/, "").replace(/^\(\d+\)\s*/, "").trim();
+    if (!/\p{L}{3}/u.test(away) || !/\p{L}{3}/u.test(home)) return null;
+    return { league, away, home };
+  }
+  const nick = (team, league) => { const w = String(team || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").trim().split(/\s+/); return league === "NCAAF" ? w.join(" ") : w[w.length - 1] || ""; };
+  const gameKey = (league, a, b) => league + ":" + (b ? [nick(a, league), nick(b, league)].sort().join("|") : String(a).toLowerCase());
+
+  const MIL_EXCL = /\b(?:star wars|storage wars|cyber ?wars?|bidding wars?|shark wars|console wars|cupcake wars|bridal|food wars|wedding wars|wars of the roses|war of the worlds|warriors? (?:of|basketball)|golden state)\b/i;
+  const MILITARY = /\b(?:military|army|navy|naval|air force|usaf|marines?|marine corps|coast guard|pentagon|special forces|navy seals?|green berets|combat|battle(?:s|field|ship)?|warship|warplanes?|submarines?|aircraft carrier|bomber|fighter (?:jet|pilot)s?|dogfights?|top guns?|weapons school|d-day|normandy|wwii|ww2|world war|civil war|vietnam war|korean war|gulf war|veterans?|medal of honor|tanks?|artillery|infantry|airborne|paratroopers?|warfare|invasion|blitz|luftwaffe|pearl harbor|iwo jima|midway|hitler|nazi|wars?)\b/i;
+  const AIR_FORCE = /\b(?:air force|usaf|airmen|fighter (?:jet|pilot)s?|top guns?|weapons school|f-1[56]|f-22|f-35|f-117|b-52|b-17|b-2|b-29|a-10|strike eagle|warthog|thunderbirds|stealth|dogfights?|air war|aviation|aerial combat|air warriors|sabres?)\b/i;
+  const HISTORY = /\b(?:history|historic(?:al)?|documentary|ancient|archaeolog\w*|civil war|wwii|ww2|world war|revolution(?:ary)?|founding fathers|presidents?|empire|medieval|pharaohs?|ken burns|american experience|nova|frontline|smithsonian|biography|d-day|declassified|lost (?:city|tombs?)|egypt|romans?|vikings?)\b/i;
+  const TECH = /\b(?:ai|a\.i\.|artificial intelligence|machine learning|cyber\w*|hack(?:er|ers|ing|ed)?|robot\w*|computers?|computing|silicon valley|tech|technology|internet|software|chips?|semiconductors?|quantum|algorithms?|data breach|ransomware|encryption|digital|gadgets?|innovation|space ?x|rockets?)\b/i;
+  const DOC_CATS = /\b(?:documentary|history|historical|biography|docuseries|science|nature|military|war)\b/i;
+  const NOT_DOC_CATS = /\b(?:reality|sitcom|comedy|game show|talk|news|cooking|home improvement|sports|soap|animation|movie)\b/i;
+  /** Topics of a programme: { docs, military, airforce, tech } from its categories, title and description. */
+  function topics(p) {
+    if (!p) return {};
+    const cats = (p.cats || []).join(" ").replace(/science[ -]fiction|sci-?fi/gi, "scifi");
+    const text = (p.title || "") + " " + (p.sub || "") + " " + (p.desc || "");
+    const all = text + " " + cats;
+    const docCat = DOC_CATS.test(cats), notDoc = NOT_DOC_CATS.test(cats) && !docCat;
+    const mil = !notDoc && (/\b(?:military|war)\b/i.test(cats) || (MILITARY.test(all) && !MIL_EXCL.test(all) && (docCat || !cats || MILITARY.test(p.title || ""))));
+    const tech = !/\b(?:sitcom|reality|game show|cooking)\b/i.test(cats) && (/\b(?:technology|tech)\b/i.test(cats) || (TECH.test(text.replace(/\bAI\b/g, " ai ")) && (/\b(?:AI|A\.I\.)\b/.test(text) || TECH.test(p.title || "") || /\b(?:science|documentary|business)\b/i.test(cats))));
+    const docs = !notDoc && (docCat || (!cats && HISTORY.test(text)) || (HISTORY.test(p.title || "") && !/\breality\b/i.test(cats)));
+    return { docs, military: mil, airforce: mil && AIR_FORCE.test(all), tech };
+  }
+
+  // ---------------------------------------------------------------- rows
+  const ZONE = "America/Chicago";
+  // Newer browsers put a narrow no-break space before AM / PM: plain spaces, the same text as the TV.
+  const fmt = (ms, o) => new Intl.DateTimeFormat("en-US", { timeZone: ZONE, ...o }).format(new Date(ms)).replace(/[\u202f\u00a0]/g, " ");
+  const timeCT = (ms) => fmt(ms, { hour: "numeric", minute: "2-digit" }) + " CT";
+  const dayKey = (ms) => fmt(ms, { year: "numeric", month: "2-digit", day: "2-digit" });
+  /** "Today 6:00 PM CT", "Tomorrow 1:00 PM CT", "Sun 12:00 PM CT". */
+  function whenCT(ms, now) {
+    const d = dayKey(ms);
+    const label = d === dayKey(now) ? "Today" : d === dayKey(now + 864e5) ? "Tomorrow" : fmt(ms, { weekday: "short" });
+    return label + " " + timeCT(ms);
+  }
+  const LEAGUE_ORDER = { NFL: 0, NCAAF: 1, NBA: 2, MLB: 3, NHL: 4 };
+  const LEAGUE_LABEL = { NFL: "NFL", NCAAF: "College Football", NBA: "NBA", MLB: "MLB", NHL: "NHL" };
+  const TEAM_ALIAS = { "76ERS": ["SIXERS"] };
+  /** A favorite team ({ league, name }) plays in this game. */
+  function isMine(team, league, a, b) {
+    if (team.league !== league) return false;
+    const n = String(team.name || "").toUpperCase();
+    const names = [n, ...(TEAM_ALIAS[n] || [])];
+    return [a, b].some((t) => { const w = words(t).join(" "); return names.some((x) => (" " + w + " ").includes(" " + words(x).join(" ") + " ")); });
+  }
+
+  /**
+   * The default view. [idx] from groups(); [chs] channels; [progs](i) a channel's programmes (sorted, may be []);
+   * [games] ESPN games ({ league, id, state, start, detail, away, home, casts }); [teams] favorite teams;
+   * [eventOf](i) an event channel's own listing ({ title, start, end, untimed }) or null.
+   * Returns { rows: [{ id, title, tiles }], groups: idx.list }. A tile: { type: "game"|"team"|"net", group, title,
+   * sub, badge, live, mine, start, feeds }.
+   */
+  function home({ idx, chs, progs, games = [], teams = [], now, eventOf }) {
+    const G = idx.list, info = idx.info;
+    const groupOfCh = new Int32Array(chs.length);
+    G.forEach((g, gi) => { for (const i of g.feeds) groupOfCh[i] = gi; });
+    const onAt = (list, t) => (list || []).find((p) => p.start <= t && p.end > t) || null;
+    // ---- games: from the guide, event channels and ESPN, merged by teams
+    const byKey = new Map();
+    const want = (league, a, b) => {
+      const k = gameKey(league, a, b);
+      let x = byKey.get(k);
+      if (!x) byKey.set(k, (x = { key: k, league, away: a, home: b, start: 0, end: 0, live: false, detail: "", feeds: [], epg: [], casts: [], espn: null }));
+      return x;
+    };
+    const domestic = (g) => !g.id.startsWith("intl:") && !g.id.startsWith("fast:") && g.id !== "f:247";
+    G.forEach((g) => {
+      if (!domestic(g)) return;
+      const hint = g.net ? { nfln: "NFL", redzone: "NFL", mlbn: "MLB", nhln: "NHL", nbatv: "NBA" }[g.net.id] : "";
+      for (const i of g.feeds) {
+        const list = progs(i);
+        if (list && list.length) {
+          for (const p of list) {
+            if (p.end <= now || p.start > now + 8 * 3600e3) continue;
+            const gm = gameOf(p, hint); if (!gm) continue;
+            const x = want(gm.league, gm.away, gm.home);
+            const live = p.start <= now && p.end > now;
+            if (live) { x.live = true; x.epg.push(i); }
+            if (!x.start || p.start < x.start) { x.start = p.start; x.end = p.end; }
+            if (!x.title) x.title = gm.home ? gm.away + " at " + gm.home : gm.away;
+            x.feeds.push({ i, live, net: g });
+          }
+        } else if (g.id.startsWith("ev:") && eventOf) {
+          const ep = eventOf(i); if (!ep) continue;
+          const lg = { "EV:NFL": "NFL", "EV:NFL SUNDAY TICKET": "NFL", "EV:NCAAF": "NCAAF", "EV:NBA": "NBA", "EV:NBA LEAGUE PASS": "NBA", "EV:NHL": "NHL", "EV:NHL CENTER ICE": "NHL", "EV:MLB": "MLB", "EV:MLB EXTRA INNINGS": "MLB" }[g.id.toUpperCase()];
+          if (!lg) continue;
+          const m = MATCHUP.exec(ep.title); if (!m) continue;
+          const x = want(lg, m[1], m[2]);
+          const live = ep.untimed || (ep.start <= now && ep.end > now);
+          if (!x.start || ep.start < x.start) { x.start = ep.start; x.end = ep.end; }
+          if (live) x.live = true;
+          if (!x.title) x.title = m[1] + " at " + m[2];
+          x.feeds.push({ i, live, net: g, event: true });
+        }
+      }
+    });
+    for (const e of games) {
+      if (!(e.league in LEAGUE_ORDER) || e.state === "post") continue;
+      const a = e.league === "NCAAF" ? e.away.short || e.away.name : e.away.name || e.away.nick, b = e.league === "NCAAF" ? e.home.short || e.home.name : e.home.name || e.home.nick;
+      const x = want(e.league, a, b);
+      x.espn = e; x.detail = e.detail || ""; x.casts = e.casts || [];
+      if (e.state === "in") x.live = true;
+      x.start = e.start || x.start;
+      if (!x.end) x.end = e.start + ({ NFL: 210, NCAAF: 210, MLB: 180, NBA: 150, NHL: 150 }[e.league] || 180) * 60000;
+      x.title = (e.away.short || e.away.nick || a) + " at " + (e.home.short || e.home.nick || b);
+      // Networks ESPN names: their feeds, the ones whose guide shows this game first.
+      for (const c of x.casts) {
+        const net = BY_KEY.get(netKey(c)) || NET.get(String(c).toLowerCase());
+        const gi = net ? G.findIndex((g) => g.id === net.id) : -1;
+        // Other cities' stations are left out: they carry their own market's game.
+        if (gi >= 0) for (const i of G[gi].feeds) if (info[i].id.region !== "market") x.feeds.push({ i, live: false, net: G[gi], cast: true });
+      }
+    }
+    const philly = (x) => /philadelphia|eagles|phillies|flyers|76ers|sixers/i.test(x.away + " " + x.home);
+    const all = [...byKey.values()].filter((x) => x.feeds.length && (x.live || x.start > now - 30 * 60000));
+    for (const x of all) {
+      // Feed order: the guide shows it now, then event channels, then the networks ESPN names; Philadelphia's own
+      // station first for a Philadelphia team, else Huntsville's.
+      const rank = (f) => (f.live && !f.event ? 0 : f.event ? 1 : f.cast ? 2 : 3) * 10 + (philly(x) && info[f.i].id.region === "philly" ? 0 : info[f.i].id.region === "home" ? 1 : 2);
+      const seen = new Set();
+      x.feedList = x.feeds.slice().sort((a, b) => rank(a) - rank(b) || info[b.i].score - info[a.i].score || a.i - b.i).filter((f) => !seen.has(f.i) && seen.add(f.i));
+      const lead = x.feedList[0];
+      x.netLabel = lead.event ? LO.cleanName(chs[lead.i].name).replace(/\s*[:|].*$/, "") : lead.net.label;
+    }
+    const gameTile = (x, mine) => ({
+      type: "game", league: x.league, group: x.feedList[0].net.id, title: x.title,
+      sub: LEAGUE_LABEL[x.league] + " · " + x.netLabel, badge: x.live ? (mine ? "LIVE · ★ MY TEAM" : "LIVE") + (x.detail ? " · " + x.detail : "") : whenCT(x.start, now),
+      live: x.live, mine, start: x.start, feeds: x.feedList.map((f) => f.i),
+    });
+
+    // ---- My Teams: one tile per favorite team, live games pinned first
+    const myTiles = [];
+    for (const t of teams) {
+      const mine = all.filter((x) => isMine(t, x.league, x.away, x.home)).sort((a, b) => (b.live - a.live) || a.start - b.start);
+      const x = mine[0];
+      if (x) myTiles.push({ ...gameTile(x, true), team: t.name });
+      else myTiles.push({ type: "team", league: t.league, group: "", team: t.name, title: t.name, sub: LEAGUE_LABEL[t.league] || t.league, badge: "No game listed", live: false, mine: true, start: Infinity, feeds: [] });
+    }
+    myTiles.sort((a, b) => (b.live - a.live) || a.start - b.start);
+    // ---- Live Games: live now, then starting in the next 3 hours
+    const lg = all.filter((x) => x.live || x.start - now <= 3 * 3600e3)
+      .map((x) => gameTile(x, teams.some((t) => isMine(t, x.league, x.away, x.home))))
+      .sort((a, b) => (b.live - a.live) || (b.mine - a.mine) || (a.live ? LEAGUE_ORDER[a.league] - LEAGUE_ORDER[b.league] : 0) || a.start - b.start).slice(0, 24);
+
+    // ---- "On now" rows: one tile per network, from the feed whose guide has listings
+    const netNow = (g) => {
+      for (const i of g.feeds) { const list = progs(i); if (list && list.length) return { i, cur: onAt(list, now), list }; }
+      return null;
+    };
+    const topicRow = (want, tag, cap, sortExtra) => {
+      const tiles = [];
+      G.forEach((g) => {
+        if (g.family || !domestic(g) || ["sports", "kids", "events", "music"].includes(g.kind)) return;
+        const n = netNow(g);
+        const tagged = g.net && g.net.tags.has(tag);
+        if (!n) { if (tagged) tiles.push({ type: "net", group: g.id, title: g.label, sub: "No guide for this channel", badge: "", live: false, start: 0, feeds: g.feeds, score: 1, net: g }); return; }
+        if (!n.cur) return;
+        const tp = topics(n.cur);
+        if (!tp[want]) return;
+        const score = 10 + (tagged ? 5 : 0) + (sortExtra ? sortExtra(tp) : 0);
+        const feeds = [n.i, ...g.feeds.filter((i) => i !== n.i)];
+        tiles.push({ type: "net", group: g.id, title: g.label, sub: n.cur.title, badge: "On now · until " + timeCT(n.cur.end), live: true, start: n.cur.start, feeds, score, net: g });
+      });
+      return tiles.sort((a, b) => b.score - a.score || (a.net.net ? a.net.net.rank : 999) - (b.net.net ? b.net.net.rank : 999) || cmpLabel(a.title, b.title)).slice(0, cap).map(({ score, net, ...t }) => t);
+    };
+    const docs = topicRow("docs", "docs", 15);
+    const mil = topicRow("military", "military", 15, (tp) => (tp.airforce ? 20 : 0));
+    const tech = topicRow("tech", "tech", 15);
+
+    // ---- Primetime Entertainment: curated networks in catalog order; before 7 PM, tonight's 7 PM show
+    const hourCT = +fmt(now, { hour: "numeric", hourCycle: "h23" });
+    const prime = [];
+    for (const n of ORDER) {
+      if (!n.tags.has("prime")) continue;
+      const g = G.find((x) => x.id === n.id); if (!g) continue;
+      const nn = netNow(g);
+      let sub = "", badge = "", live = false, feeds = g.feeds;
+      if (nn) {
+        feeds = [nn.i, ...g.feeds.filter((i) => i !== nn.i)];
+        const tonight = hourCT < 19 ? nn.list.find((p) => p.start >= now && +fmt(p.start, { hour: "numeric", hourCycle: "h23" }) >= 19 && dayKey(p.start) === dayKey(now)) : null;
+        if (tonight) { sub = tonight.title; badge = "Tonight " + timeCT(tonight.start); }
+        else if (nn.cur) { sub = nn.cur.title; badge = "On now · until " + timeCT(nn.cur.end); live = true; }
+      }
+      prime.push({ type: "net", group: g.id, title: n.label, sub: sub || "No guide for this channel", badge, live, start: 0, feeds });
+    }
+    const rows = [
+      { id: "myteams", title: "My Teams", tiles: myTiles },
+      { id: "games", title: "Live Games", tiles: lg },
+      { id: "docs", title: "History & Docs On Now", tiles: docs },
+      { id: "military", title: "Military On Now", tiles: mil },
+      { id: "tech", title: "Cyber, AI & Tech On Now", tiles: tech },
+      { id: "prime", title: "Primetime Entertainment", tiles: prime },
+    ];
+    return { rows };
+  }
+  /** A-Z kinds for the chips in All Channels. */
+  const KINDS = [["all", "All"], ["sports", "Sports"], ["news", "News"], ["ent", "Entertainment"], ["docs", "Docs"], ["movies", "Movies"], ["local", "Local"],
+    ["kids", "Kids"], ["music", "Music"], ["events", "Events"], ["247", "24/7"], ["free", "Free channels"], ["intl", "International"], ["other", "Other"]];
+  return { CATALOG, netKey, identify, groups, gameOf, topics, gameKey, home, whenCT, timeCT, KINDS, feedScore, cmpLabel };
+})();
+// <<< LiveHome
 
 const LV = (() => {
   // In memory only (this session): the playlist is not stored on the device.
@@ -4556,7 +5037,14 @@ const LV = (() => {
       }
       if (!list.length) throw new Error("The playlist loaded but had no live channels in it.");
       if (!viaRelay && list.every((c) => mixedBlocked(c.url))) throw new Error(LIVE_NO);
-      if (st.key === url) { st = { status: "ok", list, msg: "", key: url, ext: viaRelay, ua: st.ua || "", xt, epgGet: viaRelay ? getViaRelay : getText }; epgRestore(url); }
+      if (st.key === url) {
+        st = { status: "ok", list, msg: "", key: url, ext: viaRelay, ua: st.ua || "", xt, epgGet: viaRelay ? getViaRelay : getText };
+        // One entry per network (LH): the default view's tiles and All Channels A-Z.
+        st.chs = list.map((c) => ({ name: c.raw, group: c.group, url: c.url }));
+        st.idx = LH.groups(st.chs, (i) => LO.country(list[i].group, list[i].raw), (i) => LO.sectionTV(list[i].group, list[i].raw));
+        st.gix = new Map(st.idx.list.map((g) => [g.id, g]));
+        epgRestore(url);
+      }
     } catch (e) {
       if (st.key === url) st = { status: "error", list: null, msg: (e && e.message) || LIVE_NO, key: url };
     }
@@ -4610,7 +5098,7 @@ const LV = (() => {
     return c;
   }
   function sportBar() {
-    if (view.q || (view.sec !== "Sports" && view.sec !== "Favorites")) return "";
+    if (view.q || view.sec !== "Sports") return "";
     const c = sportCounts(), have = SPORTS.map(([n]) => n).filter((n) => c[n]);
     if (!have.length) return "";
     const chip = (n, label, on) => `<button class="chip${on ? " on" : ""}" type="button" data-act="livesport" data-sub="${esc(n)}">${esc(label)}</button>`;
@@ -4628,8 +5116,6 @@ const LV = (() => {
   }
   function redraw() {
     if (st.status !== "ok" || !$("#lvGrid")) return;
-    // Favorites arrived after the page opened on another section it picked by itself: show them.
-    if (view.auto && view.sec !== "Favorites" && filteredCount("Favorites")) { view.sec = "Favorites"; view.sub = ""; view.shown = 0; }
     drawGrid(true);
   }
   function toggleFav(i) {
@@ -4698,7 +5184,7 @@ const LV = (() => {
       const now = Date.now();
       const rows = [...EPG.entries()].filter(([, c]) => !c.failed && now - c.at < EPG_TTL).sort((a, b) => b[1].at - a[1].at).slice(0, EPG_MAX);
       const out = {};
-      for (const [sid, c] of rows) out[sid] = { at: c.at, list: c.list.filter((p) => p.end > now).slice(0, 8) };
+      for (const [sid, c] of rows) out[sid] = { at: c.at, list: c.list.filter((p) => p.end > now).slice(0, 8).map((p) => ({ ...p, desc: (p.desc || "").slice(0, 120) })) };
       try { localStorage.setItem(EPG_KEY, JSON.stringify({ scope: epgScope, rows: out })); }
       catch { try { localStorage.removeItem(EPG_KEY); } catch {} }
     }, 2000);
@@ -4715,7 +5201,7 @@ const LV = (() => {
     try {
       const j = JSON.parse(await get(api, 25000));
       const now = Date.now();
-      list = ((j && j.epg_listings) || []).map((e) => ({ title: b64(e.title).trim(), start: (+e.start_timestamp || 0) * 1000, end: (+e.stop_timestamp || 0) * 1000 }))
+      list = ((j && j.epg_listings) || []).map((e) => ({ title: b64(e.title).trim(), desc: b64(e.description).trim().slice(0, 200), start: (+e.start_timestamp || 0) * 1000, end: (+e.stop_timestamp || 0) * 1000 }))
         .filter((p) => p.title && p.start && p.end > p.start && p.end > now && p.start < now + 6 * 3600000).sort((a, b) => a.start - b.start);
     } catch { failed = true; }
     EPG.set(sid, { at: Date.now(), list, failed });
@@ -4725,7 +5211,7 @@ const LV = (() => {
     while (busy < 4 && queue.length) {
       const sid = queue.shift();
       busy++;
-      fetchEpg(sid).finally(() => { busy--; pending.delete(sid); paint(sid); pump(); });
+      fetchEpg(sid).finally(() => { busy--; pending.delete(sid); paint(sid); homeSoon(); pump(); });
     }
   }
   function want(sid) {
@@ -4770,7 +5256,7 @@ const LV = (() => {
   function paintNoGuide() {
     $$(".lv-row").forEach((row) => { const ch = st.list && st.list[+row.dataset.idx]; const c = ch && ch.sid && EPG.get(ch.sid); if (ch && (!ch.sid || !st.xt || (c && !c.list.length))) paintRow(row); });
   }
-  function row(i, f) {
+  function row(i, f, label, gid) {
     const ch = st.list[i];
     const ini = esc(initial(ch.name));
     const logo = ch.logo && !mixedBlocked(ch.logo)
@@ -4778,9 +5264,9 @@ const LV = (() => {
       : `<span class="ini">${ini}</span>`;
     const [now, next] = guideHtml(ch);
     const fav = f.has(favKey(ch.url));
-    return `<button class="lv-row" type="button" data-act="live" data-idx="${i}" data-sid="${esc(ch.sid || "")}" title="${esc(ch.name)}">
+    return `<button class="lv-row" type="button" data-act="live" data-idx="${i}"${gid ? ` data-g="${esc(gid)}"` : ""} data-sid="${esc(ch.sid || "")}" title="${esc(label || ch.name)}">
       <span class="lv-logo">${logo}</span>
-      <span class="lv-nm"><b>${esc(ch.name)}</b><span class="lv-star${fav ? " on" : ""}" role="button" tabindex="0" data-act="livefav" data-idx="${i}" aria-label="${fav ? "Remove from" : "Add to"} favorites">${fav ? "&#9733;" : "&#9734;"}</span></span>
+      <span class="lv-nm"><b>${esc(label || ch.name)}</b><span class="lv-star${fav ? " on" : ""}" role="button" tabindex="0" data-act="livefav" data-idx="${i}" aria-label="${fav ? "Remove from" : "Add to"} favorites">${fav ? "&#9733;" : "&#9734;"}</span></span>
       <span class="lv-now">${now}</span><span class="lv-next">${next}</span></button>`;
   }
   function watchRows(g) {
@@ -4929,17 +5415,94 @@ const LV = (() => {
     $$("#lvChips .chip").forEach((b) => b.classList.toggle("on", b.dataset.sec === view.sec));
   }
   async function loadGameCounts() {
-    for (const L of LEAGUES.filter(inSeason)) {
+    for (const L of LEAGUES.filter((x) => inSeason(x) && HOME_LEAGUES.has(x.id))) {
       loadLeague(L, true).then((sc) => {
         const b = $(`#lvChips .chip[data-sec="game:${L.id}"] span+span`);
         if (b) b.textContent = sc.ok ? String(sc.games.filter((x) => x.state !== "post").length) : "";
         const chip = b && b.closest(".chip"); if (chip && sc.ok && !sc.games.length) chip.remove();
-        if (sc.ok) paintNoGuide();
+        if (sc.ok) { paintNoGuide(); homeSoon(); }
       }).catch(() => {});
     }
   }
+  // ---------- What's on: the default view (LH, the same rows as the TV) ----------
+  // My Teams, Live Games, History & Docs, Military, Cyber/AI/Tech and Primetime Entertainment, one tile per network
+  // or game; then All Channels A-Z, closed until tapped. A tile plays its first feed; the player lists the others.
+  const HOME_LEAGUES = new Set(["NFL", "NCAAF", "NBA", "MLB", "NHL"]);
+  // Until the TV sends this profile's teams (web_init fav_teams): Dad (p1) follows Philadelphia, like the TV.
+  const TEAM_DEFAULTS = { p1: ["NFL:Eagles", "MLB:Phillies", "NHL:Flyers", "NBA:76ers"] };
+  function teams() {
+    const pid = S.profile || "p1";
+    const sent = S.init && Array.isArray(S.init.fav_teams) && (S.init.profile || "p1") === pid ? S.init.fav_teams : null;
+    return (sent || TEAM_DEFAULTS[pid] || []).map((x) => { const t = String(x), i = t.indexOf(":"); return i > 0 ? { league: t.slice(0, i), name: t.slice(i + 1) } : null; }).filter(Boolean);
+  }
+  const homeGames = () => Object.values(SCHED).flatMap((x) => x.games || []).filter((g) => HOME_LEAGUES.has(g.L.id))
+    .map((g) => ({ league: g.L.id, id: g.id, state: g.state, start: g.start, detail: g.detail, away: g.away, home: g.home, casts: g.casts }));
+  function progsOf(i) { const ch = st.list[i]; const c = ch && ch.sid && st.xt ? EPG.get(ch.sid) : null; return c && !c.failed ? c.list : []; }
+  function buildHome() {
+    const now = Date.now();
+    st.home = LH.home({ idx: st.idx, chs: st.chs, progs: progsOf, games: homeGames(), teams: teams(), now, eventOf: (i) => eventProg(st.list[i].raw, st.list[i].group, now) });
+    return st.home;
+  }
+  /** Guides the rows need: one feed per catalog network, plus Philadelphia's station for the broadcast networks. */
+  function wantHomeGuides() {
+    if (!st.xt || !st.idx) return;
+    const pri = { sports: 0, local: 1, docs: 2, news: 3, ent: 4, movies: 5 };
+    const nets = st.idx.list.filter((g) => g.net).sort((a, b) => (pri[a.kind] ?? 9) - (pri[b.kind] ?? 9) || a.net.rank - b.net.rank);
+    for (const g of nets) {
+      const first = g.feeds.find((i) => st.list[i].sid);
+      if (first != null) want(st.list[first].sid);
+      const philly = g.feeds.find((i) => st.list[i].sid && st.idx.info[i].id.region === "philly");
+      if (philly != null) want(st.list[philly].sid);
+    }
+  }
+  let homeT = 0;
+  function homeSoon() { clearTimeout(homeT); homeT = setTimeout(() => { if (!view.sec && !view.q && $("#lvHome")) drawHome(true); }, 700); }
+  const EMPTY = {
+    myteams: () => teams().length ? "No games for your teams in the schedules loaded so far." : "Add your teams on the TV: Settings > Addons and Live TV > My teams.",
+    games: () => "No games on right now in the NFL, college football, MLB, NHL or NBA.",
+    docs: () => (st.xt ? (pending.size ? "Checking the guide&#8230;" : "Nothing like this on right now.") : "Needs your provider's program guide."),
+    prime: () => "None of these networks are in your playlist.",
+  };
+  function tileHtml(t, r, n) {
+    const ch = t.feeds.length ? st.list[t.feeds[0]] : null;
+    const logo = ch && ch.logo && !mixedBlocked(ch.logo) ? `<img loading="lazy" decoding="async" src="${esc(ch.logo)}" alt="" referrerpolicy="no-referrer" style="max-height:22px;max-width:70px;object-fit:contain" onerror="this.remove()">` : "";
+    return `<button class="lh-tile${t.live ? " live" : ""}${t.mine ? " mine" : ""}" type="button" data-act="lvtile" data-row="${esc(r)}" data-n="${n}"${t.feeds.length ? "" : " disabled"}>
+      <span class="lh-badge">${esc(t.badge || "")}&#8203;</span><b>${esc(t.title)}</b><small>${esc(t.sub)}</small>
+      <span class="lh-feeds">${logo}${t.feeds.length > 1 ? ` ${t.feeds.length} feeds` : ""}</span></button>`;
+  }
+  function azRow(g) {
+    const open = view.open === g.id, f = favs();
+    const n = g.feeds.length, more = n > 1 ? (open ? "Hide" : n.toLocaleString() + (g.family ? " channels" : " feeds")) : "";
+    return `<div class="lh-net">${row(g.feeds[0], f, g.label, g.family ? "" : g.id)}${more ? `<button class="lh-more" type="button" data-act="lvfeeds" data-g="${esc(g.id)}">${more}</button>` : ""}
+      ${open ? `<div class="lv-list lh-sub">${g.feeds.slice(0, 300).map((j) => row(j, f, "", g.family ? "" : g.id)).join("")}</div>` : ""}</div>`;
+  }
+  function azHtml() {
+    const L = st.idx.list, k = view.kind || "all", counts = {};
+    for (const g of L) counts[g.kind] = (counts[g.kind] || 0) + 1;
+    const items = k === "all" ? L : L.filter((g) => g.kind === k);
+    const end = Math.min(items.length, view.azShown || PAGE);
+    view.azShown = end;
+    return `<details class="lh-az" id="lvAZ"${view.azOpen ? " open" : ""}><summary><b>All Channels A&#8211;Z</b><span class="muted">${L.length.toLocaleString()} networks &#183; ${st.list.length.toLocaleString()} channels</span></summary>
+      ${view.azOpen ? `<div class="chips">${LH.KINDS.filter(([id]) => id === "all" || counts[id]).map(([id, label]) => `<button class="chip${id === k ? " on" : ""}" type="button" data-act="lvkind" data-kind="${id}"><span>${esc(label)}</span> <span>${(id === "all" ? L.length : counts[id]).toLocaleString()}</span></button>`).join("")}</div>
+      <div class="lv-list">${items.slice(0, end).map(azRow).join("")}</div>${end < items.length ? `<div class="more"><button class="btn" type="button" data-act="lvazmore">Show more</button></div>` : ""}` : ""}</details>`;
+  }
+  function drawHome(keepScroll) {
+    const g = $("#lvGrid"); if (!g) return;
+    const H = buildHome();
+    const y = window.scrollY;
+    const kids = isKids();
+    g.innerHTML = `<div id="lvHome">${kids ? "" : H.rows.map((r) => `<section class="lh-row" data-row="${r.id}"><h2>${esc(r.title)}</h2>${r.tiles.length
+      ? `<div class="lh-strip">${r.tiles.map((t, n) => tileHtml(t, r.id, n)).join("")}</div>`
+      : `<p class="lh-empty">${(EMPTY[r.id] || EMPTY.docs)()}</p>`}</section>`).join("")}${azHtml()}</div>`;
+    if (keepScroll) window.scrollTo(0, y);
+    const d = $("#lvAZ", g);
+    if (d) d.addEventListener("toggle", () => { if (view.azOpen !== d.open) { view.azOpen = d.open; drawHome(true); } });
+    watchRows(g); wantFirst(g); wantHomeGuides();
+    $$("#lvChips .chip").forEach((b) => b.classList.toggle("on", !view.q && b.dataset.sec === view.sec));
+  }
   function drawGrid(keepScroll) {
     const g = $("#lvGrid"), more = $("#lvMore"); if (!g) return;
+    if (!view.q && !view.sec && st.idx) { more.classList.add("hidden"); const sb = $("#lvSports"); if (sb) sb.innerHTML = ""; drawHome(keepScroll); return; }
     if (!view.q && String(view.sec).startsWith("game:")) { const L = LEAGUES.find((x) => "game:" + x.id === view.sec); if (L) { drawGames(L); return; } }
     const idx = filtered(), f = favs();
     const end = Math.min(idx.length, view.shown || PAGE);
@@ -4977,12 +5540,14 @@ const LV = (() => {
       return;
     }
     const c = counts();
-    if (!view.sec || (!c[view.sec] && !["All", "Favorites", "Recent"].includes(view.sec) && !String(view.sec).startsWith("game:"))) { view.sec = c.Favorites ? "Favorites" : isKids() && c.Kids ? "Kids" : c.Sports ? "Sports" : "All"; view.auto = true; }
+    // What's on (rows) is the default for every profile; the Kids profile opens All Channels on Kids.
+    if (view.sec && !["All", "Favorites", "Recent", "Sports"].includes(view.sec) && !String(view.sec).startsWith("game:")) view.sec = "";
+    if (isKids() && !view.kindSet) { view.kind = "kids"; view.azOpen = true; view.kindSet = true; }
     const stale = !RC.ready() && S.link && S.status === "offline";
     v.innerHTML = `<div class="page"><h1>Live TV</h1>
       ${stale ? `<div class="panel" id="lvStale" style="margin-bottom:12px"><h2>Connect this phone to your house</h2><p class="muted">So favorites and lists come from every TV, not just one: on any TV go to Settings &gt; Network &gt; Connect a phone, then type its code in this app's Settings &gt; House and devices.</p></div>` : ""}
       <div class="lv-wrap">
-      <div class="chips" id="lvChips">${(() => { const ls = LEAGUES.filter(inSeason); return ls.length ? `<span class="lv-hd">Games</span>${ls.map((L) => `<button class="chip lv-game" type="button" data-act="livesec" data-sec="game:${L.id}"><span>${L.emoji} ${esc(L.label)}</span><span>${SCHED[L.id] ? SCHED[L.id].games.filter((x) => x.state !== "post").length : ""}</span></button>`).join("")}<span class="lv-hd">Channels</span>` : ""; })()}${LIVE_SECTIONS.filter((s) => ["All", "Favorites", "Recent"].includes(s) || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}</div>
+      <div class="chips" id="lvChips"><button class="chip" type="button" data-act="livesec" data-sec=""><span>What's on</span><span></span></button>${["Favorites", "Recent"].filter((s) => s === "Favorites" || c[s]).map((s) => `<button class="chip" type="button" data-act="livesec" data-sec="${esc(s)}"><span>${s === "Favorites" ? "&#9733; " : ""}${esc(s)}</span><span>${(c[s] || 0).toLocaleString()}</span></button>`).join("")}${(() => { const ls = LEAGUES.filter((L) => inSeason(L) && HOME_LEAGUES.has(L.id)); return ls.length ? `<span class="lv-hd">Schedules</span>${ls.map((L) => `<button class="chip lv-game" type="button" data-act="livesec" data-sec="game:${L.id}"><span>${L.emoji} ${esc(L.label)}</span><span>${SCHED[L.id] ? SCHED[L.id].games.filter((x) => x.state !== "post").length : ""}</span></button>`).join("")}` : ""; })()}</div>
       <div><div class="lv-tools"><input id="lvQ" type="search" placeholder="Search channels" autocomplete="off" enterkeyhint="search" aria-label="Search channels" value="${esc(view.q)}"></div>
       <div id="lvSports"></div><div id="lvGrid"></div><div class="more"><button class="btn hidden" id="lvMore" data-act="livemore">Show more</button></div></div></div></div>`;
     let t = 0;
@@ -5073,8 +5638,11 @@ const LV = (() => {
     return Object.assign(pick, { est: est > 0 && Date.now() - estAt <= QF.T.freshMs ? est : 0, br });
   }
   const UPFRONT = { froze_before: "Playing 1080p. This channel froze in 4K here before.", slow_network: "Playing 1080p. Your connection is slower than this 4K stream." };
-  async function play(i) {
+  const feedName = (c) => String(c.raw || c.name).replace(/^\s*[|[(]?\s*(?:US|USA)\s*[|:\])]\s*/i, "").trim();
+  /** Plays channel [i]. [feeds]: every feed of its network (best first), listed in the player to switch to. */
+  async function play(i, feeds) {
     const picked = st.list && st.list[i]; if (!picked) return;
+    feeds = Array.isArray(feeds) && feeds.length > 1 && feeds.includes(i) ? feeds.slice(0, 80) : null;
     let ch = picked;
     noteRecent(ch);
     // The browser can't play this channel (provider blocks browsers, or an http stream on this https page):
@@ -5091,7 +5659,7 @@ const LV = (() => {
     const box = document.createElement("div");
     box.className = "lv-player"; box.id = "lvPlayer";
     box.innerHTML = `<div class="pl-top"><button class="pl-back" type="button" id="lvBack">&#8249; Back</button>
-      <div class="pl-title"><b>${esc(ch.name)}</b><span class="muted" id="lvLine">Live TV</span></div></div>
+      <div class="pl-title"><b>${esc(ch.name)}</b><span class="muted" id="lvLine">Live TV</span>${feeds ? `<select class="pl-feed" id="lvFeed" aria-label="Feed">${feeds.map((j) => `<option value="${j}"${j === i ? " selected" : ""}>${esc(feedName(st.list[j]))}</option>`).join("")}</select>` : ""}</div></div>
       <div class="pl-stage"><video id="lvVid" controls playsinline webkit-playsinline autoplay></video>
       <button class="pl-tap hidden" id="lvTap" type="button" aria-label="Play"><i aria-hidden="true">&#9654;</i>Tap to play</button>
       <div class="pl-msg hidden" id="lvMsg"><p id="lvMsgText"></p><button class="btn small primary" type="button" id="lvClose">Back to channels</button></div></div>`;
@@ -5108,6 +5676,8 @@ const LV = (() => {
     PLAYER.stop = () => { done = true; clearTimeout(timer); try { if (hls) hls.destroy(); } catch {} try { vid.pause(); vid.removeAttribute("src"); vid.load(); } catch {} };
     $("#lvBack", box).addEventListener("click", closePlayer);
     $("#lvClose", box).addEventListener("click", closePlayer);
+    const feedSel = $("#lvFeed", box);
+    if (feedSel) feedSel.addEventListener("change", () => play(+feedSel.value, feeds));
     vid.addEventListener("playing", () => { started = true; clearTimeout(timer); tapBtn.classList.add("hidden"); });
     // The 25 s stall timer runs only while the video is really trying to play, not while it waits for a tap.
     const arm = () => { clearTimeout(timer); timer = setTimeout(() => { if (!started && vid.readyState < 2) fail(LIVE_NO); }, 25000); };
@@ -5249,11 +5819,20 @@ const LV = (() => {
     show, play, closePlayer, xtreamOf, gkey,
     reset() { st = { status: "idle", list: null, msg: "", key: "" }; view = { sec: "", q: "", shown: 0 }; },
     redraw,
-    section(sec) { view.auto = false; view.sec = sec; view.sub = ""; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
-    sport(sub) { view.auto = false; view.sec = "Sports"; view.sub = sub; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
+    section(sec) { view.sec = sec; view.sub = ""; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
+    sport(sub) { view.sec = "Sports"; view.sub = sub; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
     fav: toggleFav,
     game(id) { view.game = view.game === id ? "" : id; drawGrid(true); },
     more() { view.shown += PAGE; drawGrid(); },
+    /** A row tile: its first feed, with the rest in the player. */
+    tile(r, n) { const row = st.home && st.home.rows.find((x) => x.id === r); const t = row && row.tiles[n]; if (t && t.feeds.length) play(t.feeds[0], t.feeds); },
+    /** A channel from a list; [gid] is its network in A-Z, so the player lists the other feeds. */
+    playIn(i, gid) { const g = gid && st.gix && st.gix.get(gid); play(i, g ? g.feeds : null); },
+    feeds(gid) { view.open = view.open === gid ? "" : gid; drawHome(true); },
+    kind(k) { view.kind = k; view.azShown = 0; view.open = ""; drawHome(true); },
+    azMore() { view.azShown += PAGE; drawHome(true); },
+    /** For tests: the rows as built now. */
+    homeNow() { return st.idx ? buildHome() : null; },
   };
 })();
 function renderLive(v, tok) { LV.show(v, tok); }
@@ -6003,7 +6582,11 @@ document.addEventListener("click", async (e) => {
     case "rdcancel": RDL.code = null; clearTimeout(RDL.timer); rdLoginUi(); break;
     case "rdout": if (confirm("Disconnect Real-Debrid on this device?")) { saveRdc(null); rdLoginUi(); toast("Real-Debrid disconnected on this device", "ok"); } break;
     case "rmjarvis": if (confirm("Remove the Jarvis key from this device? Ask Jarvis then goes through your TV.")) { LS.set(JLOCAL, "0"); LS.del(JKEY); toast("Jarvis key removed from this device", "ok"); renderSettings($("#view")); } break;
-    case "live": LV.play(+d.idx); break;
+    case "live": LV.playIn(+d.idx, d.g || ""); break;
+    case "lvtile": LV.tile(d.row, +d.n); break;
+    case "lvfeeds": LV.feeds(d.g); break;
+    case "lvkind": LV.kind(d.kind); break;
+    case "lvazmore": LV.azMore(); break;
     case "livesec": LV.section(d.sec); break;
     case "livesport": LV.sport(d.sub || ""); break;
     case "livefav": LV.fav(+d.idx); break;
@@ -6023,7 +6606,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-21.1";
+const BUILD = "2026-10-21.2";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;

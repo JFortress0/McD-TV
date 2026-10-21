@@ -410,6 +410,8 @@ object Relay {
                 .apply { if (withAddons) put("addon_urls", JSONArray(addons)) }
                 .put("websites_separate", !withSites)
                 .apply { if (withSites) put("websites", JSONArray(sites)) }
+                // My teams for this profile ("NFL:Eagles"), so the phone's Live TV pins the same games.
+                .put("fav_teams", JSONArray(FavoriteTeam.listFrom(Prefs.favoriteTeamNames(pid), pid).map { it.stored }))
                 .put("live_favorites_separate", !withLiveFavs)
                 .apply { if (withLiveFavs) put("live_favorites", JSONArray(liveFavs)) }
                 .put("watchlist", JSONArray(watch))

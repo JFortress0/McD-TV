@@ -44,9 +44,12 @@ for (const w of [390,1280]) {
   await p.goto(B+'#/live'); await p.reload(); await p.waitForTimeout(3500);
   const chips=await p.$$eval('#lvChips .chip',r=>r.map(x=>x.dataset.sec+':'+x.innerText.replace(/\s+/g,' ')));
   log(w,'chips',chips.join(' | '));
-  for (const s of ['Sports','News','Entertainment','All','Favorites','Recent']) { await p.click(`#lvChips .chip[data-sec="${s}"]`).catch(e=>fails.push(`${w} chip ${s} missing`)); await p.waitForTimeout(300); log(w,'sec',s,'rows',await p.$$eval('.lv-row',r=>r.length)); }
-  await p.click('#lvChips .chip[data-sec="Sports"]'); await p.waitForTimeout(300);
-  for (const sub of await p.$$eval('.lv-sports .chip',r=>r.map(x=>x.dataset.sub))) { await p.click(`.lv-sports .chip[data-sub="${sub}"]`); await p.waitForTimeout(250); log(w,'sport',sub,await p.$$eval('.lv-row b',r=>r.map(x=>x.innerText).join(','))); }
+  // The default view: six rows, then All Channels A-Z (closed). The old section chips are gone.
+  const lhRows=await p.$$eval('.lh-row',r=>r.map(x=>x.dataset.row).join(','));
+  log(w,'live rows',lhRows,'A-Z closed',await p.$eval('#lvAZ',d=>!d.open).catch(()=>'missing'));
+  if(lhRows!=='myteams,games,docs,military,tech,prime') fails.push(`${w} live rows: "${lhRows}"`);
+  if(await p.$('#lvChips .chip[data-sec="Sports"]')) fails.push(`${w} the old Sports chip is still shown`);
+  for (const s of ['Favorites','']) { await p.click(`#lvChips .chip[data-sec="${s}"]`).catch(e=>fails.push(`${w} chip "${s}" missing`)); await p.waitForTimeout(300); log(w,'sec',s||"What's on",'rows',await p.$$eval('.lv-row,.lh-tile',r=>r.length)); }
   // Games rail
   const nfl=await p.$('#lvChips .chip[data-sec="game:NFL"]'); if(!nfl) fails.push(`${w} NFL games chip missing`); else {
     log(w,'NFL chip count',await nfl.innerText());
@@ -60,8 +63,10 @@ for (const w of [390,1280]) {
     const h=await hsc(p); if(w===390&&h.sw>h.iw) fails.push(`${w} games overflow ${h.sw} ${h.wide}`);
   }
   for (const L of ['NBA','NHL','EPL']) { const c=await p.$(`#lvChips .chip[data-sec="game:${L}"]`); log(w,'empty league chip',L,c?'still present':'removed'); }
-  // Favorites star toggle
-  await p.click('#lvChips .chip[data-sec="All"]'); await p.waitForTimeout(300);
+  for (const L of ['WNBA','MLS','EPL']) if(await p.$(`#lvChips .chip[data-sec="game:${L}"]`)) fails.push(`${w} ${L} schedule chip shown`);
+  // Favorites star toggle, on a channel in All Channels A-Z
+  await p.click('#lvChips .chip[data-sec=""]'); await p.waitForTimeout(300);
+  await p.click('#lvAZ summary'); await p.waitForTimeout(500);
   const fv=()=>p.evaluate(()=>{try{return JSON.parse(localStorage.mcdtv_web_plists).p1.live_favorites.length}catch{return 0}});
   const f0=await fv(); await p.click('.lv-row .lv-star'); await p.waitForTimeout(300); const f1=await fv();
   const star1=await p.$eval('.lv-row .lv-star',e=>e.innerText+'|'+e.getAttribute('aria-pressed'));
@@ -118,7 +123,7 @@ for (const w of [390,1280]) {
   const loading=await p.$$eval('.lv-row',r=>r.filter(x=>/Loading guide/.test(x.innerText)).length);
   log('rows still loading after relaunch',loading);
   await ctx.route('**/live/**',()=>{}); // the stream never answers, so only the blocked play() is tested
-  await p.click('.lv-row b'); await p.waitForTimeout(1500);
+  await p.click('.lh-tile:not([disabled])'); await p.waitForTimeout(1500);
   const tap=await p.$eval('#lvTap',e=>!e.classList.contains('hidden')).catch(()=>false);
   const msgShown=await p.$eval('#lvMsg',e=>!e.classList.contains('hidden')).catch(()=>false);
   log('live tap to play shown',tap,'error shown',msgShown,await p.$eval('#lvMsgText',e=>e.innerText).catch(()=>'')); if(!tap||msgShown) fails.push(`live Tap to play: tap ${tap} msg ${msgShown}`);

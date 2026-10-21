@@ -1,0 +1,276 @@
+{
+ "A": {
+  "now": 1792950000000,
+  "games": [
+   {
+    "league": "NFL",
+    "id": "a1",
+    "state": "in",
+    "start": 1792947600000,
+    "detail": "Q2 4:11",
+    "away": {
+     "name": "Philadelphia Eagles",
+     "short": "Eagles",
+     "nick": "Eagles",
+     "loc": "Philadelphia",
+     "abbr": "PHI"
+    },
+    "home": {
+     "name": "New York Giants",
+     "short": "Giants",
+     "nick": "Giants",
+     "loc": "New York",
+     "abbr": "NYG"
+    },
+    "casts": [
+     "FOX"
+    ]
+   },
+   {
+    "league": "NFL",
+    "id": "a2",
+    "state": "in",
+    "start": 1792947600000,
+    "detail": "Q2 7:30",
+    "away": {
+     "name": "Dallas Cowboys",
+     "short": "Cowboys",
+     "nick": "Cowboys",
+     "loc": "Dallas",
+     "abbr": "DAL"
+    },
+    "home": {
+     "name": "Washington Commanders",
+     "short": "Commanders",
+     "nick": "Commanders",
+     "loc": "Washington",
+     "abbr": "WSH"
+    },
+    "casts": [
+     "CBS"
+    ]
+   },
+   {
+    "league": "NFL",
+    "id": "a3",
+    "state": "in",
+    "start": 1792947600000,
+    "detail": "Q2 1:02",
+    "away": {
+     "name": "Atlanta Falcons",
+     "short": "Falcons",
+     "nick": "Falcons",
+     "loc": "Atlanta",
+     "abbr": "ATL"
+    },
+    "home": {
+     "name": "Tampa Bay Buccaneers",
+     "short": "Buccaneers",
+     "nick": "Buccaneers",
+     "loc": "Tampa Bay",
+     "abbr": "TB"
+    },
+    "casts": [
+     "FOX"
+    ]
+   },
+   {
+    "league": "NFL",
+    "id": "a4",
+    "state": "pre",
+    "start": 1792974000000,
+    "detail": "",
+    "away": {
+     "name": "Kansas City Chiefs",
+     "short": "Chiefs",
+     "nick": "Chiefs",
+     "loc": "Kansas City",
+     "abbr": "KC"
+    },
+    "home": {
+     "name": "Buffalo Bills",
+     "short": "Bills",
+     "nick": "Bills",
+     "loc": "Buffalo",
+     "abbr": "BUF"
+    },
+    "casts": [
+     "NBC"
+    ]
+   },
+   {
+    "league": "NHL",
+    "id": "a5",
+    "state": "in",
+    "start": 1792945800000,
+    "detail": "2nd 8:15",
+    "away": {
+     "name": "Boston Bruins",
+     "short": "Bruins",
+     "nick": "Bruins",
+     "loc": "Boston",
+     "abbr": "BOS"
+    },
+    "home": {
+     "name": "Detroit Red Wings",
+     "short": "Red Wings",
+     "nick": "Red Wings",
+     "loc": "Detroit",
+     "abbr": "DET"
+    },
+    "casts": [
+     "TNT"
+    ]
+   },
+   {
+    "league": "NHL",
+    "id": "a6",
+    "state": "pre",
+    "start": 1792962000000,
+    "detail": "",
+    "away": {
+     "name": "New York Rangers",
+     "short": "Rangers",
+     "nick": "Rangers",
+     "loc": "New York",
+     "abbr": "NYR"
+    },
+    "home": {
+     "name": "Philadelphia Flyers",
+     "short": "Flyers",
+     "nick": "Flyers",
+     "loc": "Philadelphia",
+     "abbr": "PHI"
+    },
+    "casts": [
+     "NHL Network"
+    ]
+   },
+   {
+    "league": "NBA",
+    "id": "a7",
+    "state": "pre",
+    "start": 1792969200000,
+    "detail": "",
+    "away": {
+     "name": "Boston Celtics",
+     "short": "Celtics",
+     "nick": "Celtics",
+     "loc": "Boston",
+     "abbr": "BOS"
+    },
+    "home": {
+     "name": "Philadelphia 76ers",
+     "short": "76ers",
+     "nick": "76ers",
+     "loc": "Philadelphia",
+     "abbr": "PHI"
+    },
+    "casts": [
+     "NBC Sports Philadelphia"
+    ]
+   }
+  ]
+ },
+ "B": {
+  "now": 1793147400000,
+  "games": [
+   {
+    "league": "NHL",
+    "id": "b1",
+    "state": "in",
+    "start": 1793142000000,
+    "detail": "3rd 12:40",
+    "away": {
+     "name": "Philadelphia Flyers",
+     "short": "Flyers",
+     "nick": "Flyers",
+     "loc": "Philadelphia",
+     "abbr": "PHI"
+    },
+    "home": {
+     "name": "Pittsburgh Penguins",
+     "short": "Penguins",
+     "nick": "Penguins",
+     "loc": "Pittsburgh",
+     "abbr": "PIT"
+    },
+    "casts": [
+     "NBC Sports Philadelphia"
+    ]
+   },
+   {
+    "league": "NBA",
+    "id": "b2",
+    "state": "in",
+    "start": 1793145600000,
+    "detail": "Q1 2:10",
+    "away": {
+     "name": "Philadelphia 76ers",
+     "short": "76ers",
+     "nick": "76ers",
+     "loc": "Philadelphia",
+     "abbr": "PHI"
+    },
+    "home": {
+     "name": "Milwaukee Bucks",
+     "short": "Bucks",
+     "nick": "Bucks",
+     "loc": "Milwaukee",
+     "abbr": "MIL"
+    },
+    "casts": [
+     "NBA TV"
+    ]
+   },
+   {
+    "league": "NBA",
+    "id": "b3",
+    "state": "pre",
+    "start": 1793154600000,
+    "detail": "",
+    "away": {
+     "name": "Oklahoma City Thunder",
+     "short": "Thunder",
+     "nick": "Thunder",
+     "loc": "Oklahoma City",
+     "abbr": "OKC"
+    },
+    "home": {
+     "name": "Los Angeles Lakers",
+     "short": "Lakers",
+     "nick": "Lakers",
+     "loc": "Los Angeles",
+     "abbr": "LAL"
+    },
+    "casts": [
+     "TNT"
+    ]
+   },
+   {
+    "league": "NFL",
+    "id": "b4",
+    "state": "pre",
+    "start": 1793556000000,
+    "detail": "",
+    "away": {
+     "name": "Philadelphia Eagles",
+     "short": "Eagles",
+     "nick": "Eagles",
+     "loc": "Philadelphia",
+     "abbr": "PHI"
+    },
+    "home": {
+     "name": "Dallas Cowboys",
+     "short": "Cowboys",
+     "nick": "Cowboys",
+     "loc": "Dallas",
+     "abbr": "DAL"
+    },
+    "casts": [
+     "FOX"
+    ]
+   }
+  ]
+ }
+}

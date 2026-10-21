@@ -1,0 +1,1405 @@
+{
+ "catalog": [
+  "abc|ABC|local|prime|ABC",
+  "cbs|CBS|local|prime|CBS",
+  "nbc|NBC|local|prime|NBC",
+  "fox|FOX|local|prime|FOX",
+  "cw|The CW|local|prime|CW,THE CW",
+  "pbs|PBS|local|docs,tech|PBS",
+  "ion|ION|local||ION",
+  "amc|AMC|ent|prime|AMC",
+  "fx|FX|ent|prime|FX",
+  "fxx|FXX|ent|prime|FXX",
+  "tnt|TNT|ent|prime|TNT",
+  "tbs|TBS|ent|prime|TBS",
+  "usa|USA Network|ent|prime|USA",
+  "bravo|Bravo|ent|prime|BRAVO",
+  "ae|A&E|ent|prime|A&E,A AND E,AE",
+  "hgtv|HGTV|ent|prime|HGTV",
+  "food|Food Network|ent|prime|FOOD",
+  "tlc|TLC|ent|prime|TLC",
+  "paramount|Paramount Network|ent|prime|PARAMOUNT",
+  "comedy|Comedy Central|ent|prime|COMEDY CENTRAL",
+  "syfy|Syfy|ent|prime|SYFY,SCI FI",
+  "discovery|Discovery|docs|prime,docs|DISCOVERY",
+  "history|History|docs|prime,docs,military|HISTORY",
+  "natgeo|National Geographic|docs|prime,docs|NATIONAL GEOGRAPHIC,NAT GEO",
+  "hallmark|Hallmark Channel|ent|prime|HALLMARK",
+  "lifetime|Lifetime|ent|prime|LIFETIME",
+  "freeform|Freeform|ent|prime|FREEFORM",
+  "trutv|truTV|ent|prime|TRUTV,TRU",
+  "tvland|TV Land|ent|prime|TV LAND",
+  "e|E!|ent|prime|E!",
+  "bet|BET|ent|prime|BET",
+  "hbo|HBO|movies|prime|HBO",
+  "showtime|Showtime|movies|prime|SHOWTIME",
+  "starz|Starz|movies|prime|STARZ",
+  "own|OWN|ent||OWN",
+  "we|WE tv|ent||WE",
+  "ifc|IFC|ent||IFC",
+  "sundance|Sundance TV|ent||SUNDANCE",
+  "magnolia|Magnolia Network|ent||MAGNOLIA",
+  "oxygen|Oxygen|ent||OXYGEN",
+  "id|Investigation Discovery|ent||INVESTIGATION DISCOVERY,ID",
+  "ahc|American Heroes Channel|docs|docs,military|AMERICAN HEROES,AHC",
+  "mhc|Military History Channel|docs|docs,military|MILITARY HISTORY",
+  "smithsonian|Smithsonian Channel|docs|docs,military|SMITHSONIAN",
+  "science|Science Channel|docs|docs,tech|SCIENCE",
+  "natgeowild|Nat Geo Wild|docs|docs|NAT GEO WILD",
+  "animalplanet|Animal Planet|docs|docs|ANIMAL PLANET",
+  "vice|Vice|docs|docs|VICE",
+  "curiosity|CuriosityStream|docs|docs,tech|CURIOSITYSTREAM,CURIOSITY",
+  "cnn|CNN|news||CNN",
+  "foxnews|Fox News|news||FOX NEWS",
+  "msnbc|MSNBC|news||MSNBC",
+  "cnbc|CNBC|news|tech|CNBC",
+  "bloomberg|Bloomberg TV|news|tech|BLOOMBERG",
+  "espn|ESPN|sports||ESPN",
+  "espn2|ESPN2|sports||ESPN2,ESPN 2",
+  "espnu|ESPNU|sports||ESPNU",
+  "secn|SEC Network|sports||SEC",
+  "accn|ACC Network|sports||ACC",
+  "btn|Big Ten Network|sports||BIG TEN,BTN,BIG 10",
+  "cbssn|CBS Sports Network|sports||CBS SPORTS,CBSSN",
+  "fs1|FS1|sports||FS1,FOX SPORTS 1",
+  "fs2|FS2|sports||FS2,FOX SPORTS 2",
+  "nfln|NFL Network|sports||NFL,NFL NET,NFLN",
+  "redzone|NFL RedZone|sports||NFL REDZONE,REDZONE,NFL RED ZONE,RED ZONE",
+  "mlbn|MLB Network|sports||MLB,MLBN,MLB NET",
+  "nhln|NHL Network|sports||NHL,NHLN,NHL NET",
+  "nbatv|NBA TV|sports||NBA,NBATV",
+  "golf|Golf Channel|sports||GOLF",
+  "nbcsp|NBC Sports Philadelphia|sports||NBC SPORTS PHILADELPHIA,NBCSP",
+  "nbcspp|NBC Sports Philadelphia Plus|sports||NBC SPORTS PHILADELPHIA PLUS,NBCSP+"
+ ],
+ "identify": [
+  [
+   "US| AMC FHD",
+   "US| ENTERTAINMENT",
+   "amc"
+  ],
+  [
+   "US| AMC West",
+   "US| ENTERTAINMENT",
+   "amc"
+  ],
+  [
+   "US| AMC (backup)",
+   "US| ENTERTAINMENT",
+   "amc"
+  ],
+  [
+   "AT&T: AMC RAW",
+   "US| AT&T RAW 60fps",
+   "amc"
+  ],
+  [
+   "SLING: AMC",
+   "US| SLING",
+   "amc"
+  ],
+  [
+   "DTV: AMC HD",
+   "US| DIRECTV",
+   "amc"
+  ],
+  [
+   "AMC (Hulu)",
+   "US| HULU LIVE",
+   "amc"
+  ],
+  [
+   "AMC [Philo]",
+   "US| PHILO",
+   "amc"
+  ],
+  [
+   "US| AMC+",
+   "US| ENTERTAINMENT",
+   "AMC+"
+  ],
+  [
+   "US| FX HD",
+   "US| ENTERTAINMENT",
+   "fx"
+  ],
+  [
+   "US| FXX",
+   "US| ENTERTAINMENT",
+   "fxx"
+  ],
+  [
+   "US| A&E HD",
+   "US| ENTERTAINMENT",
+   "ae"
+  ],
+  [
+   "US| USA Network FHD",
+   "US| ENTERTAINMENT",
+   "usa"
+  ],
+  [
+   "US| Travel Channel",
+   "US| ENTERTAINMENT",
+   "TRAVEL"
+  ],
+  [
+   "US| Discovery Science",
+   "US| ENTERTAINMENT",
+   "DISCOVERY SCIENCE"
+  ],
+  [
+   "US| National Geographic HD",
+   "US| ENTERTAINMENT",
+   "natgeo"
+  ],
+  [
+   "US| Nat Geo Wild",
+   "US| ENTERTAINMENT",
+   "natgeowild"
+  ],
+  [
+   "US| History HD",
+   "US| ENTERTAINMENT",
+   "history"
+  ],
+  [
+   "US| American Heroes Channel",
+   "US| ENTERTAINMENT",
+   "ahc"
+  ],
+  [
+   "US| Military History Channel SD",
+   "US| ENTERTAINMENT",
+   "mhc"
+  ],
+  [
+   "US| ESPN FHD",
+   "US| SPORTS",
+   "espn"
+  ],
+  [
+   "US| ESPN 2 FHD",
+   "US| SPORTS",
+   "espn2"
+  ],
+  [
+   "US| ESPN2 HD",
+   "US| SPORTS",
+   "espn2"
+  ],
+  [
+   "US| ESPNU",
+   "US| SPORTS",
+   "espnu"
+  ],
+  [
+   "US| ESPN 4K",
+   "US| SPORTS 4K",
+   "espn"
+  ],
+  [
+   "US| NFL Network HD",
+   "US| SPORTS",
+   "nfln"
+  ],
+  [
+   "US| NFL RedZone HD",
+   "US| SPORTS",
+   "redzone"
+  ],
+  [
+   "US| NBA TV",
+   "US| SPORTS",
+   "nbatv"
+  ],
+  [
+   "US| MLB Network",
+   "US| SPORTS",
+   "mlbn"
+  ],
+  [
+   "US| NHL Network",
+   "US| SPORTS",
+   "nhln"
+  ],
+  [
+   "US| FOX SPORTS 1",
+   "US| SPORTS",
+   "fs1"
+  ],
+  [
+   "US| FS1 HD",
+   "US| SPORTS",
+   "fs1"
+  ],
+  [
+   "US| SEC Network",
+   "US| SPORTS",
+   "secn"
+  ],
+  [
+   "US| CBS SPORTS NETWORK",
+   "US| SPORTS",
+   "cbssn"
+  ],
+  [
+   "US| NBC Sports Philadelphia HD",
+   "US| SPORTS",
+   "nbcsp"
+  ],
+  [
+   "US| NBC Sports Philadelphia Plus",
+   "US| SPORTS",
+   "nbcspp"
+  ],
+  [
+   "US| NBC Sports Boston",
+   "US| SPORTS",
+   "NBC SPORTS BOSTON"
+  ],
+  [
+   "US| FanDuel Sports South",
+   "US| SPORTS",
+   "FANDUEL SPORTS SOUTH"
+  ],
+  [
+   "US| FOX 54 WZDX Huntsville",
+   "US| LOCALS",
+   "fox (home)"
+  ],
+  [
+   "US| CBS 19 WHNT Huntsville HD",
+   "US| LOCALS",
+   "cbs (home)"
+  ],
+  [
+   "US| WHNT News 19",
+   "US| LOCALS",
+   "cbs (home)"
+  ],
+  [
+   "US| FOX 29 WTXF Philadelphia",
+   "US| LOCALS",
+   "fox (philly)"
+  ],
+  [
+   "US| 6ABC WPVI Philadelphia",
+   "US| LOCALS",
+   "abc (philly)"
+  ],
+  [
+   "US| CBS 3 KYW Philadelphia",
+   "US| LOCALS",
+   "cbs (philly)"
+  ],
+  [
+   "US| NBC 10 WCAU Philadelphia",
+   "US| LOCALS",
+   "nbc (philly)"
+  ],
+  [
+   "US| CBS 2 New York",
+   "US| LOCALS",
+   "cbs (market)"
+  ],
+  [
+   "US| ABC 7 WABC New York",
+   "US| LOCALS",
+   "abc (market)"
+  ],
+  [
+   "US| FOX East HD",
+   "US| LOCALS",
+   "fox"
+  ],
+  [
+   "US| PBS HD",
+   "US| LOCALS",
+   "pbs"
+  ],
+  [
+   "US| PBS 12 Denver",
+   "US| LOCALS",
+   "pbs (market)"
+  ],
+  [
+   "US| PBS Kids",
+   "US| KIDS",
+   "PBS KIDS"
+  ],
+  [
+   "US| FOX NEWS HD",
+   "US| NEWS",
+   "foxnews"
+  ],
+  [
+   "US| FOX BUSINESS",
+   "US| NEWS",
+   "FOX BUSINESS"
+  ],
+  [
+   "US| CNBC",
+   "US| NEWS",
+   "cnbc"
+  ],
+  [
+   "US| MSNBC",
+   "US| NEWS",
+   "msnbc"
+  ],
+  [
+   "US| CBS News 24/7",
+   "US| NEWS",
+   "f:247"
+  ],
+  [
+   "US| ABC News Live",
+   "US| NEWS",
+   "ABC NEWS LIVE"
+  ],
+  [
+   "US| Bloomberg TV HD",
+   "US| NEWS",
+   "bloomberg"
+  ],
+  [
+   "US| HBO 2 FHD",
+   "US| PREMIUM",
+   "HBO 2"
+  ],
+  [
+   "US| HBO East",
+   "US| PREMIUM",
+   "hbo"
+  ],
+  [
+   "US| Showtime West",
+   "US| PREMIUM",
+   "showtime"
+  ],
+  [
+   "NFL 01: Philadelphia Eagles vs New York Giants 1:00PM ET",
+   "US| NFL SUNDAY TICKET",
+   "ev:NFL"
+  ],
+  [
+   "NFL 07 | No Event Streaming",
+   "US| NFL SUNDAY TICKET",
+   "ev:NFL"
+  ],
+  [
+   "ESPN+ 001",
+   "US| ESPN+",
+   "ev:ESPN+"
+  ],
+  [
+   "NCAAF 05: Alabama vs Tennessee 3:30PM ET",
+   "USA | NCAAF",
+   "ev:NCAAF"
+  ],
+  [
+   "NBA 03",
+   "US| NBA LEAGUE PASS",
+   "ev:NBA"
+  ],
+  [
+   "PPV 12",
+   "PPV EVENTS",
+   "ev:PPV"
+  ],
+  [
+   "Peacock 04",
+   "US| PEACOCK EVENTS",
+   "ev:PEACOCK"
+  ],
+  [
+   "Pluto TV: Westerns",
+   "US| PLUTO TV",
+   "fast:PLUTO TV"
+  ],
+  [
+   "Samsung TV Plus: Bob Ross",
+   "US| SAMSUNG TV PLUS",
+   "fast:SAMSUNG TV PLUS"
+  ],
+  [
+   "Tubi: Top Gear",
+   "US| TUBI",
+   "fast:TUBI"
+  ],
+  [
+   "24/7 Friends",
+   "24/7 CHANNELS",
+   "f:247"
+  ],
+  [
+   "Music Choice 07",
+   "US| MUSIC",
+   "MUSIC CHOICE 07"
+  ],
+  [
+   "UK| Sky Sports Main Event FHD",
+   "UK| SPORTS",
+   "intl:UK"
+  ],
+  [
+   "UK| BBC One HD",
+   "UK| GENERAL",
+   "intl:UK"
+  ],
+  [
+   "CA| TSN 1 HD",
+   "CA| SPORTS",
+   "intl:Canada"
+  ],
+  [
+   "LATINO| Univision",
+   "LATINO| GENERAL",
+   "intl:Latino"
+  ],
+  [
+   "|UK| SKY SPORTS F1 ᴴᴰ",
+   "|UK| SPORTS",
+   "intl:UK"
+  ],
+  [
+   "US| Cartoon Network HD",
+   "US| KIDS",
+   "CARTOON"
+  ],
+  [
+   "US| Hallmark Channel",
+   "US| ENTERTAINMENT",
+   "hallmark"
+  ],
+  [
+   "US| Hallmark Movies",
+   "US| PREMIUM",
+   "HALLMARK MOVIES"
+  ]
+ ],
+ "programmes": [
+  {
+   "p": {
+    "title": "NFL Football: Philadelphia Eagles at New York Giants",
+    "cats": [
+     "Sports event",
+     "Football",
+     "NFL"
+    ]
+   },
+   "game": "NFL: Philadelphia Eagles | New York Giants",
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "NFL Live",
+    "cats": [
+     "Sports talk"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "College Football: Alabama at Tennessee",
+    "cats": [
+     "Football"
+    ],
+    "rerun": true
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "College Football: (5) Georgia at Florida",
+    "cats": [
+     "Football"
+    ]
+   },
+   "game": "NCAAF: Georgia | Florida",
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "WNBA Finals: Liberty vs. Aces",
+    "cats": [
+     "Basketball"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "MLS Cup Playoffs: Inter Miami CF vs. Atlanta United",
+    "cats": [
+     "Soccer"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Premier League Soccer: Arsenal vs. Liverpool"
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "NBA Basketball: Boston Celtics at Philadelphia 76ers",
+    "cats": [
+     "Basketball"
+    ]
+   },
+   "game": "NBA: Boston Celtics | Philadelphia 76ers",
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "NHL Hockey: New York Rangers at Philadelphia Flyers"
+   },
+   "game": "NHL: New York Rangers | Philadelphia Flyers",
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "MLB Baseball: World Series Game 3",
+    "cats": [
+     "Sports event",
+     "Baseball"
+    ],
+    "live": true
+   },
+   "game": "MLB: World Series Game 3",
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "MLB Baseball",
+    "sub": "Phillies at Mets",
+    "cats": [
+     "Baseball"
+    ]
+   },
+   "game": "MLB: Phillies | Mets",
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Sunday Night Football: Chiefs at Bills"
+   },
+   "game": "NFL: Chiefs | Bills",
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "76ers Pregame Live"
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "NFL Football: Cowboys at Commanders",
+    "desc": "From last season (replay)."
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Boston Celtics at Philadelphia 76ers",
+    "cats": [
+     "Basketball"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "NCAA Basketball: Duke at North Carolina"
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "WWII in Color: Road to Victory",
+    "desc": "Restored footage of the Allied push across Europe.",
+    "cats": [
+     "Documentary",
+     "History",
+     "War"
+    ]
+   },
+   "game": null,
+   "topics": "docs,military"
+  },
+  {
+   "p": {
+    "title": "Air Warriors: F-15E Strike Eagle",
+    "desc": "The U.S. Air Force's long-range strike fighter.",
+    "cats": [
+     "Documentary",
+     "Military",
+     "Aviation"
+    ]
+   },
+   "game": null,
+   "topics": "docs,military,airforce"
+  },
+  {
+   "p": {
+    "title": "Pawn Stars",
+    "cats": [
+     "Reality"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Star Trek",
+    "cats": [
+     "Science fiction"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Storage Wars",
+    "cats": [
+     "Reality"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Star Wars: A New Hope",
+    "cats": [
+     "Movie"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "The Rise of AI",
+    "desc": "How machine learning moved from labs to daily life.",
+    "cats": [
+     "Documentary",
+     "Science",
+     "Technology"
+    ]
+   },
+   "game": null,
+   "topics": "docs,tech"
+  },
+  {
+   "p": {
+    "title": "Hackers: Inside the Cyber Wars",
+    "desc": "Ethical hackers test the power grid.",
+    "cats": [
+     "Documentary",
+     "Technology"
+    ]
+   },
+   "game": null,
+   "topics": "docs,tech"
+  },
+  {
+   "p": {
+    "title": "Bloomberg Technology",
+    "desc": "Artificial intelligence, chips and the companies behind them.",
+    "cats": [
+     "Business",
+     "Technology"
+    ]
+   },
+   "game": null,
+   "topics": "tech"
+  },
+  {
+   "p": {
+    "title": "The Big Bang Theory",
+    "desc": "Sheldon builds a robot.",
+    "cats": [
+     "Sitcom"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Ken Burns: The Vietnam War"
+   },
+   "game": null,
+   "topics": "docs,military"
+  },
+  {
+   "p": {
+    "title": "Top Gun: Maverick",
+    "desc": "A Navy fighter pilot returns.",
+    "cats": [
+     "Movie",
+     "Action"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Air Disasters",
+    "desc": "Investigators piece together a crash.",
+    "cats": [
+     "Documentary",
+     "Aviation"
+    ]
+   },
+   "game": null,
+   "topics": "docs"
+  },
+  {
+   "p": {
+    "title": "Gold Rush",
+    "cats": [
+     "Reality"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  },
+  {
+   "p": {
+    "title": "Battlebots",
+    "cats": [
+     "Competition"
+    ]
+   },
+   "game": null,
+   "topics": ""
+  }
+ ],
+ "snapshots": {
+  "A guide only": [
+   {
+    "id": "myteams",
+    "tiles": [
+     "Philadelphia Eagles at New York Giants | NFL · FOX | LIVE · ★ MY TEAM | US| FOX 29 WTXF Philadelphia HD | 4",
+     "New York Rangers at Philadelphia Flyers | NHL · NHL Network | Today 4:00 PM CT | US| NHL Network FHD | 5",
+     "Boston Celtics at Philadelphia 76ers | NBA · NBC Sports Philadelphia | Today 6:00 PM CT | US| NBC Sports Philadelphia FHD | 5",
+     "Phillies | MLB | No game listed |  | 0"
+    ]
+   },
+   {
+    "id": "games",
+    "tiles": [
+     "Philadelphia Eagles at New York Giants | NFL · FOX | LIVE · ★ MY TEAM | US| FOX 29 WTXF Philadelphia HD | 4",
+     "Dallas Cowboys at Washington Commanders | NFL · CBS | LIVE | US| CBS 19 WHNT Huntsville HD | 6",
+     "Atlanta Falcons at Tampa Bay Buccaneers | NFL · FOX | LIVE | US| FOX 54 WZDX Huntsville HD | 3",
+     "Boston Bruins at Detroit Red Wings | NHL · TNT | LIVE | US| TNT FHD | 7"
+    ]
+   },
+   {
+    "id": "docs",
+    "tiles": [
+     "PBS | NOVA: Cyberwar Threat | On now · until 1:00 PM CT | US| PBS HD | 61",
+     "History | WWII in Color: Road to Victory | On now · until 2:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans: D-Day | On now · until 1:00 PM CT | US| National Geographic FHD | 8",
+     "American Heroes Channel | Air Warriors: F-15E Strike Eagle | On now · until 1:00 PM CT | US| American Heroes Channel FHD | 10",
+     "Military History Channel | Dogfights: The Air War Over Korea | On now · until 1:30 PM CT | US| Military History Channel FHD | 11",
+     "Smithsonian Channel | Air Disasters | On now · until 1:00 PM CT | US| Smithsonian Channel FHD | 10",
+     "Science Channel | The Rise of AI | On now · until 1:00 PM CT | US| Science Channel FHD | 10"
+    ]
+   },
+   {
+    "id": "military",
+    "tiles": [
+     "American Heroes Channel | Air Warriors: F-15E Strike Eagle | On now · until 1:00 PM CT | US| American Heroes Channel FHD | 10",
+     "Military History Channel | Dogfights: The Air War Over Korea | On now · until 1:30 PM CT | US| Military History Channel FHD | 11",
+     "History | WWII in Color: Road to Victory | On now · until 2:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans: D-Day | On now · until 1:00 PM CT | US| National Geographic FHD | 8"
+    ]
+   },
+   {
+    "id": "tech",
+    "tiles": [
+     "PBS | NOVA: Cyberwar Threat | On now · until 1:00 PM CT | US| PBS HD | 61",
+     "Science Channel | The Rise of AI | On now · until 1:00 PM CT | US| Science Channel FHD | 10",
+     "Bloomberg TV | Bloomberg Technology | On now · until 1:00 PM CT | US| Bloomberg TV FHD | 9"
+    ]
+   },
+   {
+    "id": "prime",
+    "tiles": [
+     "ABC | WAAY 31 News | Tonight 7:00 PM CT | US| ABC 31 WAAY Huntsville HD | 65",
+     "CBS | WHNT News 19 | Tonight 7:00 PM CT | US| CBS 19 WHNT Huntsville HD | 65",
+     "NBC | NFL Football: Kansas City Chiefs at Buffalo Bills | Tonight 7:20 PM CT | US| NBC 48 WAFF Huntsville HD | 65",
+     "FOX | FOX 54 News | Tonight 7:00 PM CT | US| FOX 54 WZDX Huntsville HD | 65",
+     "The CW | Judge Mathis | Tonight 7:00 PM CT | US| CW 15 WHDF Huntsville HD | 62",
+     "AMC | Mad Men | Tonight 7:00 PM CT | US| AMC FHD | 11",
+     "FX | Archer | Tonight 7:00 PM CT | US| FX FHD | 7",
+     "FXX | The Simpsons | Tonight 7:00 PM CT | US| FXX FHD | 10",
+     "TNT | Law & Order | Tonight 7:00 PM CT | US| TNT FHD | 9",
+     "TBS | Big Bang Theory | Tonight 7:00 PM CT | US| TBS FHD | 10",
+     "USA Network | WWE Raw | Tonight 7:00 PM CT | US| USA Network FHD | 9",
+     "Bravo | Below Deck | Tonight 7:00 PM CT | US| Bravo FHD | 9",
+     "A&E | The First 48 | Tonight 7:00 PM CT | US| A&E FHD | 10",
+     "HGTV | Fixer Upper | Tonight 7:00 PM CT | US| HGTV FHD | 9",
+     "Food Network | Diners, Drive-Ins and Dives | Tonight 7:00 PM CT | US| Food Network FHD | 7",
+     "TLC | 90 Day Fiance | Tonight 7:00 PM CT | US| TLC FHD | 9",
+     "Paramount Network | Yellowstone | Tonight 7:00 PM CT | US| Paramount Network FHD | 8",
+     "Syfy | Star Trek | Tonight 7:00 PM CT | US| Syfy FHD | 8",
+     "Discovery | Gold Rush | Tonight 7:00 PM CT | US| Discovery FHD | 10",
+     "History | Pawn Stars | Tonight 7:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans | Tonight 7:00 PM CT | US| National Geographic FHD | 8",
+     "Hallmark Channel | A Fall Romance | Tonight 7:00 PM CT | US| Hallmark Channel FHD | 7",
+     "Lifetime | Dance Moms | Tonight 7:00 PM CT | US| Lifetime FHD | 10",
+     "Freeform | Grown-ish | Tonight 7:00 PM CT | US| Freeform FHD | 7",
+     "truTV | truTV Presents | Tonight 7:00 PM CT | US| truTV FHD | 8",
+     "TV Land | TV Land Presents | Tonight 7:00 PM CT | US| TV Land FHD | 10",
+     "E! | E! Presents | Tonight 7:00 PM CT | US| E! FHD | 9",
+     "BET | BET Presents | Tonight 7:00 PM CT | US| BET FHD | 7",
+     "HBO | Movie: Dune Part Two | Tonight 7:00 PM CT | US| HBO FHD | 9",
+     "Showtime | Dexter | Tonight 7:00 PM CT | US| Showtime FHD | 8",
+     "Starz | Outlander | Tonight 7:00 PM CT | US| Starz FHD | 4"
+    ]
+   }
+  ],
+  "A with ESPN": [
+   {
+    "id": "myteams",
+    "tiles": [
+     "Eagles at Giants | NFL · FOX | LIVE · ★ MY TEAM · Q2 4:11 | US| FOX 29 WTXF Philadelphia HD | 6",
+     "Rangers at Flyers | NHL · NHL Network | Today 4:00 PM CT | US| NHL Network FHD | 6",
+     "Celtics at 76ers | NBA · NBC Sports Philadelphia | Today 6:00 PM CT | US| NBC Sports Philadelphia FHD | 7",
+     "Phillies | MLB | No game listed |  | 0"
+    ]
+   },
+   {
+    "id": "games",
+    "tiles": [
+     "Eagles at Giants | NFL · FOX | LIVE · ★ MY TEAM · Q2 4:11 | US| FOX 29 WTXF Philadelphia HD | 6",
+     "Cowboys at Commanders | NFL · CBS | LIVE · Q2 7:30 | US| CBS 19 WHNT Huntsville HD | 6",
+     "Falcons at Buccaneers | NFL · FOX | LIVE · Q2 1:02 | US| FOX 54 WZDX Huntsville HD | 6",
+     "Bruins at Red Wings | NHL · TNT | LIVE · 2nd 8:15 | US| TNT FHD | 9"
+    ]
+   },
+   {
+    "id": "docs",
+    "tiles": [
+     "PBS | NOVA: Cyberwar Threat | On now · until 1:00 PM CT | US| PBS HD | 61",
+     "History | WWII in Color: Road to Victory | On now · until 2:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans: D-Day | On now · until 1:00 PM CT | US| National Geographic FHD | 8",
+     "American Heroes Channel | Air Warriors: F-15E Strike Eagle | On now · until 1:00 PM CT | US| American Heroes Channel FHD | 10",
+     "Military History Channel | Dogfights: The Air War Over Korea | On now · until 1:30 PM CT | US| Military History Channel FHD | 11",
+     "Smithsonian Channel | Air Disasters | On now · until 1:00 PM CT | US| Smithsonian Channel FHD | 10",
+     "Science Channel | The Rise of AI | On now · until 1:00 PM CT | US| Science Channel FHD | 10"
+    ]
+   },
+   {
+    "id": "military",
+    "tiles": [
+     "American Heroes Channel | Air Warriors: F-15E Strike Eagle | On now · until 1:00 PM CT | US| American Heroes Channel FHD | 10",
+     "Military History Channel | Dogfights: The Air War Over Korea | On now · until 1:30 PM CT | US| Military History Channel FHD | 11",
+     "History | WWII in Color: Road to Victory | On now · until 2:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans: D-Day | On now · until 1:00 PM CT | US| National Geographic FHD | 8"
+    ]
+   },
+   {
+    "id": "tech",
+    "tiles": [
+     "PBS | NOVA: Cyberwar Threat | On now · until 1:00 PM CT | US| PBS HD | 61",
+     "Science Channel | The Rise of AI | On now · until 1:00 PM CT | US| Science Channel FHD | 10",
+     "Bloomberg TV | Bloomberg Technology | On now · until 1:00 PM CT | US| Bloomberg TV FHD | 9"
+    ]
+   },
+   {
+    "id": "prime",
+    "tiles": [
+     "ABC | WAAY 31 News | Tonight 7:00 PM CT | US| ABC 31 WAAY Huntsville HD | 65",
+     "CBS | WHNT News 19 | Tonight 7:00 PM CT | US| CBS 19 WHNT Huntsville HD | 65",
+     "NBC | NFL Football: Kansas City Chiefs at Buffalo Bills | Tonight 7:20 PM CT | US| NBC 48 WAFF Huntsville HD | 65",
+     "FOX | FOX 54 News | Tonight 7:00 PM CT | US| FOX 54 WZDX Huntsville HD | 65",
+     "The CW | Judge Mathis | Tonight 7:00 PM CT | US| CW 15 WHDF Huntsville HD | 62",
+     "AMC | Mad Men | Tonight 7:00 PM CT | US| AMC FHD | 11",
+     "FX | Archer | Tonight 7:00 PM CT | US| FX FHD | 7",
+     "FXX | The Simpsons | Tonight 7:00 PM CT | US| FXX FHD | 10",
+     "TNT | Law & Order | Tonight 7:00 PM CT | US| TNT FHD | 9",
+     "TBS | Big Bang Theory | Tonight 7:00 PM CT | US| TBS FHD | 10",
+     "USA Network | WWE Raw | Tonight 7:00 PM CT | US| USA Network FHD | 9",
+     "Bravo | Below Deck | Tonight 7:00 PM CT | US| Bravo FHD | 9",
+     "A&E | The First 48 | Tonight 7:00 PM CT | US| A&E FHD | 10",
+     "HGTV | Fixer Upper | Tonight 7:00 PM CT | US| HGTV FHD | 9",
+     "Food Network | Diners, Drive-Ins and Dives | Tonight 7:00 PM CT | US| Food Network FHD | 7",
+     "TLC | 90 Day Fiance | Tonight 7:00 PM CT | US| TLC FHD | 9",
+     "Paramount Network | Yellowstone | Tonight 7:00 PM CT | US| Paramount Network FHD | 8",
+     "Syfy | Star Trek | Tonight 7:00 PM CT | US| Syfy FHD | 8",
+     "Discovery | Gold Rush | Tonight 7:00 PM CT | US| Discovery FHD | 10",
+     "History | Pawn Stars | Tonight 7:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans | Tonight 7:00 PM CT | US| National Geographic FHD | 8",
+     "Hallmark Channel | A Fall Romance | Tonight 7:00 PM CT | US| Hallmark Channel FHD | 7",
+     "Lifetime | Dance Moms | Tonight 7:00 PM CT | US| Lifetime FHD | 10",
+     "Freeform | Grown-ish | Tonight 7:00 PM CT | US| Freeform FHD | 7",
+     "truTV | truTV Presents | Tonight 7:00 PM CT | US| truTV FHD | 8",
+     "TV Land | TV Land Presents | Tonight 7:00 PM CT | US| TV Land FHD | 10",
+     "E! | E! Presents | Tonight 7:00 PM CT | US| E! FHD | 9",
+     "BET | BET Presents | Tonight 7:00 PM CT | US| BET FHD | 7",
+     "HBO | Movie: Dune Part Two | Tonight 7:00 PM CT | US| HBO FHD | 9",
+     "Showtime | Dexter | Tonight 7:00 PM CT | US| Showtime FHD | 8",
+     "Starz | Outlander | Tonight 7:00 PM CT | US| Starz FHD | 4"
+    ]
+   }
+  ],
+  "B with ESPN": [
+   {
+    "id": "myteams",
+    "tiles": [
+     "Flyers at Penguins | NHL · NBC Sports Philadelphia | LIVE · ★ MY TEAM · 3rd 12:40 | US| NBC Sports Philadelphia FHD | 7",
+     "76ers at Bucks | NBA · NBA TV | LIVE · ★ MY TEAM · Q1 2:10 | US| NBA TV 4K | 9",
+     "Eagles at Cowboys | NFL · FOX | Sun 12:00 PM CT | US| FOX 29 WTXF Philadelphia HD | 5",
+     "Phillies | MLB | No game listed |  | 0"
+    ]
+   },
+   {
+    "id": "games",
+    "tiles": [
+     "76ers at Bucks | NBA · NBA TV | LIVE · ★ MY TEAM · Q1 2:10 | US| NBA TV 4K | 9",
+     "Flyers at Penguins | NHL · NBC Sports Philadelphia | LIVE · ★ MY TEAM · 3rd 12:40 | US| NBC Sports Philadelphia FHD | 7",
+     "World Series Game 3 | MLB · FS1 | LIVE | US| FS1 4K | 7",
+     "Thunder at Lakers | NBA · TNT | Today 9:30 PM CT | US| TNT FHD | 9"
+    ]
+   },
+   {
+    "id": "docs",
+    "tiles": [
+     "History | The Civil War: A Nation Divided | On now · until 9:00 PM CT | US| History FHD | 10",
+     "American Heroes Channel | Top Guns: Inside the Air Force Weapons School | On now · until 8:00 PM CT | US| American Heroes Channel FHD | 10",
+     "Military History Channel | Battle Castle | On now · until 8:00 PM CT | US| Military History Channel FHD | 11",
+     "Smithsonian Channel | Aerial America | On now · until 8:00 PM CT | US| Smithsonian Channel FHD | 10",
+     "Science Channel | Hackers: Inside the Cyber Wars | On now · until 8:00 PM CT | US| Science Channel FHD | 10"
+    ]
+   },
+   {
+    "id": "military",
+    "tiles": [
+     "American Heroes Channel | Top Guns: Inside the Air Force Weapons School | On now · until 8:00 PM CT | US| American Heroes Channel FHD | 10",
+     "History | The Civil War: A Nation Divided | On now · until 9:00 PM CT | US| History FHD | 10",
+     "Military History Channel | Battle Castle | On now · until 8:00 PM CT | US| Military History Channel FHD | 11"
+    ]
+   },
+   {
+    "id": "tech",
+    "tiles": [
+     "Science Channel | Hackers: Inside the Cyber Wars | On now · until 8:00 PM CT | US| Science Channel FHD | 10"
+    ]
+   },
+   {
+    "id": "prime",
+    "tiles": [
+     "ABC | Dancing with the Stars | On now · until 9:00 PM CT | US| ABC 31 WAAY Huntsville HD | 65",
+     "CBS | FBI | On now · until 8:00 PM CT | US| CBS 19 WHNT Huntsville HD | 65",
+     "NBC | The Voice | On now · until 9:00 PM CT | US| NBC 48 WAFF Huntsville HD | 65",
+     "FOX | The Floor | On now · until 8:00 PM CT | US| FOX 54 WZDX Huntsville HD | 65",
+     "The CW | Superman & Lois | On now · until 8:00 PM CT | US| CW 15 WHDF Huntsville HD | 62",
+     "AMC | The Walking Dead: Daryl Dixon | On now · until 8:00 PM CT | US| AMC FHD | 11",
+     "FX | The Bear | On now · until 8:00 PM CT | US| FX FHD | 7",
+     "FXX | It's Always Sunny in Philadelphia | On now · until 8:00 PM CT | US| FXX FHD | 10",
+     "TNT | Inside the NBA | On now · until 8:00 PM CT | US| TNT FHD | 9",
+     "TBS | Family Guy | On now · until 8:00 PM CT | US| TBS FHD | 10",
+     "USA Network | Chrisley Knows Best | On now · until 8:00 PM CT | US| USA Network FHD | 9",
+     "Bravo | Real Housewives | On now · until 8:00 PM CT | US| Bravo FHD | 9",
+     "A&E | Duck Dynasty | On now · until 8:00 PM CT | US| A&E FHD | 10",
+     "HGTV | Property Brothers | On now · until 8:00 PM CT | US| HGTV FHD | 9",
+     "Food Network | Chopped | On now · until 8:00 PM CT | US| Food Network FHD | 7",
+     "TLC | 90 Day Fiance | On now · until 8:00 PM CT | US| TLC FHD | 9",
+     "Paramount Network | Bar Rescue | On now · until 8:00 PM CT | US| Paramount Network FHD | 8",
+     "Syfy | Star Trek | On now · until 8:00 PM CT | US| Syfy FHD | 8",
+     "Discovery | Deadliest Catch | On now · until 8:00 PM CT | US| Discovery FHD | 10",
+     "History | The Civil War: A Nation Divided | On now · until 9:00 PM CT | US| History FHD | 10",
+     "National Geographic | Life Below Zero | On now · until 8:00 PM CT | US| National Geographic FHD | 8",
+     "Hallmark Channel | A Fall Romance | On now · until 8:00 PM CT | US| Hallmark Channel FHD | 7",
+     "Lifetime | Dance Moms | On now · until 8:00 PM CT | US| Lifetime FHD | 10",
+     "Freeform | Grown-ish | On now · until 8:00 PM CT | US| Freeform FHD | 7",
+     "truTV | truTV Presents | On now · until 8:00 PM CT | US| truTV FHD | 8",
+     "TV Land | TV Land Presents | On now · until 8:00 PM CT | US| TV Land FHD | 10",
+     "E! | E! Presents | On now · until 8:00 PM CT | US| E! FHD | 9",
+     "BET | BET Presents | On now · until 8:00 PM CT | US| BET FHD | 7",
+     "HBO | Movie: Dune Part Two | On now · until 8:00 PM CT | US| HBO FHD | 9",
+     "Showtime | Dexter | On now · until 8:00 PM CT | US| Showtime FHD | 8",
+     "Starz | Outlander | On now · until 8:00 PM CT | US| Starz FHD | 4"
+    ]
+   }
+  ],
+  "A fresh profile (no teams)": [
+   {
+    "id": "myteams",
+    "tiles": []
+   },
+   {
+    "id": "games",
+    "tiles": [
+     "Cowboys at Commanders | NFL · CBS | LIVE · Q2 7:30 | US| CBS 19 WHNT Huntsville HD | 6",
+     "Falcons at Buccaneers | NFL · FOX | LIVE · Q2 1:02 | US| FOX 54 WZDX Huntsville HD | 6",
+     "Eagles at Giants | NFL · FOX | LIVE · Q2 4:11 | US| FOX 29 WTXF Philadelphia HD | 6",
+     "Bruins at Red Wings | NHL · TNT | LIVE · 2nd 8:15 | US| TNT FHD | 9"
+    ]
+   },
+   {
+    "id": "docs",
+    "tiles": [
+     "PBS | NOVA: Cyberwar Threat | On now · until 1:00 PM CT | US| PBS HD | 61",
+     "History | WWII in Color: Road to Victory | On now · until 2:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans: D-Day | On now · until 1:00 PM CT | US| National Geographic FHD | 8",
+     "American Heroes Channel | Air Warriors: F-15E Strike Eagle | On now · until 1:00 PM CT | US| American Heroes Channel FHD | 10",
+     "Military History Channel | Dogfights: The Air War Over Korea | On now · until 1:30 PM CT | US| Military History Channel FHD | 11",
+     "Smithsonian Channel | Air Disasters | On now · until 1:00 PM CT | US| Smithsonian Channel FHD | 10",
+     "Science Channel | The Rise of AI | On now · until 1:00 PM CT | US| Science Channel FHD | 10"
+    ]
+   },
+   {
+    "id": "military",
+    "tiles": [
+     "American Heroes Channel | Air Warriors: F-15E Strike Eagle | On now · until 1:00 PM CT | US| American Heroes Channel FHD | 10",
+     "Military History Channel | Dogfights: The Air War Over Korea | On now · until 1:30 PM CT | US| Military History Channel FHD | 11",
+     "History | WWII in Color: Road to Victory | On now · until 2:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans: D-Day | On now · until 1:00 PM CT | US| National Geographic FHD | 8"
+    ]
+   },
+   {
+    "id": "tech",
+    "tiles": [
+     "PBS | NOVA: Cyberwar Threat | On now · until 1:00 PM CT | US| PBS HD | 61",
+     "Science Channel | The Rise of AI | On now · until 1:00 PM CT | US| Science Channel FHD | 10",
+     "Bloomberg TV | Bloomberg Technology | On now · until 1:00 PM CT | US| Bloomberg TV FHD | 9"
+    ]
+   },
+   {
+    "id": "prime",
+    "tiles": [
+     "ABC | WAAY 31 News | Tonight 7:00 PM CT | US| ABC 31 WAAY Huntsville HD | 65",
+     "CBS | WHNT News 19 | Tonight 7:00 PM CT | US| CBS 19 WHNT Huntsville HD | 65",
+     "NBC | NFL Football: Kansas City Chiefs at Buffalo Bills | Tonight 7:20 PM CT | US| NBC 48 WAFF Huntsville HD | 65",
+     "FOX | FOX 54 News | Tonight 7:00 PM CT | US| FOX 54 WZDX Huntsville HD | 65",
+     "The CW | Judge Mathis | Tonight 7:00 PM CT | US| CW 15 WHDF Huntsville HD | 62",
+     "AMC | Mad Men | Tonight 7:00 PM CT | US| AMC FHD | 11",
+     "FX | Archer | Tonight 7:00 PM CT | US| FX FHD | 7",
+     "FXX | The Simpsons | Tonight 7:00 PM CT | US| FXX FHD | 10",
+     "TNT | Law & Order | Tonight 7:00 PM CT | US| TNT FHD | 9",
+     "TBS | Big Bang Theory | Tonight 7:00 PM CT | US| TBS FHD | 10",
+     "USA Network | WWE Raw | Tonight 7:00 PM CT | US| USA Network FHD | 9",
+     "Bravo | Below Deck | Tonight 7:00 PM CT | US| Bravo FHD | 9",
+     "A&E | The First 48 | Tonight 7:00 PM CT | US| A&E FHD | 10",
+     "HGTV | Fixer Upper | Tonight 7:00 PM CT | US| HGTV FHD | 9",
+     "Food Network | Diners, Drive-Ins and Dives | Tonight 7:00 PM CT | US| Food Network FHD | 7",
+     "TLC | 90 Day Fiance | Tonight 7:00 PM CT | US| TLC FHD | 9",
+     "Paramount Network | Yellowstone | Tonight 7:00 PM CT | US| Paramount Network FHD | 8",
+     "Syfy | Star Trek | Tonight 7:00 PM CT | US| Syfy FHD | 8",
+     "Discovery | Gold Rush | Tonight 7:00 PM CT | US| Discovery FHD | 10",
+     "History | Pawn Stars | Tonight 7:00 PM CT | US| History FHD | 10",
+     "National Geographic | Drain the Oceans | Tonight 7:00 PM CT | US| National Geographic FHD | 8",
+     "Hallmark Channel | A Fall Romance | Tonight 7:00 PM CT | US| Hallmark Channel FHD | 7",
+     "Lifetime | Dance Moms | Tonight 7:00 PM CT | US| Lifetime FHD | 10",
+     "Freeform | Grown-ish | Tonight 7:00 PM CT | US| Freeform FHD | 7",
+     "truTV | truTV Presents | Tonight 7:00 PM CT | US| truTV FHD | 8",
+     "TV Land | TV Land Presents | Tonight 7:00 PM CT | US| TV Land FHD | 10",
+     "E! | E! Presents | Tonight 7:00 PM CT | US| E! FHD | 9",
+     "BET | BET Presents | Tonight 7:00 PM CT | US| BET FHD | 7",
+     "HBO | Movie: Dune Part Two | Tonight 7:00 PM CT | US| HBO FHD | 9",
+     "Showtime | Dexter | Tonight 7:00 PM CT | US| Showtime FHD | 8",
+     "Starz | Outlander | Tonight 7:00 PM CT | US| Starz FHD | 4"
+    ]
+   }
+  ]
+ },
+ "groups": {
+  "count": 269,
+  "channels": 12520,
+  "labels": [
+   "24/7 channels [247, 115]",
+   "A&E [ent, 10]",
+   "ABC [local, 65]",
+   "ABC News Live [news, 7]",
+   "ACC Network [sports, 6]",
+   "ACCNX event channels [events, 40]",
+   "Africa channels [intl, 215]",
+   "Albania channels [intl, 128]",
+   "Altitude [sports, 2]",
+   "AMC [ent, 11]",
+   "American Heroes Channel [docs, 10]",
+   "Animal Planet [docs, 9]",
+   "Arabic channels [intl, 583]",
+   "Australia channels [intl, 173]",
+   "Austria channels [intl, 128]",
+   "B1G+ event channels [events, 60]",
+   "Baby TV [kids, 8]",
+   "Balkans channels [intl, 455]",
+   "BBC America [ent, 9]",
+   "BBC World News [news, 8]",
+   "beIN Sports [sports, 8]",
+   "Belgium channels [intl, 128]",
+   "BET [ent, 7]",
+   "BET Her [ent, 11]",
+   "Big Ten Network [sports, 8]",
+   "Big Ten Network Plus [sports, 6]",
+   "Bloomberg TV [news, 9]",
+   "Boomerang [kids, 6]",
+   "Bounce TV [ent, 9]",
+   "Bravo [ent, 9]",
+   "C-SPAN [news, 7]",
+   "C-SPAN 2 [news, 6]",
+   "Canada channels [intl, 259]",
+   "Caribbean channels [intl, 128]",
+   "Cartoon Network [kids, 7]",
+   "Cartoonito [kids, 8]",
+   "CBS [local, 65]",
+   "CBS Sports Network [sports, 6]",
+   "Charge! [ent, 10]",
+   "Cheddar News [news, 8]",
+   "Chicago Sports Network [sports, 2]",
+   "China channels [intl, 128]",
+   "Cinemax [movies, 11]",
+   "CMT [music, 9]",
+   "CNBC [news, 8]",
+   "CNN [news, 6]",
+   "Comedy Central [ent, 8]",
+   "Comet [ent, 7]",
+   "Cooking Channel [ent, 7]",
+   "Court TV [ent, 9]",
+   "Cozi TV [ent, 9]",
+   "Crime + Investigation [ent, 10]",
+   "Czech & Slovak channels [intl, 128]",
+   "DAZN event channels [events, 30]",
+   "Destination America [ent, 8]",
+   "Discovery [docs, 10]",
+   "Discovery Life [ent, 11]",
+   "Disney Channel [kids, 7]",
+   "Disney Junior [kids, 7]",
+   "Disney XD [kids, 8]",
+   "Distro (free channels) [free, 50]",
+   "E! [ent, 9]",
+   "Epix Drive-In [movies, 4]",
+   "ESPN [sports, 9]",
+   "ESPN2 [sports, 8]",
+   "ESPN Deportes [sports, 6]",
+   "ESPN EVENTS event channels [events, 20]",
+   "ESPN+ event channels [events, 320]",
+   "ESPNews [sports, 5]",
+   "ESPNU [sports, 9]",
+   "FanDuel Sports Arizona [sports, 2]",
+   "FanDuel Sports Detroit [sports, 2]",
+   "FanDuel Sports Florida [sports, 2]",
+   "FanDuel Sports Great Lakes [sports, 2]",
+   "FanDuel Sports Indiana [sports, 2]",
+   "FanDuel Sports Kansas City [sports, 2]",
+   "FanDuel Sports Midwest [sports, 2]",
+   "FanDuel Sports New Orleans [sports, 3]",
+   "FanDuel Sports North [sports, 2]",
+   "FanDuel Sports Ohio [sports, 2]",
+   "FanDuel Sports Oklahoma [sports, 3]",
+   "FanDuel Sports SoCal [sports, 2]",
+   "FanDuel Sports South [sports, 2]",
+   "FanDuel Sports Southeast [sports, 3]",
+   "FanDuel Sports Southwest [sports, 2]",
+   "FanDuel Sports Sun [sports, 2]",
+   "FanDuel Sports West [sports, 2]",
+   "FanDuel Sports Wisconsin [sports, 2]",
+   "Flix [movies, 4]",
+   "FLOSPORTS event channels [events, 40]",
+   "Food Network [ent, 7]",
+   "FOX [local, 65]",
+   "Fox Business [news, 7]",
+   "Fox Deportes [sports, 8]",
+   "Fox News [news, 7]",
+   "Fox Soccer Plus [sports, 7]",
+   "Fox Weather [news, 7]",
+   "France channels [intl, 343]",
+   "Freeform [ent, 7]",
+   "Freevee (free channels) [free, 90]",
+   "FS1 [sports, 9]",
+   "FS2 [sports, 8]",
+   "Fuse [ent, 8]",
+   "FX [ent, 7]",
+   "FXM [movies, 11]",
+   "FXX [ent, 10]",
+   "Germany channels [intl, 331]",
+   "Golf Channel [sports, 8]",
+   "Great American Family [ent, 10]",
+   "Greece channels [intl, 128]",
+   "Grit [ent, 9]",
+   "GSN [ent, 10]",
+   "Hallmark Channel [ent, 7]",
+   "Hallmark Movies [movies, 4]",
+   "Hallmark Mystery [ent, 10]",
+   "HBO [movies, 9]",
+   "HBO 2 [movies, 10]",
+   "HBO Comedy [movies, 8]",
+   "HBO Family [movies, 10]",
+   "HBO Signature [movies, 9]",
+   "HBO Zone [movies, 11]",
+   "Heroes & Icons [ent, 9]",
+   "HGTV [ent, 9]",
+   "History [docs, 10]",
+   "HLN [news, 6]",
+   "Hungary channels [intl, 128]",
+   "IFC [ent, 10]",
+   "India channels [intl, 503]",
+   "IndiePlex [ent, 4]",
+   "INSP [ent, 11]",
+   "Investigation Discovery [ent, 11]",
+   "ION [local, 1]",
+   "Ion Mystery [local, 9]",
+   "Iran channels [intl, 128]",
+   "Israel channels [intl, 128]",
+   "Italy channels [intl, 273]",
+   "Japan channels [intl, 128]",
+   "Korea channels [intl, 128]",
+   "Kurdish channels [intl, 128]",
+   "Laff [ent, 11]",
+   "Latino channels [intl, 639]",
+   "LG Channels (free channels) [free, 80]",
+   "Lifetime [ent, 10]",
+   "Lifetime Movies [movies, 4]",
+   "Logo [ent, 10]",
+   "Longhorn Network [sports, 7]",
+   "Magnolia Network [ent, 10]",
+   "Marquee Sports Network [sports, 3]",
+   "MASN [sports, 2]",
+   "MASN 2 [sports, 3]",
+   "MeTV [ent, 7]",
+   "MGM+ [movies, 4]",
+   "Military History Channel [docs, 11]",
+   "MLB event channels [events, 15]",
+   "MLB Network [sports, 6]",
+   "MLS event channels [events, 30]",
+   "Monumental Sports [sports, 3]",
+   "MoreMax [ent, 8]",
+   "MotorTrend [ent, 10]",
+   "Movieplex [movies, 4]",
+   "MSG [sports, 2]",
+   "MSG Sportsnet [sports, 2]",
+   "MSNBC [news, 9]",
+   "MTV [music, 11]",
+   "Music Choice channels [music, 60]",
+   "Nat Geo Wild [docs, 11]",
+   "National Geographic [docs, 8]",
+   "NBA event channels [events, 15]",
+   "NBA TV [sports, 9]",
+   "NBC [local, 65]",
+   "NBC News Now [news, 8]",
+   "NBC Sports Bay Area [sports, 2]",
+   "NBC Sports Boston [sports, 2]",
+   "NBC Sports Chicago [sports, 2]",
+   "NBC Sports Philadelphia [sports, 7]",
+   "NBC Sports Philadelphia Plus [sports, 3]",
+   "NCAAB event channels [events, 60]",
+   "NCAAF event channels [events, 120]",
+   "NESN [sports, 2]",
+   "Netherlands channels [intl, 174]",
+   "Newsmax [news, 7]",
+   "NewsNation [news, 8]",
+   "NFL event channels [events, 16]",
+   "NFL Network [sports, 6]",
+   "NFL RedZone [sports, 6]",
+   "NHL event channels [events, 16]",
+   "NHL Network [sports, 6]",
+   "Nick Jr [kids, 8]",
+   "Nickelodeon [kids, 7]",
+   "Nicktoons [kids, 7]",
+   "Nordic channels [intl, 512]",
+   "Outdoor Channel [sports, 11]",
+   "Ovation [ent, 10]",
+   "OWN [ent, 10]",
+   "Oxygen [ent, 10]",
+   "Pakistan channels [intl, 128]",
+   "Paramount Network [ent, 8]",
+   "PARAMOUNT+ event channels [events, 50]",
+   "PBS [local, 61]",
+   "PBS Kids [kids, 6]",
+   "PEACOCK event channels [events, 50]",
+   "Philippines channels [intl, 128]",
+   "PHL17 WPHL Philadelphia [local, 2]",
+   "Plex (free channels) [free, 140]",
+   "Pluto TV (free channels) [free, 300]",
+   "Poland channels [intl, 215]",
+   "POP [ent, 9]",
+   "Portuguese channels [intl, 259]",
+   "PPV event channels [events, 40]",
+   "Reelz [ent, 8]",
+   "RetroPlex [ent, 4]",
+   "Roku (free channels) [free, 170]",
+   "Romania channels [intl, 128]",
+   "Root Sports [sports, 2]",
+   "Russia channels [intl, 128]",
+   "Samsung TV Plus (free channels) [free, 200]",
+   "Science Channel [docs, 10]",
+   "Scripps News [news, 9]",
+   "SEC Network [sports, 8]",
+   "SEC Network Plus [sports, 9]",
+   "SEC+ event channels [events, 50]",
+   "Showtime [movies, 8]",
+   "Showtime 2 [movies, 11]",
+   "Showtime Extreme [movies, 4]",
+   "Smithsonian Channel [docs, 10]",
+   "SNY [sports, 2]",
+   "Sony Movies [movies, 4]",
+   "Space City Home Network [sports, 3]",
+   "Spectrum SportsNet LA [sports, 2]",
+   "Sportsman Channel [ent, 10]",
+   "Stadium [sports, 8]",
+   "Start TV [ent, 9]",
+   "Starz [movies, 4]",
+   "Starz Edge [movies, 4]",
+   "Starz Encore [movies, 4]",
+   "Stirr (free channels) [free, 60]",
+   "Story Television [ent, 8]",
+   "Sundance TV [ent, 7]",
+   "Switzerland channels [intl, 128]",
+   "Syfy [ent, 8]",
+   "TBS [ent, 10]",
+   "TCM [movies, 4]",
+   "TeenNick [kids, 8]",
+   "Tennis Channel [sports, 8]",
+   "Thailand channels [intl, 128]",
+   "The CW [local, 62]",
+   "TLC [ent, 9]",
+   "TNT [ent, 9]",
+   "Travel Channel [ent, 9]",
+   "truTV [ent, 8]",
+   "Tubi (free channels) [free, 160]",
+   "TUDN [sports, 6]",
+   "Turkey channels [intl, 261]",
+   "TV Land [ent, 10]",
+   "UK channels [intl, 399]",
+   "Universal Kids [kids, 5]",
+   "Up TV [ent, 11]",
+   "USA Network [ent, 9]",
+   "VH1 [music, 8]",
+   "Vice [docs, 9]",
+   "VICTORY+ event channels [events, 20]",
+   "Vietnam channels [intl, 128]",
+   "Vizio (free channels) [free, 80]",
+   "WE tv [ent, 9]",
+   "Weather Channel [news, 9]",
+   "Willow [sports, 9]",
+   "WNBA event channels [events, 12]",
+   "Xumo (free channels) [free, 120]",
+   "YES Network [sports, 3]"
+  ]
+ }
+}
