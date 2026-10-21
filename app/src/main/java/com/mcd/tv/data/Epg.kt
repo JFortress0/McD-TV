@@ -22,9 +22,20 @@ import kotlin.coroutines.coroutineContext
 
 /**
  * One programme. [start] / [end] are epoch milliseconds. [untimed]: an event channel that names its game but no
- * start time (shown as "Live event"; [start] is the top of the hour).
+ * start time (shown as "Live event"; [start] is the top of the hour). From the XMLTV guide also: [sub] (sub-title),
+ * [categories], [live] (<live/>) and [rerun] (<previously-shown/>), which Live TV's rows read (see LiveHome).
  */
-data class Programme(val title: String, val start: Long, val end: Long, val desc: String, val untimed: Boolean = false)
+data class Programme(
+    val title: String,
+    val start: Long,
+    val end: Long,
+    val desc: String,
+    val untimed: Boolean = false,
+    val sub: String = "",
+    val categories: List<String> = emptyList(),
+    val live: Boolean = false,
+    val rerun: Boolean = false,
+)
 
 /**
  * Reads the playlist's XMLTV guide (plain or .gz), keeping only what Live TV shows:
@@ -179,8 +190,7 @@ object Epg {
                             if (keys == null || start == null || end == null || end <= now || start >= until) {
                                 skip(p)
                             } else {
-                                val (title, desc) = readProgramme(p)
-                                val prog = Programme(title, start, end, desc)
+                                val prog = readProgramme(p, start, end)
                                 for (k in keys) out.getOrPut(k) { ArrayList() }.add(prog)
                                 if (++kept >= MAX_KEPT) break
                             }
@@ -227,21 +237,30 @@ object Epg {
         return keys?.let { id to it }
     }
 
-    private fun readProgramme(p: XmlPullParser): Pair<String, String> {
+    private fun readProgramme(p: XmlPullParser, start: Long, end: Long): Programme {
         var title = ""
+        var sub = ""
         var desc = ""
+        var cats: ArrayList<String>? = null
+        var live = false
+        var rerun = false
         val depth = p.depth
         var event = p.next()
         while (!(event == XmlPullParser.END_TAG && p.depth == depth) && event != XmlPullParser.END_DOCUMENT) {
             if (event == XmlPullParser.START_TAG) {
                 when (p.name) {
                     "title" -> { val t = readText(p).trim(); if (title.isEmpty()) title = t }
+                    "sub-title" -> { val t = readText(p).trim(); if (sub.isEmpty()) sub = t.take(MAX_DESC) }
                     "desc" -> { val d = readText(p).trim(); if (desc.isEmpty()) desc = if (d.length > MAX_DESC) d.take(MAX_DESC - 1) + "…" else d }
+                    // Live TV's rows: what kind of programme (Documentary, War, Football...), live or a repeat.
+                    "category" -> { val c = readText(p).trim(); if (c.isNotEmpty() && (cats?.size ?: 0) < 6) (cats ?: ArrayList<String>(3).also { cats = it }).add(c) }
+                    "live" -> live = true
+                    "previously-shown" -> rerun = true
                 }
             }
             event = p.next()
         }
-        return title.ifEmpty { "Untitled" } to desc
+        return Programme(title.ifEmpty { "Untitled" }, start, end, desc, sub = sub, categories = cats ?: emptyList(), live = live, rerun = rerun)
     }
 
     /** Text inside the current start tag; leaves the parser on its end tag (tolerates nested tags). */

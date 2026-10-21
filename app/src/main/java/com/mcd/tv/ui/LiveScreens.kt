@@ -139,6 +139,10 @@ private const val KEY_FAV = "fav"
 private const val KEY_RECENT = "recent"
 private const val KEY_FORYOU = "foryou"
 private const val KEY_ALL = "all"
+/** What's On: the default view (data/LiveHome.kt). */
+private const val KEY_HOME = "home"
+/** All Channels A-Z: the whole playlist, one entry per network, at the bottom of the rail. */
+private const val KEY_AZ = "az"
 private const val SEC = "sec:"
 /** Live Games: one rail entry, the leagues are chips inside it. */
 private const val KEY_GAMES = "games"
@@ -150,18 +154,20 @@ private const val HDR = "hdr:"
 private class RailEntry(val key: String, val label: String, val count: Int?)
 
 /** The channel card that has focus, for the hint bar (only the hint bar reads it, so focus moves stay cheap). */
-private class FocusedChannel {
+internal class FocusedChannel {
     var channel by mutableStateOf<Channel?>(null)
     var name by mutableStateOf("")
-    /** Other feeds of the focused network (Entertainment), and whether they are open under it. */
+    /** Other feeds of the focused network (All Channels A-Z), and whether they are open under it. */
     var feeds by mutableIntStateOf(0)
     var feedsOpen by mutableStateOf(false)
+    /** A What's On tile has focus. */
+    var home by mutableStateOf(false)
 }
 
 private val InkOnWhite = McdColors.Ink
 private val StarGold = Color(0xFFFFC94D)
 
-private fun countText(n: Int): String = "%,d".format(n)
+internal fun countText(n: Int): String = "%,d".format(n)
 
 @Composable
 private fun PlaylistBrowser(nav: Nav) {
@@ -214,30 +220,33 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
     }
     val forYouCount = forYou?.count ?: 0
     val forYouReady = forYou != null
+    // What's On and All Channels A-Z: one entry per network (built once per playlist, off the main thread).
+    val profile = Prefs.activeProfile
+    var groups by remember(index) { mutableStateOf<com.mcd.tv.data.LiveGroups?>(null) }
+    LaunchedEffect(index) { groups = runCatching { LiveHomeData.groups(index) }.getOrNull() }
+    var homeRows by remember(index, profile) { mutableStateOf(LiveHomeData.cachedRows(index, profile)) }
+    val myTeams = GameBoard.myTeams()
     val entries = remember(index, favItems.size, recentItems.size, leagues.isNotEmpty(), gamesTotal, forYouCount, forYouReady) {
         buildList {
-            // One entry for every league's games; the leagues are chips inside it, so they never crowd the rail.
-            if (leagues.isNotEmpty()) {
-                add(RailEntry(KEY_GAMES, "🏆  Live Games", gamesTotal))
-                add(RailEntry(HDR + "channels", "CHANNELS", null))
-            }
+            // What's On first: rows of games and networks picked from the guide. The whole playlist waits behind
+            // All Channels A-Z at the bottom (before, every section showed its full channel count here).
+            add(RailEntry(KEY_HOME, "★  What's On", null))
+            // Each league's week; the leagues are chips inside it, so they never crowd the rail.
+            if (leagues.isNotEmpty()) add(RailEntry(KEY_GAMES, "🏆  Schedules", gamesTotal))
+            add(RailEntry(HDR + "channels", "CHANNELS", null))
             add(RailEntry(KEY_SEARCH, "⌕  Search", null))
             add(RailEntry(KEY_FAV, "★  Favorites", favItems.size))
             // Always listed (count appears once the picks are ready), so it's there from the first moment.
             add(RailEntry(KEY_FORYOU, "✦  My Guide", if (forYou != null) forYouCount else null))
             if (recentItems.isNotEmpty()) add(RailEntry(KEY_RECENT, "Recent", recentItems.size))
-            index.sections.forEach { add(RailEntry(SEC + it.name, it.name, it.count)) }
-            add(RailEntry(KEY_ALL, "All channels", index.size))
+            add(RailEntry(KEY_AZ, "All Channels A–Z", null))
         }
     }
-    // A fresh open lands on Live Games (the top of the rail). Before, Favorites won whenever it had channels, and
-    // focusing it scrolled the rail past the leagues listed above it.
+    // A fresh open lands on What's On; the Kids profile opens All Channels A-Z on Kids.
     val sel = when {
         selected.isNotEmpty() && entries.any { it.key == selected } -> selected
-        leagues.isNotEmpty() -> KEY_GAMES
-        favItems.isNotEmpty() -> KEY_FAV
-        recentItems.isNotEmpty() -> KEY_RECENT
-        else -> index.sections.firstOrNull()?.let { SEC + it.name } ?: KEY_ALL
+        Prefs.isKidsProfile -> KEY_AZ
+        else -> KEY_HOME
     }
     // A game's channel list closes when another rail entry or league is picked.
     LaunchedEffect(sel, league, myTeamsOpen) {
@@ -252,6 +261,9 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
     val restoreFocus = remember { FocusRequester() }
     // The open league's chip in Live Games: where a fresh open puts focus.
     val leagueFocus = remember { FocusRequester() }
+    // What's On: its first tile takes focus on a fresh open; Back from the player returns to the tile played.
+    val homeFocus = remember { FocusRequester() }
+    var lastTile by rememberSaveable { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
     val hint = remember { FocusedChannel() }
 
@@ -274,24 +286,39 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
             }
         }
     }
-    // Start on the card last played (Back from the player). Otherwise in Live Games on the open league's chip (DOWN
-    // reaches its first live game), else on the selected rail entry.
+    // Start on the card last played (Back from the player). Otherwise on What's On's first tile, or in Schedules on
+    // the open league's chip, else on the selected rail entry.
     LaunchedEffect(Unit) {
         withFrameNanos { }
         val restored = lastPlayed != null && runCatching { restoreFocus.requestFocus() }.isSuccess
-        val onLeague = !restored && sel == KEY_GAMES && runCatching { leagueFocus.requestFocus() }.isSuccess
-        if (!restored && !onLeague) runCatching { requesterFor(sel).requestFocus() }
+        val onHome = !restored && sel == KEY_HOME && runCatching { homeFocus.requestFocus() }.isSuccess
+        val onLeague = !restored && !onHome && sel == KEY_GAMES && runCatching { leagueFocus.requestFocus() }.isSuccess
+        if (!restored && !onHome && !onLeague) runCatching { requesterFor(sel).requestFocus() }
     }
-
-    val play: (IntArray, Int) -> Unit = { list, pos ->
+    // What's On builds in the background: when its rows first appear, focus moves onto them (the tile played last
+    // after Back from the player, else the first tile).
+    var homeFocusDone by remember { mutableStateOf(false) }
+    val rowsReady = homeRows != null
+    LaunchedEffect(rowsReady) {
+        if (!rowsReady || homeFocusDone || sel != KEY_HOME) return@LaunchedEffect
+        homeFocusDone = true
+        withFrameNanos { }
+        withFrameNanos { }
+        val restored = lastTile != null && runCatching { restoreFocus.requestFocus() }.isSuccess
+        if (!restored) runCatching { homeFocus.requestFocus() }
+    }
+    // [feedsOf]: the list is one network's feeds (the player then says "feed 2 of 6" and UP / DOWN switch feeds).
+    val playList: (IntArray, Int, String?) -> Unit = { list, pos, feedsOf ->
         if (onPick != null) {
             onPick(index.channels[list[pos]])
         } else {
             LiveSession.channels = index.channelsOf(list)
+            LiveSession.feedsOf = feedsOf
             lastPlayed = index.channels[list[pos]].url
             nav.push(Screen.LivePlay(pos))
         }
     }
+    val play: (IntArray, Int) -> Unit = { list, pos -> playList(list, pos, null) }
     // Favorites changed on a phone or another TV: merge them with this TV's, then show them.
     LaunchedEffect(Unit) {
         if (com.mcd.tv.data.HouseCloud.syncLiveFavorites(Prefs.activeProfile)) favorites = Prefs.liveFavorites
@@ -301,6 +328,11 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
         favorites = Prefs.liveFavorites
     }
     val guide = LiveSession.guide
+    // What's On rows: rebuilt when the guide, a schedule, the minute or the teams change.
+    LaunchedEffect(groups, guide, now / 60_000L, GameBoard.version, myTeams) {
+        val g = groups ?: return@LaunchedEffect
+        homeRows = runCatching { LiveHomeData.rows(index, g, guide, profile, now) }.getOrNull() ?: homeRows
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.weight(1f).fillMaxWidth().padding(start = 24.dp, top = 4.dp)) {
@@ -337,7 +369,50 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
                     }
                 },
             ) {
-                if (sel == KEY_GAMES) {
+                if (sel == KEY_HOME) {
+                    WhatsOnPane(
+                        rows = homeRows,
+                        index = index,
+                        groups = groups,
+                        hasTeams = myTeams.isNotEmpty(),
+                        hasGuide = guide.isNotEmpty(),
+                        firstFocus = homeFocus,
+                        restoreFocus = restoreFocus,
+                        lastTile = lastTile,
+                        onTile = { key, t ->
+                            lastTile = key
+                            // A game or a network: its feeds, the one to play first at the top.
+                            playList(t.feeds, 0, if (t.feeds.size > 1) t.title else null)
+                        },
+                        onOpenAz = {
+                            selected = KEY_AZ
+                            runCatching { requesterFor(KEY_AZ).requestFocus() }
+                        },
+                        hint = hint,
+                    )
+                } else if (sel == KEY_AZ) {
+                    val g = groups
+                    if (g == null) {
+                        StatusText("Sorting ${countText(index.size)} channels by network…")
+                    } else {
+                        AzPane(
+                            groups = g,
+                            index = index,
+                            favSet = favSet,
+                            guide = guide,
+                            now = now,
+                            hint = hint,
+                            lastPlayed = lastPlayed,
+                            restoreFocus = restoreFocus,
+                            initialKind = if (Prefs.isKidsProfile) "kids" else "all",
+                            onPlayGroup = { grp, i ->
+                                val feeds = grp.feeds.toIntArray()
+                                playList(feeds, feeds.indexOf(i).coerceAtLeast(0), if (!grp.family && feeds.size > 1) grp.label else null)
+                            },
+                            onMenu = toggleFavorite,
+                        )
+                    }
+                } else if (sel == KEY_GAMES) {
                     LiveGamesPane(
                         leagues = leagues,
                         counts = leagueCounts,
@@ -436,7 +511,7 @@ internal fun LiveBrowser(nav: Nav, index: LiveIndex, onPick: ((Channel) -> Unit)
                 }
             }
         }
-        HintBar(hint, favSet, gamesMode = sel == KEY_GAMES, picking = onPick != null)
+        HintBar(hint, favSet, gamesMode = sel == KEY_GAMES, picking = onPick != null, homeMode = sel == KEY_HOME)
     }
 }
 
@@ -890,7 +965,7 @@ private fun SearchPane(
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun ChannelGrid(
+internal fun ChannelGrid(
     list: IntArray,
     index: LiveIndex,
     favSet: Set<String>,
@@ -907,6 +982,8 @@ private fun ChannelGrid(
     feedsOpen: (Int) -> Boolean = { false },
     nested: (Int) -> Boolean = { false },
     onFeeds: ((Int) -> Unit)? = null,
+    // A row's own label (All Channels A-Z: the network's name), else its clean channel name.
+    nameOf: (Int) -> String? = { null },
 ) {
     val gridState = rememberLazyGridState()
     val ownFirst = remember { FocusRequester() }
@@ -929,7 +1006,7 @@ private fun ChannelGrid(
         items(count = list.size, key = { pos -> index.channels[list[pos]].url }) { pos ->
             val i = list[pos]
             val ch = index.channels[i]
-            val name = index.names[i]
+            val name = nameOf(i) ?: index.names[i]
             if (pos == 0) {
                 androidx.compose.runtime.DisposableEffect(Unit) {
                     firstShown = true
@@ -1170,13 +1247,20 @@ private fun LiveChannelCard(
 
 /** Bottom line: what OK and Menu do on the focused card. */
 @Composable
-private fun HintBar(hint: FocusedChannel, favSet: Set<String>, gamesMode: Boolean = false, picking: Boolean = false) {
+private fun HintBar(hint: FocusedChannel, favSet: Set<String>, gamesMode: Boolean = false, picking: Boolean = false, homeMode: Boolean = false) {
     val ch = hint.channel
     Row(
         Modifier.fillMaxWidth().height(30.dp).background(McdColors.Ink.copy(alpha = 0.6f)).drawBehind { drawLine(McdColors.Line, Offset(0f, 0f), Offset(size.width, 0f), 1f) }.padding(start = 32.dp, end = 32.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (ch != null) {
+        if (homeMode && ch == null) {
+            Text(hint.name.takeIf { hint.home } ?: "What's on for you", color = McdColors.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            KeyHint("OK", if (picking) "Put in this tile" else "Play")
+            Spacer(Modifier.width(18.dp))
+            KeyHint("▲▼", "In the player: the network's other feeds")
+            Spacer(Modifier.width(18.dp))
+            KeyHint("↓", "All Channels A–Z at the bottom")
+        } else if (ch != null) {
             val fav = ch.url in favSet
             Text(hint.name, color = McdColors.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             KeyHint("OK", if (picking) "Put in this tile" else "Play")

@@ -11,6 +11,12 @@ class H(http.server.SimpleHTTPRequestHandler):
             q=urllib.parse.parse_qs(u.query); a=q.get('action',[''])[0]; now=int(time.time())
             if a=='': d={'user_info':{'auth':1,'status':'Active','allowed_output_formats':['m3u8','ts']}}
             elif a=='get_live_categories': d=[{'category_id':'1','category_name':'US| SPORTS'},{'category_id':'2','category_name':'US| NEWS'},{'category_id':'3','category_name':'US| ENTERTAINMENT'}]
+            elif a=='get_live_categories' and q.get('username',[''])[0]=='lh': d=LH()['cats']
+            elif a=='get_live_streams' and q.get('username',[''])[0]=='lh': d=LH()['streams']
+            elif a=='get_simple_data_table' and q.get('username',[''])[0]=='lh':
+                b=lambda t: base64.b64encode(t.encode()).decode()
+                tid=LH()['tvg'].get(q.get('stream_id',[''])[0],'')
+                d={'epg_listings':[{'title':b(x['title']),'description':b(x['desc']),'start_timestamp':str(x['start']),'stop_timestamp':str(x['end'])} for x in LH()['guide'].get(tid,[])]}
             elif a=='get_live_streams' and q.get('username',[''])[0]=='qf': d=QF_CHANNELS
             elif a=='get_live_streams': d=[{'stream_id':i,'name':n,'category_id':c,'stream_icon':'','epg_channel_id':('X.us' if i%2 else '')} for i,(n,c) in enumerate([('US| ESPN HD','1'),('US| FOX SPORTS 1','1'),('US| CNN','2'),('US| FOX NEWS','2'),('US| HISTORY','3'),('US| COMEDY CENTRAL','3'),('US| NFL REDZONE','1'),('US| NFL NETWORK','1'),('US| NBA TV','1'),('US| MLB NETWORK','1'),('US| SEC NETWORK','1')],1)]
             elif a in ('get_short_epg','get_simple_data_table'):
@@ -41,6 +47,35 @@ QF_CHANNELS=[{'stream_id':i,'name':n,'category_id':'1','stream_icon':'','epg_cha
 QF_STREAMS={'101':'uhd','102':'fhd','103':'multi','104':'fhd'}
 QF_MASTER='#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=6600000,RESOLUTION=3840x2160,CODECS="vp09.00.10.08"\n/qf/uhd/live.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1700000,RESOLUTION=1920x1080,CODECS="vp09.00.10.08"\n/qf/fhd/live.m3u8\n'
 T0=time.time()
+# The Live TV stand-in (tools/livehome/fixture) as an Xtream account: username lh. Guide times are the fixture's own
+# (Sunday 2026-10-25 and Tuesday 2026-10-27, Central); the test sets the page clock to a snapshot moment.
+_LH=None
+def LH():
+    global _LH
+    if _LH: return _LH
+    import gzip, re, datetime
+    fx=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','livehome','fixture')
+    text=gzip.open(os.path.join(fx,'playlist.m3u.gz'),'rt',encoding='utf-8').read().split('\n')
+    cats={}; streams=[]; tvg={}; pend=None
+    for line in text:
+        line=line.strip()
+        if line.startswith('#EXTINF'):
+            at=dict(re.findall(r'([a-zA-Z-]+)="([^"]*)"',line)); pend=(line[line.index('",')+2:] if '",' in line else line.split(',')[-1], at.get('group-title','Other'), at.get('tvg-id',''))
+        elif line and not line.startswith('#') and pend:
+            sid=line.rsplit('/',1)[-1].split('.')[0]; name,group,tid=pend; pend=None
+            cid=cats.setdefault(group,str(len(cats)+1))
+            streams.append({'stream_id':int(sid),'name':name,'category_id':cid,'stream_icon':'','epg_channel_id':tid})
+            if tid: tvg[sid]=tid
+    guide={}
+    xml=gzip.open(os.path.join(fx,'guide.xml.gz'),'rt',encoding='utf-8').read()
+    def ts(v):
+        return int(datetime.datetime.strptime(v,'%Y%m%d%H%M%S %z').timestamp())
+    un=lambda t: t.replace('&lt;','<').replace('&gt;','>').replace('&quot;','"').replace('&amp;','&')
+    for m in re.finditer(r'<programme start="([^"]+)" stop="([^"]+)" channel="([^"]+)">(.*?)</programme>',xml):
+        body=m.group(4); t=re.search(r'<title[^>]*>(.*?)</title>',body); dsc=re.search(r'<desc[^>]*>(.*?)</desc>',body)
+        guide.setdefault(un(m.group(3)),[]).append({'title':un(t.group(1)) if t else '','desc':un(dsc.group(1)) if dsc else '','start':ts(m.group(1)),'end':ts(m.group(2))})
+    _LH={'cats':[{'category_id':v,'category_name':k} for k,v in cats.items()],'streams':streams,'tvg':tvg,'guide':guide}
+    return _LH
 def live_playlist(name):
     # A live window of 6 segments that moves with the clock and loops over the 20 files (with a discontinuity).
     n=len([f for f in os.listdir(os.path.join(STREAMS,name)) if f.endswith('.m4s')]) if os.path.isdir(os.path.join(STREAMS,name)) else 0
