@@ -67,8 +67,9 @@ private data class HomeData(
 )
 
 /**
- * Home: at most 8 rows. Continue Watching, Live TV favorites (when a playlist is set), Suggested for You, Trending This Week, Popular on <service>,
- * Top Rated, New Releases, then a small "More" row (Ask Jarvis, Browse, Live TV, Websites, Background Noise).
+ * Home: at most 8 rows. Continue Watching, Live TV favorites (when a playlist is set), Suggested for You, History (profiles that like
+ * history; its See all opens Browse > History), Trending This Week, Popular on <service>, Top Rated, New Releases, then a small
+ * "More" row (Ask Jarvis, Browse, Live TV, Websites, Background Noise).
  * Everything else lives under Browse. Each catalog row ends in a "See all" tile that opens its full grid.
  * Everything personal (history, lists, Live TV favorites) belongs to the active profile, so the page is
  * keyed on it: switching profiles rebuilds Home. The Kids profile gets family, animation and kids rows instead.
@@ -117,6 +118,10 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
     val suggestions by rememberLoad(Prefs.activeProfile) { com.mcd.tv.data.Recommender.forYou() }
     // Because You Watched: More Like This for the latest title this profile finished.
     val because by rememberLoad(Prefs.activeProfile) { com.mcd.tv.data.Recommender.becauseYouWatched() }
+    // History: More Like <a history title this profile watched>, else Ken Burns. Profiles whose Taste likes history (Dad).
+    val historyRow by rememberLoad(Prefs.activeProfile) {
+        if (kids || !com.mcd.tv.data.HistoryHub.homeRowFor()) null else com.mcd.tv.data.HistoryHub.homeRow()
+    }
     LaunchedEffect(Unit) {
         if (continueWatching.isNotEmpty() && !restoring) { withFrameNanos { }; runCatching { firstFocus.requestFocus() } }
     }
@@ -218,6 +223,10 @@ private fun HomeContent(nav: Nav, kids: Boolean) {
         item(key = "because") {
             val b = (because as? Load.Ok)?.value
             if (b != null) TitleRail("Because You Watched ${b.first}", b.second.visible(), null, openTitle, focus, "because")
+        }
+        item(key = "history") {
+            val h = (historyRow as? Load.Ok)?.value
+            if (h != null) TitleRail(h.first, h.second.visible(), { nav.push(Screen.History) }, openTitle, focus, "history")
         }
 
         when (val d = data) {
