@@ -17,16 +17,17 @@ const games = process.env.GAMES && !m3uPath ? JSON.parse(fs.readFileSync(fx('gam
 const teams = [{ league: 'NFL', name: 'Eagles' }, { league: 'MLB', name: 'Phillies' }, { league: 'NHL', name: 'Flyers' }, { league: 'NBA', name: '76ers' }];
 
 const D = prepare(E, raw, guide);
-const before = {};
-D.section.forEach((s) => { before[s || '(no section)'] = (before[s || '(no section)'] || 0) + 1; });
+const before = {}, beforeWeb = {};
+D.section.forEach((s) => { before[s] = (before[s] || 0) + 1; });
+D.chs.forEach((c) => { const s = E.LO.section(c.group, c.name) || '(no section)'; beforeWeb[s] = (beforeWeb[s] || 0) + 1; });
 const idx = E.LH.groups(D.chs, (i) => D.country[i], (i) => D.section[i]);
 const ev = (i) => E.P.eventProg(D.chs[i].name, D.chs[i].group, now);
 const H = E.LH.home({ idx, chs: D.chs, progs: D.progs, games, teams, now, eventOf: ev });
 
 console.log(`Playlist: ${raw.length} entries, ${D.chs.length} channels after separators and repeated links.`);
 console.log(`Guide: ${guide.size} guide channels; ${D.gid.filter(Boolean).length} playlist channels matched to a guide.`);
-console.log(`\nBEFORE (web chips and TV rail count channels):`);
-for (const [k, v] of Object.entries(before).sort((a, b) => b[1] - a[1])) console.log(`  ${k.padEnd(16)} ${v}`);
+console.log(`\nBEFORE (PR #7): channels each section showed. TV rail | web chips`);
+for (const k of [...new Set([...Object.keys(before), ...Object.keys(beforeWeb)])].sort((a, b) => (before[b] || 0) - (before[a] || 0))) console.log(`  ${k.padEnd(16)} ${String(before[k] || '-').padStart(6)} | ${String(beforeWeb[k] || '-').padStart(6)}`);
 console.log(`\nAFTER, default view at ${new Date(now).toISOString()}:`);
 for (const r of H.rows) {
   console.log(`  ${r.title} (${r.tiles.length})`);
