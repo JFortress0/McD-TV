@@ -250,9 +250,12 @@ object ResumeCloud {
         val local = Library.history(profile).associateBy { it.meta.historyKey }
         var changed = false
         for (r in remote) {
-            val l = local[r.meta.historyKey]
-            if (l != null && l.updatedAt >= r.at - 1_000) continue
-            Library.applyCloud(profile, r.meta, r.positionMs, r.durationMs, r.at)
+            // Latest wins, never regress, the length never shrinks to a cut-off file's (ProgressMerge).
+            val l = local[r.meta.historyKey]?.let { ProgressMerge.Rec(it.meta.season, it.meta.episode, it.positionMs, it.durationMs, it.updatedAt) }
+            val m = ProgressMerge.merge(l, ProgressMerge.Rec(r.meta.season, r.meta.episode, r.positionMs, r.durationMs, r.at))
+            if (m == l) continue
+            val meta = if (m.at == r.at) r.meta else local.getValue(r.meta.historyKey).meta
+            Library.applyCloud(profile, meta, m.positionMs, m.durationMs, m.at)
             changed = true
         }
         if (changed) withContext(Dispatchers.Main) { version++ }

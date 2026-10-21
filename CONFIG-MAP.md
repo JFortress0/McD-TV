@@ -95,3 +95,7 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 ## What the Settings redesign (October 2026) changed in storage
 
 Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked). Later on October 19: TV `wall_cycle`.
+
+## Incomplete sources (October 19, 2026)
+
+Added: TV pref `bad_sources` and web key `mcdtv_badsrc`, a map from title key (`movie:603`, `tv:1399:1:2`) to flagged files. A copy for the whole house sits in the relay's resume store with the house key: profile tag `badsrc`, key tag `title|<title key>`, value `{f:[{k,s,at,n}],at}` (k = file key, s = where it stopped in ms, n = score: times a device in the house reported it; missing reads as 1, never drops in a merge). File key: `h:<torrent hash>`, else `u:` or `n:` and the first 16 hex characters of a SHA-256 hash, so a link with a login is never stored. Rules: `data/SourceHealth.kt` and `SH` in docs/app/index.html. No relay code changed.
