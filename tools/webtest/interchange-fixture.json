@@ -1,0 +1,54 @@
+{
+  "note": "Written by tools/webtest/interchange.mjs (UPDATE_FIXTURE=1). Read by app/src/test/.../InterchangeFixtureTest.kt.",
+  "title": {
+    "type": "movie",
+    "id": 398978,
+    "imdb": "tt1302006",
+    "runtimeMin": 209
+  },
+  "cutAtMs": 2090000,
+  "resume": {
+    "type": "movie",
+    "id": 398978,
+    "season": 0,
+    "episode": 0,
+    "pos": 2090000,
+    "dur": 12540000
+  },
+  "flags": [
+    {
+      "k": "h:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "s": 2090000,
+      "n": 1
+    },
+    {
+      "k": "h:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "s": 2090000,
+      "n": 1
+    }
+  ],
+  "sources": [
+    {
+      "name": "QA Addon\n1080p",
+      "title": "The.Irishman.2019.1080p.WEB-DL.DDP5.1.H264-GRPA\n💾 8.1 GB",
+      "infoHash": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "fileIdx": 0,
+      "rdLengthS": 12540
+    },
+    {
+      "name": "QA Addon\n1080p",
+      "title": "The.Irishman.2019.1080p.WEBRip.x264-GRPC\n💾 3.2 GB",
+      "infoHash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "fileIdx": 0,
+      "rdLengthS": 2090
+    },
+    {
+      "name": "QA Addon\n720p",
+      "title": "The.Irishman.2019.720p.WEBRip.x264-GRPB\n💾 2.0 GB",
+      "infoHash": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "fileIdx": 0,
+      "rdLengthS": 12480
+    }
+  ],
+  "webResumedOnGroup": "B"
+}

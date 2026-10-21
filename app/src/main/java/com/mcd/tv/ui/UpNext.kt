@@ -61,12 +61,14 @@ fun UpNextPlayer(
     onStepDown: ((Long) -> Unit)? = null,
     startPositionMs: Long = -1L,
     startNotice: String? = null,
+    /** com.mcd.tv.data.SourceHealth.key of the playing file, so a cut-off file is flagged for the house. */
+    sourceKey: String? = null,
 ) {
     var ended by remember { mutableStateOf(false) }
     if (!ended) {
         PlayerScreen(
             url = url, title = title, meta = meta, onEnded = { ended = true }, headers = headers, onSleep = onSleep,
-            nextSource = nextSource, onBack = onCancel,
+            nextSource = nextSource, onBack = onCancel, sourceKey = sourceKey,
             qualityLabel = qualityLabel, onStepDown = onStepDown, startPositionMs = startPositionMs, startNotice = startNotice,
         )
     } else {

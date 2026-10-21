@@ -61,6 +61,7 @@ private fun browseMenu(): List<MenuEntry> = buildList {
     add(MenuEntry("By Language", "English, Spanish, Korean, Japanese, Hindi…", Screen.BrowseGrid("lang", "en")))
     add(MenuEntry("Genres", "Action, Comedy, Drama, Horror…", Screen.Genres))
     add(MenuEntry("Collections", "Movie franchises", Screen.BrowseGrid("collections")))
+    if (!com.mcd.tv.data.Prefs.isKidsProfile) add(MenuEntry("History", "Ken Burns, historical dramas, every era", Screen.History))
     SERVICES.forEachIndexed { i, s ->
         add(MenuEntry(s.name, "Current catalog", Screen.ServiceGrid(s), section = if (i == 0) "Streaming services" else null))
     }
@@ -149,6 +150,7 @@ private fun defaultHeading(kind: String) = when (kind) {
     "lang" -> "By Language"
     "collections" -> "Collections"
     "collection" -> "Collection"
+    "history" -> "History"
     else -> "Browse"
 }
 
@@ -173,6 +175,7 @@ private suspend fun fetchGrid(kind: String, param: String, type: String, chip: S
     "lang" -> Tmdb.byLanguage(type, chip.ifBlank { "en" }, page)
     "collection" -> if (page == 1) param.toIntOrNull()?.let { Tmdb.collection(it).parts } ?: emptyList() else emptyList()
     "collections" -> if (page == 1) popularCollections() else emptyList()
+    "history" -> if (page == 1) com.mcd.tv.data.HistoryHub.shelf(param) else emptyList()
     else -> emptyList()
 }
 

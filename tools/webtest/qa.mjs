@@ -531,6 +531,43 @@ for (const w of [390,1280]) {
     await ctx.close();
   }
 }
+// Source health (SH): the same cases as app/src/test/.../SourceHealthTest.kt, so the TV and the web app agree on
+// which file is cut off, its key, and what gets saved when you switch devices.
+{
+  const {ctx,p,errs}=await mk({width:390,height:844});
+  await p.goto(B); await p.evaluate(()=>localStorage.clear());
+  const r=await p.evaluate(async()=>{
+    const min=60000, runtime=209*min, death=(34*60+50)*1000, A='a'.repeat(40), B2='b'.repeat(40);
+    const src=(title,o)=>({addon:'Torrentio',name:'Torrentio 1080p',title,url:null,infoHash:null,...o});
+    const out={};
+    out.keyHash=await SH.key(src('x',{infoHash:A.toUpperCase(),fileIdx:0}));
+    out.keyLink=await SH.key(src('x',{url:`https://torrentio.strem.fun/realdebrid/SECRETTOKEN/${A}/null/0/The.Irishman.mkv`}));
+    out.keyUrl=await SH.key(src('x',{url:'http://example.com/a.mkv'}));
+    out.noQueryHash=SH.hashInLink(`https://x.io/play?h=${A}`);
+    out.title=[SH.titleKey('movie',398978),SH.titleKey('tv',1399,1,2)];
+    out.inc=[SH.incomplete(death,SH.expected(death,runtime)),SH.incomplete(death,SH.expected(runtime,0)),
+      SH.incomplete(runtime-4*min,runtime),SH.incomplete(195*min,runtime),SH.incomplete(22*min,30*min),SH.incomplete(death,0)];
+    out.dur=[SH.progressDur(death,runtime),SH.progressDur(runtime-min,runtime),SH.progressDur(death,0,runtime),SH.progressDur(death,0,0)];
+    // A flag written by the TV (BadSources / SourceHealth.encode) reads here.
+    out.tvFlag=SH.decode(`{"at":1,"f":[{"at":1760000000000,"s":${death},"k":"h:${A}"}]}`);
+    // Web stops at the break; the flag is saved here; the TV's copy of the list puts that file last.
+    await SH.mark('movie:398978','h:'+A,death);
+    const fl=SH.flagged('movie:398978');
+    const order=SH.demote([src('1080p',{infoHash:A}),src('720p',{infoHash:B2})],fl,(s)=>'h:'+s.infoHash);
+    out.order=order.map(s=>s.title);
+    out.savedDur=SH.progressDur(death,runtime); out.resume=(death<SH.expected(runtime,runtime,out.savedDur)-10000)?death:0;
+    return out;
+  });
+  const want={keyHash:'h:'+'a'.repeat(40),keyLink:'h:'+'a'.repeat(40),keyUrl:'u:895c204c8f5b450e',noQueryHash:null,title:['movie:398978','tv:1399:1:2'],
+    inc:[true,true,false,false,false,false],dur:[209*60000,208*60000,209*60000,(34*60+50)*1000],
+    tvFlag:[{k:'h:'+'a'.repeat(40),s:(34*60+50)*1000,at:1760000000000,n:1}],order:['720p','1080p'],savedDur:209*60000,resume:(34*60+50)*1000};
+  for (const k of Object.keys(want)) if (JSON.stringify(r[k])!==JSON.stringify(want[k])) fails.push(`source health ${k}: got ${JSON.stringify(r[k])} want ${JSON.stringify(want[k])}`);
+  log('source health', fails.filter(f=>f.startsWith('source health')).length ? 'FAIL' : 'ok');
+  if(errs.length) fails.push(...errs.map(e=>`source health pageerror ${e}`));
+  await ctx.close();
+}
+// The real failure, replayed with a real video: web dies at 34:50 on a cut-off file, resumes on a healthy one.
+{ const { run } = await import('./interchange.mjs'); await run({ executablePath: process.env.CHROME_PATH, fails, log }); }
 log('FAILS', fails.length); fails.forEach(f=>log(' -',f));
 await b.close();
 process.exit(fails.length ? 1 : 0);

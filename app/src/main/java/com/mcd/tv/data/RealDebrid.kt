@@ -581,12 +581,14 @@ object Resolver {
      * Background Noise. Torrents already in your RD account go first (no add needed), then the rest in list
      * order. RD takes one new torrent per 25 s, so between adds this waits and [onStatus] says why.
      * [allowance] caps the adds (null: no cap beyond the 8 tries). Cancelling the caller (Back) stops the wait.
+     * Files in [flagged] (SourceHealth key to score, files that stop far short, see BadSources) are tried last.
      */
     suspend fun best(
         list: List<StreamSource>,
         meta: PlayMeta? = null,
         allowance: AddAllowance? = null,
         onStatus: (String) -> Unit = {},
+        flagged: Map<String, Int> = emptyMap(),
     ): Pair<StreamSource, String> {
         var last: Exception? = null
         // Same order as the source list: CAM and oversized files skipped unless nothing else is left.
@@ -595,7 +597,7 @@ object Resolver {
         val order = StreamInfo.playOrder(list, episode)
         val fresh = order.filterNot { RdFilter.wasRefused(it) }.ifEmpty { order }
         // Your IPTV provider's copies are direct links (no Real-Debrid, no add limit): they go first.
-        fresh.firstOrNull { XtreamVod.isIptv(it) && it.url != null }?.let { s ->
+        fresh.firstOrNull { XtreamVod.isIptv(it) && it.url != null && SourceHealth.key(it) !in flagged }?.let { s ->
             onStatus("Playing from your IPTV provider.")
             return s to s.url!!
         }
@@ -603,7 +605,7 @@ object Resolver {
         fun inAccount(s: StreamSource) = s.infoHash != null && s.infoHash.lowercase() in have
         fun needsAdd(s: StreamSource) = s.infoHash != null && s.url == null && !inAccount(s)
         var adds = allowance?.left ?: Int.MAX_VALUE
-        val picked = (fresh.filter { inAccount(it) } + fresh.filterNot { inAccount(it) })
+        val picked = SourceHealth.demote(fresh.filter { inAccount(it) } + fresh.filterNot { inAccount(it) }, flagged, SourceHealth::key)
             .filter { !needsAdd(it) || adds-- > 0 }
             .take(MAX_TRIES)
         for ((i, s) in picked.withIndex()) {
