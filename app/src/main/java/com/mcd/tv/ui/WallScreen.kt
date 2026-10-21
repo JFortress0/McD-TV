@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -61,6 +62,7 @@ import com.mcd.tv.data.Prefs
 import com.mcd.tv.data.Wall
 import com.mcd.tv.data.Wall.Day
 import com.mcd.tv.data.WallCycle
+import com.mcd.tv.data.WallSpotlight
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -73,6 +75,8 @@ import java.util.Locale
  * Now and then it shows the whole month instead: by default the last minute of every half hour (pref wall_cycle, set
  * on the Control page or in Settings, see WallCycle). Remote: OK switches views (and stops the automatic switch
  * for 10 minutes), LEFT / RIGHT change the photo, BACK leaves.
+ * Heads-up: one minute in five, a card for a one-off event in the next 4 weeks takes the place of the agenda list
+ * (WallSpotlight). It never covers the photo and never changes when the month calendar shows.
  * The screen stays on while the Wall is open (MainActivity, ScreenAwake). From 11 PM to 6 AM it dims.
  */
 
@@ -148,7 +152,11 @@ fun WallScreen(nav: Nav) {
     val cal = Calendar.getInstance().apply { timeInMillis = minute }
     val hour = cal.get(Calendar.HOUR_OF_DAY)
     val minuteOfDay = hour * 60 + cal.get(Calendar.MINUTE)
-    val autoView = if (WallCycle.showCalendar(WallCycle.parse(wallCycle), minuteOfDay)) WallView.Month else WallView.Agenda
+    val today = Day.ofMillis(minute)
+    val spots = remember(feed, today) { feed?.let { WallSpotlight.pick(it, today) }.orEmpty() }
+    val frame = WallSpotlight.frame(WallCycle.parse(wallCycle), spots.size, minuteOfDay)
+    val autoView = if (frame.month) WallView.Month else WallView.Agenda
+    val spot = frame.spot?.let { spots.getOrNull(it) }
     val shown = manualView?.takeIf { minute - manualAt < MANUAL_HOLD_MS } ?: autoView
     val night = hour >= 23 || hour < 6
 
@@ -187,7 +195,7 @@ fun WallScreen(nav: Nav) {
                     Modifier.weight(0.38f).fillMaxHeight().background(McdColors.Navy.copy(alpha = 0.6f))
                         .padding(start = 20.dp, end = 22.dp, top = 18.dp, bottom = 14.dp),
                 ) {
-                    AgendaPanel(feed, minute, feedError)
+                    AgendaPanel(feed, minute, feedError, spot)
                 }
             }
         }
@@ -248,7 +256,7 @@ private fun EmptyPhotos() {
 // ---------------- Agenda ----------------
 
 @Composable
-private fun ColumnScope.AgendaPanel(feed: Wall.Feed?, now: Long, error: String?) {
+private fun ColumnScope.AgendaPanel(feed: Wall.Feed?, now: Long, error: String?, spot: WallSpotlight.Spot?) {
     WallClock()
     feed?.weather?.let { w ->
         val today = w.days.firstOrNull()
@@ -275,7 +283,11 @@ private fun ColumnScope.AgendaPanel(feed: Wall.Feed?, now: Long, error: String?)
 
     val today = Day.ofMillis(now)
     val upcoming = remember(feed, today, now / 60_000) { agendaRows(feed, today, now) }
-    Column(Modifier.weight(1f).fillMaxWidth().clipToBounds(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    if (spot != null) {
+        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds(), contentAlignment = Alignment.CenterStart) {
+            HeadsUpCard(feed, spot)
+        }
+    } else Column(Modifier.weight(1f).fillMaxWidth().clipToBounds(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         upcoming.forEach { row ->
             when (row) {
                 is AgendaRow.Header -> Text(
@@ -313,6 +325,27 @@ private fun ColumnScope.AgendaPanel(feed: Wall.Feed?, now: Long, error: String?)
     }
 
     Legend(feed, error)
+}
+
+// ---------------- Heads-up ----------------
+
+/** A one-off event coming up: "In 3 weeks", the title, the dates and the place. */
+@Composable
+private fun HeadsUpCard(feed: Wall.Feed, spot: WallSpotlight.Spot) {
+    val color = Color(feed.sources.getOrNull(spot.event.source)?.color ?: 0xFF00E5FF)
+    Row(
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min).border(1.dp, McdColors.Accent.copy(alpha = 0.6f), HudShapeSmall)
+            .background(McdColors.Accent.copy(alpha = 0.08f), HudShapeSmall),
+    ) {
+        Box(Modifier.width(5.dp).fillMaxHeight().background(color))
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("HEADS-UP", style = hudLabelStyle(11.sp, McdColors.Accent))
+            Text(spot.countdown, style = hudDisplayStyle(30.sp, McdColors.White, 0.5.sp), maxLines = 1)
+            Text(spot.title, color = McdColors.White, fontSize = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(spot.days, color = McdColors.Muted, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            spot.location?.let { Text(it, color = McdColors.Muted, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+    }
 }
 
 // ---------------- Baby countdown ----------------
