@@ -94,6 +94,18 @@ enum class League(
     val railLabel: String get() = if (this == NFL) "$emoji NFL Games" else "$emoji $label"
 
     fun inSeason(month: Int): Boolean = month in months
+
+    companion object {
+        /** Hidden from Live Games until a profile changes it (Settings > Addons and Live TV > Live Games). */
+        val DEFAULT_HIDDEN: Set<League> = setOf(WNBA, MLS, EPL)
+
+        /**
+         * Hidden leagues from their stored names ([stored] null = never set: [DEFAULT_HIDDEN]). Unknown names are
+         * skipped, so a league removed later never breaks the setting.
+         */
+        fun hiddenFrom(stored: List<String>?): Set<League> =
+            stored?.mapNotNull { n -> entries.firstOrNull { it.name == n } }?.toSet() ?: DEFAULT_HIDDEN
+    }
 }
 
 /** One side of a game. [nickname] is "Packers", [location] "Green Bay", [short] "Packers" (college: "Alabama"). */
@@ -132,6 +144,67 @@ data class Game(
 
     /** Unique across leagues. */
     val key: String get() = "${league.name}:$id"
+}
+
+/**
+ * A profile's favorite team in one league. [name] is the team as ESPN lists it ("Eagles", "76ers"); it matches a
+ * game's team by nickname, short name, full name or abbreviation, so "Philadelphia Eagles" and "PHI" work too.
+ * Stored as "NFL:Eagles".
+ */
+data class FavoriteTeam(val league: League, val name: String) {
+    val stored: String get() = "${league.name}:$name"
+
+    fun matches(t: TeamLine): Boolean {
+        val n = GameMatcher.norm(name)
+        if (n.isEmpty()) return false
+        return listOf(t.nickname, t.short, t.name, t.abbr).any { it.isNotEmpty() && GameMatcher.norm(it) == n }
+    }
+
+    companion object {
+        /** Favorites a profile starts with until it changes them: Dad (p1) follows Philadelphia. */
+        val DEFAULTS: Map<String, List<FavoriteTeam>> = mapOf(
+            "p1" to listOf(
+                FavoriteTeam(League.NFL, "Eagles"),
+                FavoriteTeam(League.MLB, "Phillies"),
+                FavoriteTeam(League.NHL, "Flyers"),
+                FavoriteTeam(League.NBA, "76ers"),
+            ),
+        )
+
+        /** "NFL:Eagles" -> the team; null for an unknown league or an empty name. */
+        fun parse(s: String): FavoriteTeam? {
+            val i = s.indexOf(':')
+            if (i <= 0) return null
+            val league = League.entries.firstOrNull { it.name == s.substring(0, i) } ?: return null
+            val name = s.substring(i + 1).trim()
+            return if (name.isEmpty()) null else FavoriteTeam(league, name)
+        }
+
+        /** A profile's favorites from storage ([stored] null = never set: that profile's [DEFAULTS]). */
+        fun listFrom(stored: List<String>?, profile: String): List<FavoriteTeam> =
+            stored?.mapNotNull(::parse)?.distinct() ?: DEFAULTS[profile].orEmpty()
+    }
+}
+
+/** Favorite-team games: the star on a game card, its place at the top of the league and the My Teams chip. */
+object MyTeams {
+    fun isMine(g: Game, teams: List<FavoriteTeam>): Boolean =
+        teams.any { it.league == g.league && (it.matches(g.home) || it.matches(g.away)) }
+
+    /** [games] with favorite-team games first; both parts keep their order. */
+    fun pinned(games: List<Game>, teams: List<FavoriteTeam>): List<Game> {
+        if (teams.isEmpty()) return games
+        val (mine, rest) = games.partition { isMine(it, teams) }
+        return mine + rest
+    }
+
+    /** Favorite-team games across leagues that are live or still to come: live first, then by start time. */
+    fun collect(schedules: Collection<Schedule>, teams: List<FavoriteTeam>): List<Game> {
+        if (teams.isEmpty()) return emptyList()
+        return schedules.flatMap { it.games }
+            .filter { !it.final && isMine(it, teams) }
+            .sortedWith(compareBy<Game> { if (it.live) 0 else 1 }.thenBy { it.startMs })
+    }
 }
 
 /** A league's games for this week. [weekLabel] is "WEEK 6" for football when ESPN says, else null. */
@@ -351,6 +424,27 @@ object Games {
             record = record,
             rank = if (rank in 1..25) rank else 0,
         )
+    }
+
+    private val teamCache = HashMap<League, List<TeamLine>>()
+
+    /** Every team in [league] (Settings > My teams), A to Z by short name. One request per league, kept until the app closes. */
+    suspend fun teams(league: League): List<TeamLine> {
+        synchronized(teamCache) { teamCache[league] }?.let { return it }
+        val extra = if (league.extraQuery.isNotEmpty()) "&" + league.extraQuery else ""
+        val body = Http.get("$BASE${league.path}/teams?limit=500$extra", timeoutMs = 20_000)
+        val list = withContext(Dispatchers.Default) { parseTeams(body) }
+        if (list.isNotEmpty()) synchronized(teamCache) { teamCache[league] = list }
+        return list
+    }
+
+    /** Parses ESPN's teams reply (sports[0].leagues[0].teams[].team). */
+    internal fun parseTeams(body: String): List<TeamLine> {
+        val teams = JSONObject(body).optJSONArray("sports")?.optJSONObject(0)
+            ?.optJSONArray("leagues")?.optJSONObject(0)?.optJSONArray("teams") ?: return emptyList()
+        val out = ArrayList<TeamLine>(teams.length())
+        for (i in 0 until teams.length()) teams.optJSONObject(i)?.let { c -> runCatching { team(c) }.getOrNull()?.let { out.add(it) } }
+        return out.distinctBy { it.id }.sortedBy { it.short.lowercase(Locale.ROOT) }
     }
 
     /**
