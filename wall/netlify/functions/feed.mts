@@ -1,12 +1,14 @@
 // Jarvis Wall: one merged calendar feed for the wall TV.
 // The calendar links (secret iCal addresses) live only in the Netlify environment variable WALL_CALENDARS.
 // They never reach the TV, the repo or the browser. The TV gets plain JSON: titles, times and colors.
+// v2: each event that comes from a repeating series (RRULE or RDATE, or a moved repeat) carries r: 1.
+// The TV uses it for the Heads-up card, which only calls out one-off events.
 import type { Config } from "@netlify/functions"
 import ICAL from "ical.js"
 import { getStore } from "@netlify/blobs"
 
 type Source = { name: string; tag: string; color: string; kind: string; url: string }
-type Out = { s: number; t: string; start?: number; end?: number; day?: string; endDay?: string; loc?: string }
+type Out = { s: number; t: string; start?: number; end?: number; day?: string; endDay?: string; loc?: string; r?: 1 }
 
 const DEFAULT_COLORS = ["#00E5FF", "#7C9CFF", "#4ADE80", "#FF7AB6", "#FFB300", "#C084FC"]
 const DAY_MS = 86_400_000
@@ -70,7 +72,7 @@ export function expand(text: string, si: number, from: Date, to: Date): Out[] {
   }
 
   const out: Out[] = []
-  const push = (item: ICAL.Event, s: ICAL.Time, e: ICAL.Time | null) => {
+  const push = (item: ICAL.Event, s: ICAL.Time, e: ICAL.Time | null, repeats: boolean) => {
     if (String(item.component.getFirstPropertyValue("status") || "").toUpperCase() === "CANCELLED") return
     const title = (item.summary || "Busy").trim().slice(0, 120)
     const loc = (item.location || "").trim().slice(0, 80) || undefined
@@ -83,19 +85,20 @@ export function expand(text: string, si: number, from: Date, to: Date): Out[] {
       const sd = s.toString().slice(0, 10)
       const ed = endDay.toString().slice(0, 10)
       if (Date.parse(ed + "T23:59:59Z") < from.getTime() - DAY_MS || Date.parse(sd) > to.getTime()) return
-      out.push({ s: si, t: title, day: sd, endDay: ed === sd ? undefined : ed, loc })
+      out.push({ s: si, t: title, day: sd, endDay: ed === sd ? undefined : ed, loc, r: repeats ? 1 : undefined })
     } else {
       const start = s.toJSDate().getTime()
       const end = e ? e.toJSDate().getTime() : start
       if (end < from.getTime() || start >= to.getTime()) return
-      out.push({ s: si, t: title, start, end: Math.max(end, start), loc })
+      out.push({ s: si, t: title, start, end: Math.max(end, start), loc, r: repeats ? 1 : undefined })
     }
   }
 
   for (const e of [...masters.values(), ...loose]) {
     if (!e.startDate) continue
     if (!e.isRecurring() || e.isRecurrenceException()) {
-      push(e, e.startDate, e.endDate)
+      // A moved repeat whose series is missing from the file still belongs to a series.
+      push(e, e.startDate, e.endDate, e.isRecurrenceException())
       continue
     }
     const it = e.iterator()
@@ -104,7 +107,7 @@ export function expand(text: string, si: number, from: Date, to: Date): Out[] {
       if (next.toJSDate().getTime() >= to.getTime()) break
       const d = e.getOccurrenceDetails(next)
       if (d.endDate.toJSDate().getTime() < from.getTime() - DAY_MS) continue
-      push(d.item, d.startDate, d.endDate)
+      push(d.item, d.startDate, d.endDate, true)
     }
   }
   return out
@@ -156,7 +159,7 @@ export default async (req: Request) => {
   const events = results.flatMap((r) => r.events)
   events.sort((a, b) => (a.start ?? Date.parse(a.day!)) - (b.start ?? Date.parse(b.day!)))
   const body = JSON.stringify({
-    v: 1,
+    v: 2,
     generated: now,
     tz: process.env.WALL_TZ || "America/Chicago",
     sources: list.map((s, i) => ({ name: s.name, tag: s.tag, color: s.color, kind: s.kind, error: results[i].error })),

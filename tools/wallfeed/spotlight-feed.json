@@ -1,0 +1,292 @@
+{
+ "v": 2,
+ "generated": 1792602000000,
+ "tz": "America/Chicago",
+ "sources": [
+  {
+   "name": "Family",
+   "tag": "Fam",
+   "color": "#00E5FF",
+   "kind": "family",
+   "error": null
+  },
+  {
+   "name": "Partner",
+   "tag": "Partner",
+   "color": "#FF7AB6",
+   "kind": "work",
+   "error": null
+  },
+  {
+   "name": "School",
+   "tag": "SNHU",
+   "color": "#FFB300",
+   "kind": "school",
+   "error": null
+  }
+ ],
+ "events": [
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-09-26",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1790895600000,
+   "end": 1790902800000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-10-03",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1791500400000,
+   "end": 1791507600000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-10-10",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1792105200000,
+   "end": 1792112400000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-10-17",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Haircut today",
+   "start": 1792620000000,
+   "end": 1792623600000
+  },
+  {
+   "s": 0,
+   "t": "Dentist",
+   "start": 1792697400000,
+   "end": 1792701000000,
+   "loc": "Main St Dental"
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1792710000000,
+   "end": 1792717200000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-10-24",
+   "r": 1
+  },
+  {
+   "s": 2,
+   "t": "Module 5 assignment due",
+   "start": 1792990740000,
+   "end": 1792990740000
+  },
+  {
+   "s": 0,
+   "t": "Concert",
+   "start": 1793145600000,
+   "end": 1793152800000
+  },
+  {
+   "s": 0,
+   "t": "Moved repeat without its series",
+   "start": 1793196000000,
+   "end": 1793199600000,
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1793314800000,
+   "end": 1793322000000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Review on set dates",
+   "day": "2026-10-30",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-10-31",
+   "r": 1
+  },
+  {
+   "s": 2,
+   "t": "Module 6 assignment due",
+   "start": 1793599140000,
+   "end": 1793599140000
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-11-07",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game (moved to Friday)",
+   "start": 1794009600000,
+   "end": 1794016800000,
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Beach trip",
+   "day": "2026-11-11",
+   "endDay": "2026-11-14",
+   "loc": "Gulf Shores, AL"
+  },
+  {
+   "s": 1,
+   "t": "Beach Trip",
+   "day": "2026-11-11",
+   "endDay": "2026-11-14",
+   "loc": "Gulf Shores, AL"
+  },
+  {
+   "s": 0,
+   "t": "Review on set dates",
+   "day": "2026-11-13",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1794528000000,
+   "end": 1794535200000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-11-14",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Fourth one-off",
+   "day": "2026-11-17"
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1795132800000,
+   "end": 1795140000000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-11-21",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1795737600000,
+   "end": 1795744800000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-11-28",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Six weeks out",
+   "day": "2026-12-03"
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1796342400000,
+   "end": 1796349600000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-12-05",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1796947200000,
+   "end": 1796954400000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-12-12",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1797552000000,
+   "end": 1797559200000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-12-19",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly game",
+   "start": 1798156800000,
+   "end": 1798164000000,
+   "loc": "Lee High School",
+   "r": 1
+  },
+  {
+   "s": 0,
+   "t": "Weekly bump photo",
+   "day": "2026-12-26",
+   "r": 1
+  }
+ ],
+ "weather": null
+}

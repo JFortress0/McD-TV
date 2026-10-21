@@ -3,7 +3,7 @@
 Backend for the Wall screen in the app: a photo frame plus a merged family calendar for a wall TV.
 
 - Live at `https://jarvis-wall.netlify.app` (Netlify project `jarvis-wall`).
-- `GET /api/feed`: every calendar in `WALL_CALENDARS`, merged into one JSON list for the next 10 weeks, plus the weather. Repeats, moved repeats and cancelled repeats are handled (ical.js).
+- `GET /api/feed`: every calendar in `WALL_CALENDARS`, merged into one JSON list for the next 10 weeks, plus the weather. Repeats, moved repeats and cancelled repeats are handled (ical.js). Each event from a repeating series (RRULE, RDATE or a moved repeat) carries `r: 1` (feed `v: 2`); the TV's Heads-up card uses it to call out one-off events only. Test: `node tools/wallfeed/feed-fixture.mjs` (after `npm install` here).
 - `/api/photos`: photo list, photo files, upload and delete. Photos are kept in Netlify Blobs (store `wall-photos`).
 - `/` (public/index.html): phone page to add and remove photos (shrunk to 1920 px JPEG in the browser) and to paste calendar links.
 - `/api/calendars`: the calendar list from the phone page, kept in Netlify Blobs (store `wall-config`). Links are write-only: the page never shows a saved link again. The feed uses this list first, then `WALL_CALENDARS`.

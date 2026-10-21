@@ -1,0 +1,31 @@
+# Checks the Wall feed code (wall/netlify/functions/feed.mts) on the iCal fixtures in tools/wallfeed: repeating
+# events carry r: 1, one-off events do not, and tools/wallfeed/spotlight-feed.json (read by WallSpotlightTest)
+# matches what the feed code makes. Free (GitHub Actions minutes); it never deploys, so it costs no Netlify credits.
+name: Wall feed
+
+on:
+  push:
+    branches: [main]
+    paths: ["wall/**", "tools/wallfeed/**", ".github/workflows/wall-feed.yml"]
+  pull_request:
+    paths: ["wall/**", "tools/wallfeed/**", ".github/workflows/wall-feed.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the feed's packages
+        working-directory: wall
+        run: npm install --no-audit --no-fund
+      - name: Feed fixtures
+        run: node tools/wallfeed/feed-fixture.mjs
