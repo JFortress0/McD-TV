@@ -78,10 +78,20 @@ check_screen "detail:movie:603" "Matrix"
 check_screen "detail:movie:603" "TMDB"
 check_screen "person:6384" "Keanu"
 
-# 4-history) History hub. Every shelf comes from catalog metadata, never from viewing history. Open it on the
-# fresh QA profile (nothing watched yet), then mark The Irishman and The Civil War watched (QA-only extra; inner
-# quotes: adb runs it through the device shell, where | is a pipe) and open it again. Both visits must show the
-# same shelves and posters, no "More Like" or "Because You Watched" row, and never The Irishman (Crime is not history).
+# 4-history) History hub. Every shelf comes from catalog metadata, never from viewing history. Open each shelf's
+# See all grid on the fresh QA profile (nothing watched yet), then mark The Irishman and The Civil War watched
+# (QA-only extra; inner quotes: adb runs it through the device shell, where | is a pipe) and open each grid again.
+# Every grid must list the same posters both times. The hub itself must show no "More Like" or "Because You
+# Watched" row, and The Irishman must be on no shelf (Crime is not history).
+HISTORY_SHELVES="docs history movies kenburns era:founding era:civilwar era:worldwars era:coldwar era:west"
+grid_dump() { # tag: each shelf's See all grid, posters only (the clock and the focused title's caption change)
+  for s in $HISTORY_SHELVES; do
+    adb shell am start -S -n com.mcd.tv/.MainActivity --es screen "history:$s" >/dev/null
+    sleep 15
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "qa-out/ui-grid-$1-${s//:/-}.xml" >/dev/null 2>&1
+    grep -o 'content-desc="[^"]\+"' "qa-out/ui-grid-$1-${s//:/-}.xml" 2>/dev/null | sort -u > "qa-out/grid-$1-${s//:/-}.txt"
+  done
+}
 hub_dump() { # tag: open the hub, wait for the shelves, then dump the screen and the screens below it
   adb shell am start -S -n com.mcd.tv/.MainActivity --es screen history >/dev/null
   sleep 30; shot "screen-history-$1"
@@ -92,14 +102,16 @@ hub_dump() { # tag: open the hub, wait for the shelves, then dump the screen and
   done
   cat qa-out/ui-history-$1-*.xml 2>/dev/null | grep -o '\(text\|content-desc\)="[^"]\+"' | grep -v "Loading" | sort -u > "qa-out/history-$1.txt"
 }
-# A first visit looks up every title's keywords; let it finish so both dumps load from the same saved keywords.
+# A first visit looks up every title's keywords; let it finish so both rounds load from the same saved keywords.
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen history >/dev/null; sleep 45
 hub_dump fresh
+grid_dump fresh
 for spec in "'movie|The Irishman|2019'" "'tv|The Civil War|1990'"; do
   adb shell am start -S -n com.mcd.tv/.MainActivity --ez qa_mode true --es qa_watched "$spec" --es screen browse >/dev/null
   sleep 12
 done
 adb logcat -d -s HistoryHub:I | grep "qa_watched" | sed 's/^/      [history] log: /'
+grid_dump watched
 hub_dump watched
 echo "      [history] headings: $(grep -o '="[A-Z][A-Z &amp;;IVX]\{6,\}"' qa-out/history-fresh.txt | sed 's/^=//' | tr '\n' ' ' | cut -c1-500)"
 echo "      [history] posters: $(grep -o 'content-desc="[^"]\+"' qa-out/history-fresh.txt | sed 's/content-desc=//' | tr '\n' ' ' | cut -c1-900)"
@@ -111,12 +123,15 @@ if cat qa-out/history-fresh.txt qa-out/history-watched.txt | grep -qiE "MORE LIK
 else
   pass "History: no row built from viewing history"
 fi
-if diff qa-out/history-fresh.txt qa-out/history-watched.txt > qa-out/history-diff.txt; then
-  pass "History: same shelves before and after watching The Irishman and The Civil War"
-else
-  fail "History: same shelves before and after watching The Irishman and The Civil War"
-  head -n 20 qa-out/history-diff.txt | sed 's/^/      [history-diff] /' | tee -a "$R"
-fi
+for s in $HISTORY_SHELVES; do
+  f="qa-out/grid-fresh-${s//:/-}.txt"; w="qa-out/grid-watched-${s//:/-}.txt"
+  if [ -s "$f" ] && diff "$f" "$w" > "qa-out/grid-diff-${s//:/-}.txt"; then
+    pass "History $s: same posters before and after watching The Irishman and The Civil War ($(wc -l < "$f"))"
+  else
+    fail "History $s: same posters before and after watching The Irishman and The Civil War"
+    head -n 10 "qa-out/grid-diff-${s//:/-}.txt" | sed 's/^/      [history-diff] /' | tee -a "$R"
+  fi
+done
 check_screen history:kenburns "content-desc=\"The American Revolution\""
 if grep -q 'content-desc="The Civil War"' qa-out/ui-history-kenburns.xml; then pass "History: Ken Burns shows The Civil War"; else fail "History: Ken Burns shows The Civil War"; fi
 check_screen history:docs "content-desc=\"(The Civil War|The Vietnam War|Baseball|The War)\""
@@ -127,7 +142,7 @@ check_screen history:era:founding "content-desc=\"(Young Washington|John Adams|T
 check_screen history:era:worldwars "content-desc="
 check_screen history:era:coldwar "content-desc="
 check_screen history:era:west "content-desc="
-if cat qa-out/ui-history-*.xml 2>/dev/null | grep -q 'content-desc="The Irishman"'; then
+if cat qa-out/ui-history-*.xml qa-out/ui-grid-*.xml 2>/dev/null | grep -q 'content-desc="The Irishman"'; then
   fail "History: The Irishman on no shelf"
 else
   pass "History: The Irishman on no shelf"
