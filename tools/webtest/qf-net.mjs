@@ -40,12 +40,13 @@ async function phone(name, seed, ua) {
     mcdtv_web_profile: 'p1', mcdtv_web_quality: 'auto',
     mcdtv_web_init: JSON.stringify({ m3u_url: 'http://127.0.0.1:8781/get.php?username=qf&password=p&type=m3u_plus', tmdb_key: 'x' }), ...(seed || {}) });
   await p.goto(B + '#/live'); await p.reload();
-  await p.waitForSelector('.lv-row', { timeout: 20000 });
+  await p.waitForSelector('#lvHome', { timeout: 20000 });
   return { name, ctx, p, net, errs };
 }
 /** Opens a channel by its place in the test list (0 ESPN 4K, 1 ESPN FHD, 2 FOX 4K) and waits for the picture. */
 async function open(ph, idx) {
-  await ph.p.evaluate(() => { const c = document.querySelector('#lvChips .chip[data-sec="All"]'); if (c) c.click(); });
+  // The whole list in playlist order (no chip for it since What's On; LV.section still opens it).
+  await ph.p.evaluate(() => LV.section('All'));
   await ph.p.waitForSelector(`.lv-row[data-idx="${idx}"]`, { timeout: 10000 });
   await ph.p.evaluate((i) => document.querySelector(`.lv-row[data-idx="${i}"]`).click(), idx);
   await ph.p.waitForFunction(() => { const v = document.querySelector('#lvVid'); return v && v.currentTime > 1; }, null, { timeout: 30000 });
