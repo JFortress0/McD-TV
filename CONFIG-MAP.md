@@ -47,6 +47,8 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 | Quality memory (up-front 4K or 1080p pick) | automatic | `quality_memory` = JSON `{est, estAt, ch: {guideKey: {br, down, clr}}}`: last throughput (bps) and when, per 4K channel its measured bitrate, last step-down and when a step-down was forgiven | this TV only, never synced, not per profile | no |
 | Quality changes log | automatic, shown in TV Settings > Addons and Live TV > Quality changes | `quality_log` = JSON list, newest first, last 40: `{at, t (title), f (from), to, c (reason code), e (estimate bps)}` | this TV only, never synced, not per profile | no |
 | Quality memory and log on the phone | automatic; the log shows in Web app Settings > Playback > Recent quality changes | `mcdtv_web_qmem` = JSON `{est, estAt, ch: {guideKey: {br, down, at}}}` (last measured speed, per 4K channel its measured bitrate and last step-down); `mcdtv_web_qlog` = JSON list, newest first, last 40: `{t, w (live or vod), name, from, to, why, est, br, note}` | this browser only; not in the setup link or invites | no |
+| My teams (favorite teams) | TV Settings > Addons and Live TV > My teams | `live_fav_teams@pN` (JSON list like `"NFL:Eagles"`). Not set = Dad (p1) has Eagles, Phillies, Flyers and 76ers; other profiles none. | this TV only | no |
+| Leagues in Live Games | TV Settings > Addons and Live TV > Live Games | `live_leagues_hidden@pN` (JSON list of league names). Not set = WNBA, MLS and Premier League hidden. The playlist is never changed. | this TV only | no |
 
 ## Profiles and the house
 

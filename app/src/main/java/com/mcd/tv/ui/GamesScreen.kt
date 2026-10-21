@@ -60,6 +60,8 @@ import coil.compose.AsyncImage
 import com.mcd.tv.Nav
 import com.mcd.tv.Screen
 import com.mcd.tv.data.Epg
+import com.mcd.tv.data.FavoriteTeam
+import com.mcd.tv.data.MyTeams
 import com.mcd.tv.data.Game
 import com.mcd.tv.data.GameChannels
 import com.mcd.tv.data.GameMatcher
@@ -84,6 +86,9 @@ import java.util.Date
 import java.util.Locale
 
 // ============================== Games: every game this week, and where to watch it ==============================
+
+/** The star and accent on a favorite team's game. */
+val MyTeamGold = androidx.compose.ui.graphics.Color(0xFFFFC94D)
 
 /** A league's schedule as the screens see it. */
 sealed interface LeagueLoad {
@@ -119,15 +124,61 @@ object GameBoard {
         }
     }
 
-    /** Loads (or refreshes from cache) every league at once. */
-    suspend fun refreshAll() = coroutineScope {
-        League.entries.forEach { l -> launch { refresh(l) } }
+    /** Bumped when a profile shows or hides a league, so Live Games redraws. */
+    private var hiddenVersion by mutableIntStateOf(0)
+    private var hiddenCache: Pair<String, Set<League>>? = null
+
+    /** Leagues the watching profile hid from Live Games (Settings > Addons and Live TV). */
+    fun hidden(): Set<League> {
+        hiddenVersion // read, so a change redraws the screens that call this
+        val p = Prefs.activeProfile
+        hiddenCache?.let { if (it.first == p) return it.second }
+        return League.hiddenFrom(Prefs.hiddenLeagueNames(p)).also { hiddenCache = p to it }
     }
 
-    /** Leagues for the rail: NFL first during its season, others while they have games this week. */
+    fun setShown(league: League, shown: Boolean) {
+        val now = if (shown) hidden() - league else hidden() + league
+        Prefs.setHiddenLeagueNames(League.entries.filter { it in now }.map { it.name })
+        hiddenCache = null
+        hiddenVersion++ // a league shown again loads the next time Live TV or Games opens (refreshAll)
+    }
+
+    private var teamsVersion by mutableIntStateOf(0)
+    private var teamsCache: Pair<String, List<FavoriteTeam>>? = null
+
+    /** The watching profile's favorite teams (Settings > Addons and Live TV > My teams). */
+    fun myTeams(): List<FavoriteTeam> {
+        teamsVersion // read, so a change redraws the screens that call this
+        val p = Prefs.activeProfile
+        teamsCache?.let { if (it.first == p) return it.second }
+        return FavoriteTeam.listFrom(Prefs.favoriteTeamNames(p), p).also { teamsCache = p to it }
+    }
+
+    fun addTeam(t: FavoriteTeam) = saveTeams(myTeams().filter { it != t } + t)
+
+    fun removeTeam(t: FavoriteTeam) = saveTeams(myTeams() - t)
+
+    private fun saveTeams(list: List<FavoriteTeam>) {
+        Prefs.setFavoriteTeamNames(list.map { it.stored })
+        teamsCache = null
+        teamsVersion++
+    }
+
+    /** Favorite-team games still to come or live in the shown leagues, live first. */
+    fun myGames(): List<Game> = MyTeams.collect(visibleLeagues().mapNotNull { (state[it] as? LeagueLoad.Ok)?.schedule }, myTeams())
+
+    /** Loads (or refreshes from cache) every shown league at once. Hidden leagues cost no ESPN requests. */
+    suspend fun refreshAll() = coroutineScope {
+        val skip = hidden()
+        League.entries.filter { it !in skip }.forEach { l -> launch { refresh(l) } }
+    }
+
+    /** Leagues for Live Games: NFL first during its season, others while they have games this week. Hidden ones never. */
     fun visibleLeagues(): List<League> {
         val month = Calendar.getInstance().get(Calendar.MONTH) + 1
+        val skip = hidden()
         return League.entries.filter { l ->
+            if (l in skip) return@filter false
             when (val s = state[l]) {
                 is LeagueLoad.Ok -> s.schedule.games.isNotEmpty() || (l == League.NFL && l.inSeason(month))
                 else -> l in MAIN && l.inSeason(month)
@@ -373,12 +424,16 @@ private fun GamesGrid(
     onSetup: (() -> Unit)?,
 ) {
     val games = schedule.games
-    val live = remember(games) { games.filter { it.live } }
-    val upcoming = remember(games) { games.filter { it.state == "pre" }.sortedBy { it.startMs } }
+    // Games with a favorite team go first, in their own block, and are not repeated below.
+    val teams = GameBoard.myTeams()
+    val mine = remember(games, teams) { MyTeams.collect(listOf(schedule), teams) }
+    val mineKeys = remember(mine) { mine.mapTo(HashSet()) { it.key } }
+    val live = remember(games, mineKeys) { games.filter { it.live && it.key !in mineKeys } }
+    val upcoming = remember(games, mineKeys) { games.filter { it.state == "pre" && it.key !in mineKeys }.sortedBy { it.startMs } }
     val finals = remember(games) { games.filter { it.final }.sortedByDescending { it.startMs } }
     val days = remember(upcoming) { upcoming.groupBy { dayKey(it.startMs) }.values.toList() }
     var showFinals by rememberSaveable(league) { mutableStateOf(false) }
-    val target = live.firstOrNull() ?: upcoming.firstOrNull() ?: if (showFinals) finals.firstOrNull() else null
+    val target = mine.firstOrNull() ?: live.firstOrNull() ?: upcoming.firstOrNull() ?: if (showFinals) finals.firstOrNull() else null
     val targetFocus = remember { FocusRequester() }
     var targetShown by remember { mutableStateOf(false) }
     val lastFocus = remember { FocusRequester() }
@@ -409,7 +464,7 @@ private fun GamesGrid(
     }
     val menu: (Game) -> Unit = { g -> ui.openPicker(g) }
 
-    val card: @Composable (Game, Boolean) -> Unit = { g, compact ->
+    val gameCard: @Composable (Game, Boolean, Boolean) -> Unit = { g, compact, withDay ->
         val isTarget = target != null && g.key == target.key
         if (isTarget) {
             DisposableEffect(g.key) {
@@ -428,12 +483,14 @@ private fun GamesGrid(
             channels = matches?.get(g.key),
             hasPlaylist = index != null,
             compact = compact,
-            withDay = false,
+            withDay = withDay,
+            mine = g.key in mineKeys,
             onClick = { openGame(g) },
             onMenu = { menu(g) },
             modifier = m,
         )
     }
+    val card: @Composable (Game, Boolean) -> Unit = { g, compact -> gameCard(g, compact, false) }
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(320.dp),
@@ -466,6 +523,10 @@ private fun GamesGrid(
             item(key = "\u0001empty", span = { GridItemSpan(maxLineSpan) }) {
                 StatusText("No ${league.label} games this week.")
             }
+        }
+        if (mine.isNotEmpty()) {
+            item(key = "\u0001mine", span = { GridItemSpan(maxLineSpan) }) { SectionLabel("★ YOUR TEAMS", MyTeamGold) }
+            items(count = mine.size, key = { mine[it].key }) { i -> gameCard(mine[i], false, true) }
         }
         if (live.isNotEmpty()) {
             item(key = "\u0001live", span = { GridItemSpan(maxLineSpan) }) { SectionLabel("LIVE NOW", McdColors.LiveRed) }
@@ -522,6 +583,7 @@ fun GameCard(
     onClick: () -> Unit,
     onMenu: () -> Unit,
     modifier: Modifier = Modifier,
+    mine: Boolean = false,
 ) {
     val awayScore = g.away.score.toIntOrNull()
     val homeScore = g.home.score.toIntOrNull()
@@ -544,16 +606,17 @@ fun GameCard(
                 }
             },
     ) { _ ->
-        if (g.live) {
-            Box(Modifier.align(Alignment.CenterStart).width(3.dp).fillMaxHeight().background(McdColors.LiveRed))
+        if (g.live || mine) {
+            Box(Modifier.align(Alignment.CenterStart).width(3.dp).fillMaxHeight().background(if (g.live) McdColors.LiveRed else MyTeamGold))
         }
         Row(
             Modifier.fillMaxSize().padding(start = 14.dp, end = 12.dp, top = if (compact) 8.dp else 10.dp, bottom = if (compact) 8.dp else 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
-                TeamRow(g.away, showScore, dim = g.final && homeLeads, compact = compact)
-                TeamRow(g.home, showScore, dim = g.final && awayLeads, compact = compact)
+                val teams = if (mine) GameBoard.myTeams() else emptyList()
+                TeamRow(g.away, showScore, dim = g.final && homeLeads, compact = compact, fav = teams.any { it.league == g.league && it.matches(g.away) })
+                TeamRow(g.home, showScore, dim = g.final && awayLeads, compact = compact, fav = teams.any { it.league == g.league && it.matches(g.home) })
             }
             Spacer(Modifier.width(12.dp))
             Column(
@@ -599,7 +662,7 @@ fun GameCard(
 }
 
 @Composable
-private fun TeamRow(t: TeamLine, showScore: Boolean, dim: Boolean, compact: Boolean) {
+private fun TeamRow(t: TeamLine, showScore: Boolean, dim: Boolean, compact: Boolean, fav: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         AsyncImage(t.logo, t.name, contentScale = ContentScale.Fit, modifier = Modifier.size(if (compact) 20.dp else 28.dp))
         Spacer(Modifier.width(8.dp))
@@ -615,6 +678,10 @@ private fun TeamRow(t: TeamLine, showScore: Boolean, dim: Boolean, compact: Bool
         if (t.record.isNotBlank()) {
             Spacer(Modifier.width(6.dp))
             Text(t.record, color = McdColors.Muted, fontSize = 11.sp, maxLines = 1)
+        }
+        if (fav) {
+            Spacer(Modifier.width(6.dp))
+            Text("★ MY TEAM", style = hudLabelStyle(9.sp, MyTeamGold), maxLines = 1)
         }
         Spacer(Modifier.weight(1f))
         if (showScore) Text(t.score, style = broadcastStyle(if (compact) 15.sp else 19.sp, if (dim) McdColors.Muted else McdColors.White))

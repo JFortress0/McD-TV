@@ -50,6 +50,9 @@ import com.mcd.tv.Nav
 import com.mcd.tv.Screen
 import com.mcd.tv.data.Addons
 import com.mcd.tv.data.HouseSync
+import com.mcd.tv.data.FavoriteTeam
+import com.mcd.tv.data.Games
+import com.mcd.tv.data.League
 import com.mcd.tv.data.LiveStats
 import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.OriginFilter
@@ -452,6 +455,41 @@ private fun SourcesCategory(ctx: SettingsCtx, changed: () -> Unit) {
     InfoRow("Websites", Prefs.websites.joinToString(", ") { it.first }.ifBlank { "None" })
     SettingsNote("Long text such as links and keys stays on the Control page, so you never type it with the remote.")
 
+    // Per profile, this TV. Hiding a league only hides it in Live Games; the playlist stays as it is.
+    SettingsSection("Live Games")
+    SettingsNote("Leagues ${Prefs.activeProfileName} sees in Live TV > Live Games. Hidden leagues stay in your playlist.")
+    val hiddenLeagues = remember(Prefs.activeProfile) { GameBoard.hidden() }
+    League.entries.forEach { l ->
+        ToggleRow(ctx.row(), "${l.emoji}  ${l.label}", null, l !in hiddenLeagues) { GameBoard.setShown(l, it) }
+    }
+
+    // Per profile, this TV. A game with one of these teams goes first in its league, with a star, and in My Teams.
+    SettingsSection("My teams")
+    SettingsNote("Games with ${Prefs.activeProfileName}'s teams go first in Live Games, with a star, and fill the My Teams chip.")
+    val myTeams = GameBoard.myTeams()
+    myTeams.forEach { t ->
+        DialogRow(ctx, ctx.row(), "${t.league.emoji}  ${t.name}", "${t.league.label}. OK removes it.", RowEnd.None) {
+            SettingsDialog.Confirm("Remove ${t.name}?", "Its games stop going first in Live Games.", "Remove") { GameBoard.removeTeam(t) }
+        }
+    }
+    // Every team of each shown league, from ESPN (once per app run). Until it loads, the teams playing this week.
+    val shownLeagues = League.entries.filter { it !in hiddenLeagues }
+    val teamLists by rememberLoad(shownLeagues) {
+        shownLeagues.associateWith { l -> runCatching { Games.teams(l) }.getOrDefault(emptyList()) }
+    }
+    shownLeagues.forEach { l ->
+        DialogRow(ctx, ctx.row(), "Add a ${l.label} team", null, RowEnd.Change) {
+            val loaded = when (val tl = teamLists) { is Load.Ok -> tl.value[l].orEmpty(); else -> emptyList() }
+            val all = loaded.ifEmpty {
+                Games.cached(l)?.games.orEmpty().flatMap { listOf(it.home, it.away) }.distinctBy { it.id }.sortedBy { it.short }
+            }
+            val picks = all.filter { t -> myTeams.none { it.league == l && it.matches(t) } }
+            SettingsDialog.Choice("Add a ${l.label} team", picks.map { it.name }.ifEmpty { listOf("No teams loaded yet. Try again in a moment.") }, -1) { i ->
+                picks.getOrNull(i)?.let { GameBoard.addTeam(FavoriteTeam(l, it.short)) }
+            }
+        }
+    }
+
     SettingsSection("Live TV health")
     InfoRow("This TV", remember { LiveStats.device(c) })
     val sessions = remember { LiveStats.recent() }
@@ -491,6 +529,9 @@ private fun WallCategory(ctx: SettingsCtx, changed: () -> Unit) {
         if (Wall.configured) "Photo frame and family calendar. Turn on Open in Wall on start on the wall TV."
         else "Photo frame and family calendar. Add the wall address and key on the Control page first.",
     )
+    // A TV that turns itself off after hours with no remote use (attentive_timeout) beats keep-screen-on.
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    com.mcd.tv.data.WallWatch.sleepWarning(com.mcd.tv.data.WallRecorder.attentiveMs(appCtx))?.let { SettingsNote(it) }
     Spacer(Modifier.height(Space.S))
     SettingsRow("Open Wall", { ctx.nav.push(Screen.Wall) }, ctx.row().modifier, value = "OK switches views. Back closes it.")
     ToggleRow(ctx.row(), "Open in Wall on start", "For a TV on the wall. Back goes to Home.", Prefs.wallStart) { Prefs.wallStart = it }
@@ -578,10 +619,9 @@ fun PhoneSetupScreen(nav: Nav) {
     val addrs = remember { LocalWeb.addresses() }
     var link by remember { mutableStateOf(com.mcd.tv.data.Relay.controlUrl()) }
     // Keep the TV awake (no screensaver) while this screen is open.
-    val view = androidx.compose.ui.platform.LocalView.current
     androidx.compose.runtime.DisposableEffect(Unit) {
-        view.keepScreenOn = true
-        onDispose { view.keepScreenOn = false }
+        val hold = com.mcd.tv.data.ScreenAwake.holds.acquire(com.mcd.tv.data.ScreenAwake.PHONE_SETUP)
+        onDispose { hold.release() }
     }
     Row(
         Modifier.fillMaxSize().hudBackground().padding(48.dp),

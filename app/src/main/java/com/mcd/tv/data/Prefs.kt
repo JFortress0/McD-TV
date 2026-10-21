@@ -250,6 +250,24 @@ object Prefs {
         put(profileKey("live_last_url"), url)
     }
 
+    /**
+     * League names hidden from Live Games for [profile] (this TV only), or null when never set (then
+     * [League.DEFAULT_HIDDEN] applies). Hiding a league never touches the playlist.
+     */
+    fun hiddenLeagueNames(profile: String = activeProfile): List<String>? =
+        if (sp.contains("live_leagues_hidden@$profile")) strList("live_leagues_hidden@$profile") else null
+
+    fun setHiddenLeagueNames(names: List<String>, profile: String = activeProfile) = putStrList("live_leagues_hidden@$profile", names)
+
+    /**
+     * Favorite teams of [profile] as "NFL:Eagles" (this TV only), or null when never set (then
+     * [FavoriteTeam.DEFAULTS] applies).
+     */
+    fun favoriteTeamNames(profile: String = activeProfile): List<String>? =
+        if (sp.contains("live_fav_teams@$profile")) strList("live_fav_teams@$profile") else null
+
+    fun setFavoriteTeamNames(names: List<String>, profile: String = activeProfile) = putStrList("live_fav_teams@$profile", names)
+
     /** The Live TV channel watched last ("" if none). */
     var liveLastUrl: String
         get() = str(profileKey("live_last_url"))
@@ -487,4 +505,6 @@ object Prefs {
     // ---- Raw JSON blobs used by Library ----
     fun json(key: String): String = sp.getString(key, "") ?: ""
     fun putJson(key: String, value: String) = sp.edit().putString(key, value).apply()
+    /** Like [putJson], but written before it returns (for a process that is about to end). */
+    fun putJsonNow(key: String, value: String) = sp.edit().putString(key, value).commit()
 }
