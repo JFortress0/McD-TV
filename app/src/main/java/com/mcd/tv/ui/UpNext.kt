@@ -56,6 +56,11 @@ fun UpNextPlayer(
     onSleep: (() -> Unit)? = null,
     /** "Try next source" when the stream fails (null: just the error). */
     nextSource: com.mcd.tv.player.NextSource? = null,
+    /** Quality fallback, passed to the player (see [PlayerScreen]). */
+    qualityLabel: String = "",
+    onStepDown: ((Long) -> Unit)? = null,
+    startPositionMs: Long = -1L,
+    startNotice: String? = null,
     /** com.mcd.tv.data.SourceHealth.key of the playing file, so a cut-off file is flagged for the house. */
     sourceKey: String? = null,
 ) {
@@ -64,6 +69,7 @@ fun UpNextPlayer(
         PlayerScreen(
             url = url, title = title, meta = meta, onEnded = { ended = true }, headers = headers, onSleep = onSleep,
             nextSource = nextSource, onBack = onCancel, sourceKey = sourceKey,
+            qualityLabel = qualityLabel, onStepDown = onStepDown, startPositionMs = startPositionMs, startNotice = startNotice,
         )
     } else {
         UpNextCard(meta, onNext, onCancel)

@@ -57,6 +57,8 @@ import com.mcd.tv.data.LiveStats
 import com.mcd.tv.data.LocalWeb
 import com.mcd.tv.data.OriginFilter
 import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.QualityLog
+import com.mcd.tv.data.QualityMode
 import com.mcd.tv.data.RealDebrid
 import com.mcd.tv.data.RecentErrors
 import com.mcd.tv.data.Relay
@@ -384,6 +386,20 @@ private fun PlaybackCategory(ctx: SettingsCtx, changed: () -> Unit) {
     }
     ToggleRow(ctx.row(), "US release dates", "Lists use US releases and US streaming services.", Prefs.usOnly) { Prefs.usOnly = it }
 
+    SettingsSection("Video")
+    // Pref quality_mode, this TV only (see QualityFallback).
+    val qualities = QualityMode.ALL
+    DialogRow(ctx, ctx.row(), "Quality", QualityMode.label(Prefs.qualityMode), RowEnd.Change) {
+        SettingsDialog.Choice("Quality", qualities.map(QualityMode::label), qualities.indexOf(Prefs.qualityMode).coerceAtLeast(0)) { i -> Prefs.qualityMode = qualities[i] }
+    }
+    SettingsNote(
+        when (Prefs.qualityMode) {
+            QualityMode.PREFER_4K -> "Plays 4K when the stream has it. Never steps down."
+            QualityMode.MAX_1080 -> "Never plays above 1080p. Live TV opens the 1080p version of a 4K channel."
+            else -> "Plays 4K. Steps down to 1080p if 4K keeps freezing or the connection is too slow."
+        },
+    )
+
     SettingsSection("Source list")
     DialogRow(ctx, ctx.row(), "Movie size limit", sizeLimitLabel(Prefs.maxMovieGb), RowEnd.Change) {
         SettingsDialog.Choice("Movie size limit", MOVIE_LIMITS.map(::sizeLimitLabel), MOVIE_LIMITS.indexOf(Prefs.maxMovieGb)) { i -> Prefs.maxMovieGb = MOVIE_LIMITS[i] }
@@ -485,6 +501,23 @@ private fun SourcesCategory(ctx: SettingsCtx, changed: () -> Unit) {
         }
         DialogRow(ctx, ctx.row(), "Clear Live TV health", "Forget how these channels played.", RowEnd.None, danger = true) {
             SettingsDialog.Confirm("Clear Live TV health?", "Jarvis forgets the channel notes on this TV.", "Clear") { LiveStats.clear(); changed() }
+        }
+    }
+
+    // Every quality switch on this TV (pref quality_log, see QualityLog), newest first.
+    SettingsSection("Quality changes")
+    val changes = remember { QualityLog.recent().take(8) }
+    if (changes.isEmpty()) {
+        SettingsNote("No quality changes yet. Jarvis notes each time a stream moves between 4K and 1080p.")
+    } else {
+        val fmt = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
+        changes.forEach { e ->
+            val line = buildString {
+                if (e.from.isNotBlank() || e.to.isNotBlank()) append("${e.from.ifBlank { "?" }} to ${e.to.ifBlank { "?" }}. ")
+                append(QualityLog.words(e.code))
+                if (e.est > 0) append(" Network ${QualityLog.mbps(e.est)}.")
+            }
+            SettingsRow("${fmt.format(java.util.Date(e.at))}  ${e.title}", {}, ctx.row().modifier, value = line, end = RowEnd.None)
         }
     }
 }

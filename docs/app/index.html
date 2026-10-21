@@ -334,6 +334,9 @@ body.playmode header.top,body.playmode nav.tabbar{display:none}
 .pl-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(90%,460px);text-align:center;background:rgba(17,24,39,.94);border:1px solid var(--line);border-radius:12px;padding:18px}
 .pl-msg p{margin:0 0 12px}
 /* iPhone blocks autoplay: one big button starts the video (the tap counts as permission). */
+.qlog{margin:6px 0 0;padding-left:18px;font-size:14px;line-height:1.45}
+.pl-note{position:absolute;left:50%;top:12px;transform:translate(-50%,-8px);max-width:min(90%,420px);padding:8px 14px;background:rgba(17,24,39,.92);border:1px solid rgba(43,212,110,.6);border-radius:10px;color:#fff;font-size:14px;text-align:center;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;z-index:3}
+.pl-note.on{opacity:1;transform:translate(-50%,0)}
 .pl-tap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px;background:none;border:0;color:#fff;font:inherit;font-weight:700;font-size:16px;cursor:pointer;z-index:2}
 .pl-tap i{display:flex;align-items:center;justify-content:center;width:96px;height:96px;border-radius:50%;background:rgba(17,24,39,.85);box-shadow:0 0 0 3px var(--bright),0 8px 30px rgba(0,0,0,.6);font-style:normal;font-size:40px;padding-left:6px}
 /* Settings > Check network */
@@ -2880,6 +2883,12 @@ document.addEventListener("change", (e) => {
   $$("[data-extpref]").forEach((x) => { x.value = sel.value; });
   toast(sel.value === "ask" ? "Jarvis will ask each time" : "Files open in " + EXT_NAME[sel.value] + " automatically", "ok");
 });
+document.addEventListener("change", (e) => {
+  const sel = e.target.closest && e.target.closest("[data-quality]");
+  if (!sel) return;
+  LS.set(QUALITY_KEY, sel.value);
+  toast("Quality: " + QUALITY_NAME[qualityMode()], "ok");
+});
 function backupAddons() {
   const tv = ((S.init && S.init.addon_urls) || []).filter(okUrl);
   if (tv.length) LS.set(ADDON_BAK, JSON.stringify(tv));
@@ -3501,9 +3510,27 @@ async function renderSources(v, tok, type, id, q) {
     const f = SI.info(s);
     S.playing = { key: posKey(meta), meta, cands, back: location.hash.replace(/([?&])best=1&?/, "$1").replace(/[?&]$/, ""), direct: res.direct || "",
       tk, srcKey: keyOf.get(s) || "",
-      line: [f.resolution, f.source, f.sizeLabel, s.addon].filter(Boolean).join(" · ") };
+      line: [f.resolution, f.source, f.sizeLabel, s.addon].filter(Boolean).join(" · "),
+      res: f.resolution || "", stepDown: (alive) => lowerCopy(s, alive) };
     location.hash = `#/play/${type}/${id}` + (type === "tv" ? `?s=${season}&e=${episode}` : "");
     return true;
+  }
+  /**
+   * Quality Auto: when a 4K copy struggles in the player, a 1080p copy of the same title (best ranked first, up to
+   * 4 tried, the playing one skipped). The player resumes it where the 4K one was. null when none plays here.
+   */
+  async function lowerCopy(cur, alive) {
+    // Files the house flagged as cut off (bad) are skipped too.
+    const pool = SI.playOrder(list, type === "tv", opts).filter((x) => x !== cur && SI.info(x).resolution === "1080p" && !SI.wasRefused(x) && !bad.has(keyOf.get(x))).slice(0, 4);
+    for (const x of pool) {
+      if (!alive()) return null;
+      try {
+        const r = await resolveHere(x, meta, { alive });
+        const c = await playCandidates(r);
+        if (c.length) { const f = SI.info(x); return { cands: c, direct: r.direct || "", res: "1080p", srcKey: keyOf.get(x) || "", line: [f.resolution, f.source, f.sizeLabel, x.addon].filter(Boolean).join(" · ") }; }
+      } catch (e) { if (e.fatal || e.cancelled) break; }
+    }
+    return null;
   }
   /** The file is ready but this browser can't play it (MKV on iPhone): hand it to a player app. */
   function showExternal(res, s, big) {
@@ -3600,6 +3627,14 @@ async function renderSources(v, tok, type, id, q) {
     const all = SI.playOrder(list, type === "tv", opts);
     const fresh = all.filter((s) => !SI.wasRefused(s));
     let pool = fresh.length ? fresh : all;
+    // Quality Max 1080p: no 4K copy while another one is listed. Auto: no 4K copy whose own bitrate (size over
+    // running time) the last measured speed can't carry with 1.2x headroom (QF.startTier).
+    const qm = qualityMode(), mem = qmem(), runS = (meta.runtimeMin || (type === "tv" ? 45 : 110)) * 60;
+    const tooBig = (s) => { const fi = SI.info(s); if (fi.resolution !== "4K") return false; if (qm === "1080") return true;
+      return qm === "auto" && QF.startTier({ now: Date.now(), est: mem.est, estAt: mem.estAt, br: fi.sizeGb > 0 ? fi.sizeGb * 8e9 / runS : 0, down: 0 }).tier === "1080"; };
+    if (qm !== "4k") { const lo = pool.filter((s) => !tooBig(s)); if (lo.length && lo.length < pool.length) {
+      if (qm === "auto") qlog({ w: "vod", name: meta.label, from: "4K", to: "1080p", why: "slow_network", est: mem.est, note: "Best source skipped " + (pool.length - lo.length) + " 4K copies" });
+      pool = lo; } }
     // Sources already in your RD account play with no new add, so they go first (RD allows one new add every 25 s).
     if (rdHere()) {
       let owned = new Set();
@@ -3624,6 +3659,203 @@ async function renderSources(v, tok, type, id, q) {
     if (last && last.blocked) last = new Error("Real-Debrid refused the top sources (error 35). Play again tries the next ones.");
     if (tok === routeTok) { sayErr(last || new Error("No sources found."), last && last.fatal ? "" : " Pick one below."); lock(false); }
   });
+}
+
+// >>> QualityFallback (pure: no DOM or storage; tools/webtest/qf-test.mjs runs tools/qf-vectors.json against it, the same file the TV's QualityFallbackTest runs)
+// Three parts, the same on the TV (data/QualityFallback.kt):
+// 1. monitor: is playback struggling? After the first 10 s: 3 stalls within 60 s, 12 s stalled within 60 s, or one
+//    8 s stall. From the start: the measured download speed under 0.7x the stream's bitrate on 2 samples in a row,
+//    or under 1.0x on 4. Samples are one per downloaded segment, at least 3 s apart. Between 1.0x and 1.1x a sample
+//    neither counts nor resets (a dead band, so speed that wobbles around the bitrate can't flip quality back and
+//    forth). It fires once per stream, and a player never steps back up.
+// 2. estimator: download speed like hls.js and ExoPlayer: two moving averages (3 s and 9 s half-life), the lower wins.
+// 3. startTier: the quality to open with. 1080p when this channel froze in 4K here in the last 7 days, or when the
+//    last measured speed (30 min at most) is under 1.2x the stream's bitrate. A remembered freeze is forgotten
+//    only when a speed measured after it reaches 1.5x (iPhone measures only in the probe, which may be older). Live sports: Jarvis drops resolution, it never grows the buffer (delay).
+const QF = (() => {
+  const T = { windowMs: 60000, stalls: 3, totalMs: 12000, longMs: 8000, graceMs: 10000, gapMs: 3000, lowSamples: 4, severeSamples: 2,
+    severeRatio: 0.7, resetRatio: 1.1, halfLifeFastS: 3, halfLifeSlowS: 9, minDelayMs: 50, defaultBitrate: 16e6, freshMs: 1800000,
+    memoryMs: 7 * 86400000, upRatio: 1.2, clearRatio: 1.5 };
+  /** Reason codes in plain words, for the notice log. */
+  const WHY = { long_stall: "one freeze lasted 8 s", stalls: "3 freezes in a minute", stall_time: "12 s of freezes in a minute",
+    very_slow: "connection under 70% of the stream's bitrate", slow: "connection under the stream's bitrate",
+    slow_network: "connection slower than the 4K stream", froze_before: "this channel froze in 4K here before", fast_again: "connection fast enough again" };
+  const W = "(?:^|[^a-z0-9])", E = "(?![a-z0-9])";
+  const RX4K = new RegExp(W + "(?:4k|uhd|2160p?)" + E, "i"), RX1080 = new RegExp(W + "(?:fhd|1080[pi]?)" + E, "i");
+  const RXHD = new RegExp(W + "hd" + E, "i"), RXSD = new RegExp(W + "(?:sd|720p?|576p?|480p?)" + E, "i");
+  /** Quality from a name: 4 = 4K, 3 = 1080p, 2 = HD, 1 = SD or 720p, 0 = not stated. */
+  const tierOf = (n) => { n = String(n || ""); return RX4K.test(n) ? 4 : RX1080.test(n) ? 3 : RXHD.test(n) ? 2 : RXSD.test(n) ? 1 : 0; };
+  const is4k = (name, height) => (+height || 0) >= 1600 || tierOf(name) === 4;
+  /** The struggle detector. Times are ms (Date.now() in the app, made-up numbers in the tests); rates are bits per second. */
+  function monitor(t0) {
+    let start = t0, stalls = [], low = 0, severe = 0, lastSample = -Infinity, fired = false;
+    const open = () => stalls.length && stalls[stalls.length - 1][1] == null;
+    return {
+      /** A new stream (or a new source of the same stream). */
+      restart(t) { start = t; stalls = []; low = 0; severe = 0; lastSample = -Infinity; fired = false; },
+      /** The picture froze to buffer. Ignored during the first 10 s. */
+      stall(t) { if (!open() && t - start >= T.graceMs) stalls.push([t, null]); },
+      /** Playing again. */
+      resume(t) { if (open()) stalls[stalls.length - 1][1] = t; },
+      /** The buffering came from a seek: not counted. */
+      cancel() { if (open()) stalls.pop(); },
+      /** One downloaded segment: its own download speed and the stream's bitrate. */
+      sample(t, bps, bitrate) {
+        if (t - lastSample < T.gapMs) return;
+        lastSample = t;
+        if (!(bps > 0) || !(bitrate > 0)) { low = 0; severe = 0; return; }
+        const r = bps / bitrate;
+        if (r < T.severeRatio) { severe++; low++; }
+        else if (r < 1) { low++; severe = 0; }
+        else if (r >= T.resetRatio) { low = 0; severe = 0; }
+        else severe = 0; // dead band: keeps the count
+      },
+      /** "" while fine, else a reason code (see WHY). Once it fires it stays quiet until restart(). */
+      check(t) {
+        if (fired) return "";
+        const from = t - T.windowMs;
+        stalls = stalls.filter((s) => s[1] == null || s[1] > from);
+        let why = "";
+        const cur = open() ? stalls[stalls.length - 1] : null;
+        const total = stalls.reduce((a, s) => a + Math.max(0, (s[1] == null ? t : s[1]) - Math.max(s[0], from)), 0);
+        if (cur && t - cur[0] >= T.longMs) why = "long_stall";
+        else if (stalls.filter((s) => s[0] > from).length >= T.stalls) why = "stalls";
+        else if (total >= T.totalMs) why = "stall_time";
+        else if (severe >= T.severeSamples) why = "very_slow";
+        else if (low >= T.lowSamples) why = "slow";
+        if (why) fired = true;
+        return why;
+      },
+    };
+  }
+  /** hls.js EwmaBandWidthEstimator: add(bytes, ms) per download; estimate() in bits per second, 0 before any. */
+  function estimator() {
+    const ewma = (hl) => { const a = Math.exp(Math.log(0.5) / hl); let est = 0, tw = 0;
+      return { add(w, v) { const k = Math.pow(a, w); est = v * (1 - k) + k * est; tw += w; }, get() { const z = 1 - Math.pow(a, tw); return z ? est / z : est; }, w: () => tw }; };
+    const fast = ewma(T.halfLifeFastS), slow = ewma(T.halfLifeSlowS);
+    return {
+      add(bytes, ms) { if (!(bytes > 0)) return; const s = Math.max(+ms || 0, T.minDelayMs) / 1000, v = 8 * bytes / s; fast.add(s, v); slow.add(s, v); },
+      estimate() { return fast.w() > 0.001 ? Math.min(fast.get(), slow.get()) : 0; },
+    };
+  }
+  /** The quality to open with (see the top). {tier: "4k" | "1080", why, clear: forget the remembered freeze}. */
+  function startTier(o) {
+    const br = o.br > 0 ? o.br : T.defaultBitrate;
+    const fresh = o.est > 0 && o.now - o.estAt <= T.freshMs;
+    if (o.down > 0 && o.now - o.down <= T.memoryMs) {
+      return fresh && o.estAt > o.down && o.est >= T.clearRatio * br ? { tier: "4k", why: "fast_again", clear: true } : { tier: "1080", why: "froze_before", clear: false };
+    }
+    if (fresh && o.est < T.upRatio * br) return { tier: "1080", why: "slow_network", clear: false };
+    return { tier: "4k", why: "", clear: false };
+  }
+  /**
+   * The lower copy of the same live channel: the same guide key (keyOf), not 4K. Best: 1080p, then HD, then a name
+   * with no quality, then SD. Ties keep the playlist order. ok(ch) filters out channels this browser can't play.
+   * Returns the index in list, or -1.
+   */
+  function liveSibling(list, cur, keyOf, ok) {
+    const k = keyOf(cur.raw || cur.name); if (!k) return -1;
+    const score = { 3: 4, 2: 3, 0: 2, 1: 1 };
+    let best = -1, bestScore = 0;
+    (list || []).forEach((ch, i) => {
+      if (ch === cur || ch.url === cur.url) return;
+      const tr = tierOf(ch.raw || ch.name); if (tr === 4) return;
+      if (keyOf(ch.raw || ch.name) !== k || (ok && !ok(ch))) return;
+      if (score[tr] > bestScore) { best = i; bestScore = score[tr]; }
+    });
+    return best;
+  }
+  /** hls.js levels: the highest one at or under 1080 lines, or -1 when none is lower than the top. */
+  function capLevel(levels) {
+    const hs = (levels || []).map((l) => +(l && l.height) || 0);
+    if (hs.length < 2 || !hs.some((h) => h >= 1600)) return -1;
+    let best = -1;
+    hs.forEach((h, i) => { if (h > 0 && h <= 1080 && (best < 0 || h > hs[best])) best = i; });
+    return best;
+  }
+  /**
+   * An HLS playlist, for the probe before a 4K channel opens: {master: true} for a multi-quality playlist (the player
+   * picks), else the segment to time (the second newest: the newest may still be growing) with its length in s.
+   */
+  function parsePlaylist(text, base) {
+    const lines = String(text || "").split(/\r?\n/).map((l) => l.trim());
+    if (!lines.some((l) => l.startsWith("#EXTM3U"))) return null;
+    if (lines.some((l) => l.startsWith("#EXT-X-STREAM-INF"))) return { master: true };
+    const segs = [];
+    let dur = 0;
+    for (const l of lines) {
+      if (l.startsWith("#EXTINF:")) dur = parseFloat(l.slice(8)) || 0;
+      else if (l && !l.startsWith("#") && dur > 0) { segs.push({ url: abs(l, base), dur }); dur = 0; }
+    }
+    if (!segs.length) return null;
+    return { master: false, seg: segs[Math.max(0, segs.length - 2)] };
+  }
+  function abs(u, base) { try { return new URL(u, base).href; } catch { return u; } }
+  /** One timed segment download: speed and the stream's own bitrate (bits per second; 0 when unknown). */
+  function probeResult(bytes, ms, segDurS, complete) {
+    return { est: bytes > 0 && ms > 0 ? 8 * bytes * 1000 / Math.max(ms, T.minDelayMs) : 0, br: complete && segDurS > 0 ? 8 * bytes / segDurS : 0 };
+  }
+  return { T, WHY, tierOf, is4k, monitor, estimator, startTier, liveSibling, capLevel, parsePlaylist, probeResult };
+})();
+// <<< QualityFallback
+
+// Quality on this device: "auto" (step down to 1080p when 4K struggles), "4k" (never step down), "1080" (never 4K).
+const QUALITY_KEY = "mcdtv_web_quality";
+const qualityMode = () => { const v = LS.get(QUALITY_KEY); return v === "4k" || v === "1080" ? v : "auto"; };
+const QUALITY_NAME = { auto: "Auto", "4k": "Prefer 4K", "1080": "Max 1080p" };
+const STEPPED = "Switched to 1080p for smoother playback";
+// Per device, never synced: the last measured download speed, and per live channel (guide key) its measured 4K
+// bitrate and when it last froze into a step down here. startTier reads it before a 4K channel opens.
+const QMEM_KEY = "mcdtv_web_qmem", QLOG_KEY = "mcdtv_web_qlog";
+function qmem() {
+  const m = readJSON(QMEM_KEY);
+  return m && typeof m === "object" ? { est: +m.est || 0, estAt: +m.estAt || 0, ch: m.ch && typeof m.ch === "object" ? m.ch : {} } : { est: 0, estAt: 0, ch: {} };
+}
+function qmemSave(f) {
+  const m = qmem(); f(m);
+  const ks = Object.keys(m.ch);
+  if (ks.length > 60) ks.sort((x, y) => (m.ch[x].at || 0) - (m.ch[y].at || 0)).slice(0, ks.length - 60).forEach((k) => delete m.ch[k]);
+  LS.set(QMEM_KEY, JSON.stringify(m));
+}
+let speedSavedAt = 0;
+/** A measured download speed (bits per second). Saved at most every 10 s. */
+function noteSpeed(bps, force) {
+  if (!(bps > 0) || (!force && Date.now() - speedSavedAt < 10000)) return;
+  speedSavedAt = Date.now();
+  qmemSave((m) => { m.est = Math.round(bps); m.estAt = Date.now(); });
+}
+function noteChannel(key, o) { if (key) qmemSave((m) => { m.ch[key] = Object.assign(m.ch[key] || {}, o, { at: Date.now() }); }); }
+const mbps = (b) => (b > 0 ? (b / 1e6).toFixed(1) + " Mbps" : "");
+/** Every quality change (up-front picks, step downs, the player's own switches), newest first, the last 40. */
+function qlog(e) {
+  const a = readJSON(QLOG_KEY), list = Array.isArray(a) ? a : [];
+  list.unshift(Object.assign({ t: Date.now() }, e));
+  LS.set(QLOG_KEY, JSON.stringify(list.slice(0, 40)));
+  try { console.info("[quality] " + JSON.stringify(e)); } catch {}
+}
+/** "8:41 PM ESPN: 4K to 1080p (3 freezes in a minute). Connection 5.1 Mbps, stream 18.0 Mbps." */
+function qlogLine(e) {
+  const tm = new Date(e.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const nums = [e.est ? "connection " + mbps(e.est) : "", e.br ? "stream " + mbps(e.br) : ""].filter(Boolean).join(", ");
+  return `${tm} ${e.name || "Video"}: ${e.from || "?"} to ${e.to || "?"}${e.why ? " (" + (QF.WHY[e.why] || e.why) + ")" : ""}.${nums ? " " + nums[0].toUpperCase() + nums.slice(1) + "." : ""}`;
+}
+/** A short notice over the video. Also a caption, so it shows in the iPhone's own full screen player. */
+function playerNote(vid, text) {
+  const stage = vid && vid.closest(".pl-stage");
+  if (stage) {
+    let n = stage.querySelector(".pl-note");
+    if (!n) { n = document.createElement("div"); n.className = "pl-note"; n.setAttribute("role", "status"); stage.appendChild(n); }
+    n.textContent = text; n.classList.add("on");
+    clearTimeout(n._t); n._t = setTimeout(() => n.classList.remove("on"), 5000);
+  }
+  try {
+    const tr = vid._noteTrack || (vid._noteTrack = vid.addTextTrack("captions", "Jarvis", "en"));
+    tr.mode = "showing";
+    // Live streams start at any time and a new source restarts the clock: the cue covers all of it for 5 s.
+    const c = new (window.VTTCue || window.TextTrackCue)(0, 1e9, text);
+    tr.addCue(c);
+    setTimeout(() => { try { tr.removeCue(c); } catch {} }, 5000);
+  } catch {}
 }
 
 // ---------- Player page (#/play/type/id?s=&e=) ----------
@@ -3660,7 +3892,33 @@ function renderPlayer(v, tok, type, id, q) {
   const tapBtn = $("#plTap", v);
   let watchdog = 0;
   let stallT = 0, started = false;
-  vid.addEventListener("playing", () => { started = true; tapBtn.classList.add("hidden"); clearTimeout(stallT); if (!msg.classList.contains("hidden") && msg.dataset.stall) msg.classList.add("hidden"); });
+  // Quality Auto: a 4K copy that keeps freezing is swapped for a 1080p copy of the same title (see QF).
+  const mon = QF.monitor(Date.now());
+  // seeking: the flag declared with goodT below (true between "seeking" and "seeked"), shared with the rescue code.
+  let resumeSec = null, stepping = false;
+  vid.addEventListener("playing", () => { started = true; mon.resume(Date.now()); tapBtn.classList.add("hidden"); clearTimeout(stallT); if (!msg.classList.contains("hidden") && msg.dataset.stall) msg.classList.add("hidden"); });
+  vid.addEventListener("seeking", () => mon.cancel());
+  vid.addEventListener("waiting", () => { if (started && !seeking && !vid.paused) mon.stall(Date.now()); });
+  const qTimer = setInterval(() => {
+    if (gone) { clearInterval(qTimer); return; }
+    if (!started || stepping || !P.stepDown || qualityMode() !== "auto" || !QF.is4k(P.res, vid.videoHeight)) return;
+    const why = mon.check(Date.now());
+    if (why) stepDown(why);
+  }, 1000);
+  async function stepDown(why) {
+    stepping = true;
+    let alt = null;
+    try { alt = await P.stepDown(() => !gone); } catch {}
+    qlog({ w: "vod", name: m.label, from: "4K", to: alt ? "1080p" : "4K", why, note: alt ? alt.line : "no 1080p copy plays here" });
+    if (gone || !alt) { P.stepDown = null; stepping = false; return; } // no 1080p copy: keep playing this one
+    const at = vid.currentTime || 0;
+    if (at > 5) save(false);
+    Object.assign(P, { cands: alt.cands, direct: alt.direct, line: alt.line, res: alt.res, srcKey: alt.srcKey, stepDown: null });
+    i = 0; resumed = false; resumeSec = at;
+    load();
+    playerNote(vid, STEPPED);
+    stepping = false;
+  }
   /** The timers run only while the video is really trying to play (not while it waits for a tap). */
   function arm() {
     clearTimeout(stallT); clearTimeout(watchdog);
@@ -3690,6 +3948,7 @@ function renderPlayer(v, tok, type, id, q) {
   vid.addEventListener("play", () => { if (!tapBtn.classList.contains("hidden")) { tapBtn.classList.add("hidden"); arm(); } });
   function load() {
     const c = P.cands[i];
+    mon.restart(Date.now());
     arm();
     msg.classList.add("hidden");
     $("#plLine", v).textContent = [P.line, kindLabel[c.kind]].filter(Boolean).join(" · ");
@@ -3773,8 +4032,10 @@ function renderPlayer(v, tok, type, id, q) {
     clearTimeout(watchdog);
     if (resumed) return;
     resumed = true;
-    // Pick up where this profile left off on any device (this browser, the cloud, the TV's list).
-    const at = resumeAt(m, expected()) / 1000;
+    // After a quality step down: the same moment (the 1080p copy picks up where the 4K one was). Else where this
+    // profile left off on any device (this browser, the cloud, the TV's list). Either way it is the resume point below.
+    const stepAt = resumeSec; resumeSec = null;
+    const at = stepAt != null ? stepAt : resumeAt(m, expected()) / 1000;
     resumeMs = at * 1000;
     // This file is far shorter than the title: flag it. Past its end already? Switch now, else at its end.
     const vd = vidDur();
@@ -3783,7 +4044,7 @@ function renderPlayer(v, tok, type, id, q) {
       if (P.srcKey && P.tk) SH.mark(P.tk, P.srcKey, vd);
       toast(`This source appears incomplete. It stops at ${fmtTime(vd / 1000)}.`, "warn");
     }
-    if (at > 0) { try { vid.currentTime = at; toast("Resumed at " + fmtTime(at)); } catch {} }
+    if (at > 0) { try { vid.currentTime = at; if (stepAt == null) toast("Resumed at " + fmtTime(at)); } catch {} }
   });
   vid.addEventListener("timeupdate", () => {
     const now = Date.now();
@@ -4763,8 +5024,58 @@ const LV = (() => {
     return hlsPromise;
   }
   const nativeHls = () => { try { return !!document.createElement("video").canPlayType("application/vnd.apple.mpegurl"); } catch { return false; } };
+  // Apple's own player on iPhone, iPad and Safari. Elsewhere hls.js, even where the browser now plays HLS itself
+  // (newer Chrome): hls.js gives the per-segment speed and bitrate the quality fallback measures.
+  const appleHls = () => { const ua = navigator.userAgent; return /iP(hone|ad|od)/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) || (/Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Android|Edg/.test(ua)); };
+  const playsHere = (c) => !st.ext && !mixedBlocked(c.url);
+  /** The 1080p or HD copy of a 4K channel in the playlist (same guide key), or null. */
+  const lowerChannel = (c) => { const j = QF.liveSibling(st.list, c, gkey, playsHere); return j >= 0 ? st.list[j] : null; };
+  const tierName = (c) => ({ 4: "4K", 3: "1080p", 2: "HD", 1: "SD" }[QF.tierOf(c.raw || c.name)] || "HD");
+  /** Xtream style .ts links usually have an HLS copy at the same address. "" when the browser can't play it. */
+  const hlsUrl = (u) => {
+    if (/\/live\/[^/]+\/[^/]+\/[^/]+\.ts(\?.*)?$/i.test(u)) u = u.replace(/\.ts(\?.*)?$/i, ".m3u8$1");
+    return mixedBlocked(u) || /\.ts(\?.*)?$/i.test(u) ? "" : u;
+  };
+  /**
+   * Before a 4K channel opens: time one of its segments (2.5 s at most) for the stream's real bitrate and this
+   * connection's real speed. null when the provider doesn't let the browser read it (then the player measures).
+   */
+  async function probe(url) {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), 2500);
+    const opt = { signal: ac.signal, credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store" };
+    try {
+      const r = await fetch(url, opt);
+      if (!r.ok) return null;
+      const pl = QF.parsePlaylist(await r.text(), r.url || url);
+      if (!pl || pl.master) return null; // several qualities: the player picks among them
+      const t0 = performance.now();
+      let bytes = 0, complete = false;
+      try {
+        const r2 = await fetch(pl.seg.url, opt);
+        if (!r2.ok || !r2.body) return null;
+        const rd = r2.body.getReader();
+        for (;;) { const x = await rd.read(); if (x.done) { complete = true; break; } bytes += x.value.length; }
+      } catch {} // cut off at 2.5 s: the speed so far still counts
+      const res = QF.probeResult(bytes, performance.now() - t0, pl.seg.dur, complete);
+      return res.est > 0 ? res : null;
+    } catch { return null; } finally { clearTimeout(t); }
+  }
+  /** Quality Auto: which copy of a 4K channel to open (QF.startTier), from this device's memory and a probe. */
+  async function upfront(ch, key) {
+    const m = qmem(), c = m.ch[key] || {}, now = Date.now();
+    let est = m.est, estAt = m.estAt, br = c.br || 0;
+    if (!(est > 0 && now - estAt <= QF.T.freshMs)) {
+      const u = hlsUrl(ch.url), pr = u ? await probe(u) : null;
+      if (pr) { est = pr.est; estAt = Date.now(); noteSpeed(est, true); if (pr.br) { br = pr.br; noteChannel(key, { br }); } }
+    }
+    const pick = QF.startTier({ now: Date.now(), est, estAt, br, down: c.down || 0 });
+    if (pick.clear) noteChannel(key, { down: 0 });
+    return Object.assign(pick, { est: est > 0 && Date.now() - estAt <= QF.T.freshMs ? est : 0, br });
+  }
+  const UPFRONT = { froze_before: "Playing 1080p. This channel froze in 4K here before.", slow_network: "Playing 1080p. Your connection is slower than this 4K stream." };
   async function play(i) {
-    const ch = st.list && st.list[i]; if (!ch) return;
+    const picked = st.list && st.list[i]; if (!picked) return;
+    let ch = picked;
     noteRecent(ch);
     // The browser can't play this channel (provider blocks browsers, or an http stream on this https page):
     // hand it to the player app, named the way the provider accepted for the channel list.
@@ -4780,7 +5091,7 @@ const LV = (() => {
     const box = document.createElement("div");
     box.className = "lv-player"; box.id = "lvPlayer";
     box.innerHTML = `<div class="pl-top"><button class="pl-back" type="button" id="lvBack">&#8249; Back</button>
-      <div class="pl-title"><b>${esc(ch.name)}</b><span class="muted">Live TV</span></div></div>
+      <div class="pl-title"><b>${esc(ch.name)}</b><span class="muted" id="lvLine">Live TV</span></div></div>
       <div class="pl-stage"><video id="lvVid" controls playsinline webkit-playsinline autoplay></video>
       <button class="pl-tap hidden" id="lvTap" type="button" aria-label="Play"><i aria-hidden="true">&#9654;</i>Tap to play</button>
       <div class="pl-msg hidden" id="lvMsg"><p id="lvMsgText"></p><button class="btn small primary" type="button" id="lvClose">Back to channels</button></div></div>`;
@@ -4805,11 +5116,6 @@ const LV = (() => {
     tapBtn.addEventListener("click", () => { tapBtn.classList.add("hidden"); arm(); start(); });
     // Started another way (the video's own controls): the timer starts now too.
     vid.addEventListener("play", () => { if (!tapBtn.classList.contains("hidden")) { tapBtn.classList.add("hidden"); arm(); } });
-    arm();
-    let url = ch.url;
-    // Xtream style .ts links usually have an HLS copy at the same address.
-    if (/\/live\/[^/]+\/[^/]+\/[^/]+\.ts(\?.*)?$/i.test(url)) url = url.replace(/\.ts(\?.*)?$/i, ".m3u8$1");
-    if (mixedBlocked(url) || /\.ts(\?.*)?$/i.test(url)) { fail(LIVE_NO); return; }
     function start() {
       if (done) return;
       let p;
@@ -4818,20 +5124,118 @@ const LV = (() => {
       // Older browsers return nothing: if it is still paused a moment later, ask for a tap.
       else setTimeout(() => { if (vid.paused && !started && !vid.error) needTap(); }, 1500);
     }
-    if (nativeHls()) {
-      vid.addEventListener("error", () => fail(LIVE_NO));
-      vid.src = url; start();
-      return;
+
+    // ---- quality ----
+    // A 4K channel can open as its 1080p copy: Max 1080p always, Auto when startTier says so (it froze here
+    // before, or the probe measured a connection slower than the stream). Then the player watches it (QF.monitor)
+    // and steps down once if it struggles. It never steps back up, so quality can't flip back and forth.
+    const key = gkey(picked.raw || picked.name), mode = qualityMode();
+    const lower = QF.tierOf(picked.raw || picked.name) === 4 ? lowerChannel(picked) : null;
+    let note = "";
+    if (lower && mode === "1080") {
+      ch = lower; note = "Playing 1080p. Quality is set to Max 1080p.";
+      qlog({ w: "live", name: picked.name, from: "4K", to: tierName(lower), why: "", note: "Max 1080p" });
+    } else if (lower && mode === "auto") {
+      // The probe takes up to 2.5 s: let this tap unlock the video now, so iPhone plays it without a second tap.
+      try { const p0 = vid.play(); if (p0 && p0.catch) p0.catch(() => {}); } catch {}
+      const pick = await upfront(picked, key);
+      if (done) return;
+      if (pick.tier === "1080") { ch = lower; note = UPFRONT[pick.why] || STEPPED; }
+      if (pick.why) qlog({ w: "live", name: picked.name, from: "4K", to: pick.tier === "1080" ? tierName(lower) : "4K", why: pick.why, est: pick.est, br: pick.br });
     }
-    let Hls;
-    try { Hls = await loadHls(); } catch { fail("The video player could not load. Check your internet connection."); return; }
-    if (done) return;
-    if (!Hls.isSupported()) { fail(LIVE_NO); return; }
-    hls = new Hls({ debug: false, enableWorker: true, lowLatencyMode: false });
-    hls.on(Hls.Events.ERROR, (_e, d) => { if (d && d.fatal) fail(LIVE_NO); });
-    hls.on(Hls.Events.MANIFEST_PARSED, start);
-    hls.loadSource(url);
-    hls.attachMedia(vid);
+    if (ch !== picked) $("#lvLine", box).textContent = "Live TV · " + tierName(ch);
+    arm();
+    const url = hlsUrl(ch.url);
+    if (!url) { fail(LIVE_NO); return; }
+    const mon = QF.monitor(Date.now()), bw = QF.estimator();
+    let segBr = [], stepped = ch !== picked, locked = false, prevUrl = "", lastH = 0;
+    const brNow = () => (segBr.length ? segBr.reduce((a, b) => a + b, 0) / segBr.length : 0) || ((hls && hls.levels && hls.levels[hls.currentLevel]) || {}).bitrate || 0;
+    vid.addEventListener("waiting", () => { if (started && !vid.paused && !vid.seeking) mon.stall(Date.now()); });
+    vid.addEventListener("playing", () => mon.resume(Date.now()));
+    vid.addEventListener("seeking", () => mon.cancel());
+    /** Step down once: cap a multi-quality stream at 1080p, else open the playlist's 1080p or HD copy here. */
+    function stepDown(why) {
+      stepped = true;
+      const est = bw.estimate(), br = brNow();
+      const cap = hls ? QF.capLevel(hls.levels) : -1;
+      if (cap >= 0) {
+        locked = true; hls.autoLevelCapping = cap; if (hls.currentLevel > cap) hls.nextLevel = cap;
+        noteChannel(key, { down: Date.now(), br });
+        qlog({ w: "live", name: picked.name, from: "4K", to: (hls.levels[cap].height || 1080) + "p", why, est, br });
+        playerNote(vid, STEPPED);
+        return;
+      }
+      const lo = lowerChannel(picked), u = lo && hlsUrl(lo.url);
+      if (!u) { qlog({ w: "live", name: picked.name, from: "4K", to: "4K", why, est, br, note: "no 1080p copy in the playlist" }); return; }
+      noteChannel(key, { down: Date.now(), br });
+      qlog({ w: "live", name: picked.name, from: "4K", to: tierName(lo), why, est, br });
+      prevUrl = hlsUrl(ch.url); ch = lo;
+      $("#lvLine", box).textContent = "Live TV · " + tierName(lo);
+      attach(u);
+      playerNote(vid, STEPPED);
+    }
+    function watch() {
+      if (stepped || mode !== "auto") return;
+      const h = vid.videoHeight || ((hls && hls.levels && hls.levels[hls.currentLevel]) || {}).height || 0;
+      if (!QF.is4k(ch.raw || ch.name, h)) return;
+      const why = mon.check(Date.now());
+      if (why) stepDown(why);
+    }
+    // Stalls are checked every second (a long one has no other event); speed after each downloaded segment.
+    const qTimer = setInterval(() => { if (done || !document.body.contains(vid)) { clearInterval(qTimer); return; } if (started) watch(); }, 1000);
+    /** If the lower copy won't play, go back to the channel that was playing. */
+    const failOrBack = (text) => {
+      if (!prevUrl) { fail(text); return; }
+      const u = prevUrl; prevUrl = ""; attach(u);
+    };
+    let Hls = null, native = false;
+    async function attach(u) {
+      try { if (hls) hls.destroy(); } catch {}
+      hls = null; segBr = []; lastH = 0; native = false;
+      mon.restart(Date.now());
+      const useNative = () => { native = true; vid.src = u; start(); };
+      if (nativeHls() && appleHls()) { useNative(); return; }
+      if (!Hls) {
+        try { Hls = await loadHls(); } catch { if (nativeHls()) useNative(); else fail("The video player could not load. Check your internet connection."); return; }
+        if (done) return;
+      }
+      if (!Hls.isSupported()) { if (nativeHls()) useNative(); else fail(LIVE_NO); return; }
+      // Start from the last speed measured here, and move up only with a wide margin (hysteresis). The buffer
+      // stays at hls.js's normal size: for live sports Jarvis drops resolution, it never adds delay.
+      const m = qmem(), fresh = m.est > 0 && Date.now() - m.estAt <= QF.T.freshMs;
+      const h = hls = new Hls({ debug: false, enableWorker: true, lowLatencyMode: false, abrBandWidthFactor: 0.8, abrBandWidthUpFactor: 0.6,
+        ...(fresh ? { abrEwmaDefaultEstimate: m.est } : {}) });
+      h.on(Hls.Events.ERROR, (_e, d) => { if (d && d.fatal && h === hls) failOrBack(LIVE_NO); });
+      h.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (mode === "1080") { const cap = QF.capLevel(h.levels); if (cap >= 0) h.autoLevelCapping = cap; }
+        start();
+      });
+      h.on(Hls.Events.FRAG_LOADED, (_e, d) => {
+        const f = d && d.frag, s = f && f.stats;
+        if (!f || f.sn === "initSegment" || !s || !(s.loaded > 0)) return;
+        const ms = s.loading.end - s.loading.start;
+        bw.add(s.loaded, ms);
+        if (f.duration > 0) { segBr.push(8 * s.loaded / f.duration); if (segBr.length > 4) segBr.shift(); }
+        noteSpeed(bw.estimate());
+        // The struggle check takes this segment's own speed: the in-a-row counts are the smoothing, and the
+        // average (still full of earlier fast downloads) reacted 15 s late in the throttled test.
+        mon.sample(Date.now(), 8000 * s.loaded / Math.max(ms, QF.T.minDelayMs), brNow());
+        if (started) watch();
+      });
+      // Every rendition switch is logged. hls.js leaving a 4K level for a lower one locks the cap there.
+      h.on(Hls.Events.LEVEL_SWITCHED, (_e, d) => {
+        const lv = h.levels[d.level]; if (!lv) return;
+        const was = lastH; lastH = lv.height || 0;
+        if (!was || was === lastH) return;
+        qlog({ w: "live", name: picked.name, from: was + "p", to: lastH + "p", why: "", est: bw.estimate(), br: lv.bitrate, note: "player switch" });
+        if (was >= 1600 && lastH < 1600 && !locked) { locked = stepped = true; const cap = QF.capLevel(h.levels); if (cap >= 0) h.autoLevelCapping = cap; noteChannel(key, { down: Date.now(), br: brNow() }); playerNote(vid, STEPPED); }
+      });
+      h.loadSource(u);
+      h.attachMedia(vid);
+    }
+    vid.addEventListener("error", () => { if (native) failOrBack(LIVE_NO); });
+    if (note) playerNote(vid, note);
+    attach(url);
   }
   const PLAYER = { stop: null };
   function closePlayer() {
@@ -4842,7 +5246,7 @@ const LV = (() => {
     document.body.style.overflow = "";
   }
   return {
-    show, play, closePlayer, xtreamOf,
+    show, play, closePlayer, xtreamOf, gkey,
     reset() { st = { status: "idle", list: null, msg: "", key: "" }; view = { sec: "", q: "", shown: 0 }; },
     redraw,
     section(sec) { view.auto = false; view.sec = sec; view.sub = ""; view.q = ""; view.shown = 0; const q = $("#lvQ"); if (q) q.value = ""; drawGrid(); },
@@ -5053,7 +5457,7 @@ function setSummary(id) {
     case "tvs": return S.link ? (linkedTvName() || "Linked") + " · " + ({ online: "online", connecting: "connecting", offline: "not answering" }[S.status] || "linked") : "Not linked";
     case "profile": return S.profile ? "Watching as " + profileName(S.profile) : "Not chosen";
     case "rd": return rdHere() ? "Connected on this device" : rdViaTv() ? "Connected through your TV" : "Not connected";
-    case "playback": return (extPref() === "ask" ? "Ask each time" : EXT_NAME[extPref()] || "VLC") + " · " + (S.originPref ? oName[S.originPref] : "Titles as on the TV");
+    case "playback": return (extPref() === "ask" ? "Ask each time" : EXT_NAME[extPref()] || "VLC") + " · Quality " + QUALITY_NAME[qualityMode()] + " · " + (S.originPref ? oName[S.originPref] : "Titles as on the TV");
     case "addons": { const tv = ((S.init && S.init.addon_urls) || []).filter(okUrl).length, mine = myAddons().length;
       return (tv ? tv + " from your TV" : "None from your TV") + (mine ? ", " + mine + " added here" : ""); }
     case "keys": return "TMDB " + (k.fromTv ? "from your TV" : S.manualTmdb ? "saved here" : "not set") + " · Ask Jarvis " + (jarvisKey() ? "ready" : jarvisLocalOn() ? "on" : "through the TV");
@@ -5110,6 +5514,12 @@ function setPlaybackHTML() {
   return `<section class="sgroup"><h2>Player app</h2>
       <p class="muted">Browsers can't play MKV files or DTS and Dolby sound. Jarvis hands those to this app. ${isMac ? `On a Mac: IINA, free at <a href="https://iina.io" target="_blank" rel="noopener">iina.io</a>.` : "VLC is free on the App Store. Infuse also works for movies and shows (it starts where you left off), but most files need Infuse Pro. Live TV channels always open in VLC."}</p>
       <div class="rowf">${extPrefSelect("extPrefSet")}</div></section>
+    <section class="sgroup"><h2>Quality</h2>
+      <label for="qualitySel">Video quality on this device</label>
+      <select id="qualitySel" data-quality>${["auto", "4k", "1080"].map((v) => [v, QUALITY_NAME[v]]).map(([v, t]) => `<option value="${v}"${qualityMode() === v ? " selected" : ""}>${t}</option>`).join("")}</select>
+      <p class="muted" style="margin-top:10px">Auto: if a 4K stream keeps freezing, Jarvis switches to 1080p on its own. Prefer 4K: stays on 4K. Max 1080p: never plays 4K when a 1080p copy is there.</p>
+      <h3 style="margin-top:14px">Recent quality changes</h3>${(() => { const a = readJSON(QLOG_KEY); const l = Array.isArray(a) ? a.slice(0, 10) : [];
+        return l.length ? `<ul class="qlog" id="qlog">${l.map((e) => `<li class="muted">${esc(qlogLine(e))}</li>`).join("")}</ul>` : `<p class="muted" id="qlog">None yet.</p>`; })()}</section>
     <section class="sgroup"><h2>Titles shown</h2>
       <label for="originSel">Countries</label>
       <select id="originSel">
@@ -5613,7 +6023,7 @@ document.addEventListener("click", async (e) => {
 // to the screen, compare BUILD with the published page. A new version reloads at once only when nothing is going
 // on. During playback, a source lookup, Real-Debrid sign-in or the hand-off question it waits: a small "Update
 // ready" button shows instead, and the update applies on the next quiet moment (a page change or a return to the app).
-const BUILD = "2026-10-19.4";
+const BUILD = "2026-10-21.1";
 let lastUpdateCheck = 0, updateReady = "";
 function updateBusy() {
   const h = location.hash;

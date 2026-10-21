@@ -28,15 +28,18 @@ object LiveStats {
         val kbps: Int,
         val reconnects: Int,
         val watchedMs: Long,
+        /** The stream's measured bitrate (kbps, JSON "b"), from its segments. 0 = unknown or an older entry. */
+        val bitrateKbps: Int = 0,
     ) {
-        /** "Started in 2.1 s. 3 freezes (14 s). 120 dropped frames. 1920x1080 60 fps avc. 8.2 Mbps. Watched 12 min." */
+        /** "Started in 2.1 s. 3 freezes (14 s). 120 dropped frames. 1920x1080 60 fps avc. Stream 18.4 Mbps. Network 30.2 Mbps. Watched 12 min." */
         fun summary(): String = buildString {
             append(if (startupMs >= 0) "Started in ${secs(startupMs)}." else "Never started.")
             append(if (stalls == 0) " No freezes." else " $stalls ${if (stalls == 1) "freeze" else "freezes"} (${secs(stallMs)}).")
             if (reconnects > 0) append(" $reconnects ${if (reconnects == 1) "reconnect" else "reconnects"}.")
             if (dropped > 0) append(" $dropped dropped frames.")
             if (video.isNotBlank()) append(" $video.")
-            if (kbps > 0) append(" ${"%.1f".format(kbps / 1000.0)} Mbps.")
+            if (bitrateKbps > 0) append(" Stream ${"%.1f".format(bitrateKbps / 1000.0)} Mbps.")
+            if (kbps > 0) append(" Network ${"%.1f".format(kbps / 1000.0)} Mbps.")
             append(" Watched ${mins(watchedMs)}.")
         }
     }
@@ -55,6 +58,8 @@ object LiveStats {
         var video = ""
         var decoder = ""
         var kbps = 0
+        /** Measured stream bitrate, kbps (see [Session.bitrateKbps]). */
+        var bitrateKbps = 0
         var reconnects = 0
         private var saved = false
 
@@ -77,7 +82,7 @@ object LiveStats {
             if (stallStart > 0) stallMs += now - stallStart
             val watched = now - opened
             if (watched < 5_000) return
-            save(Session(channel, System.currentTimeMillis(), startupMs, stalls, stallMs, dropped, video, decoder, kbps, reconnects, watched))
+            save(Session(channel, System.currentTimeMillis(), startupMs, stalls, stallMs, dropped, video, decoder, kbps, reconnects, watched, bitrateKbps))
         }
     }
 
@@ -88,7 +93,8 @@ object LiveStats {
         for (x in list) {
             a.put(
                 JSONObject().put("c", x.channel).put("at", x.at).put("st", x.startupMs).put("n", x.stalls).put("sm", x.stallMs)
-                    .put("d", x.dropped).put("v", x.video).put("dec", x.decoder).put("k", x.kbps).put("r", x.reconnects).put("w", x.watchedMs),
+                    .put("d", x.dropped).put("v", x.video).put("dec", x.decoder).put("k", x.kbps).put("r", x.reconnects).put("w", x.watchedMs)
+                    .put("b", x.bitrateKbps),
             )
         }
         runCatching { Prefs.putJson(KEY, a.toString()) }
@@ -102,6 +108,7 @@ object LiveStats {
             Session(
                 o.optString("c"), o.optLong("at"), o.optLong("st", -1), o.optInt("n"), o.optLong("sm"), o.optInt("d"),
                 o.optString("v"), o.optString("dec"), o.optInt("k"), o.optInt("r"), o.optLong("w"),
+                o.optInt("b"),
             )
         }
     }.getOrDefault(emptyList())

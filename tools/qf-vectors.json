@@ -1,0 +1,1163 @@
+{
+ "about": "Shared test vectors for the quality fallback: docs/app/index.html (QF, tools/webtest/qf-test.mjs) and data/QualityFallback.kt (QualityFallbackTest). Times in ms, rates in bits per second.",
+ "constants": {
+  "windowMs": 60000,
+  "stalls": 3,
+  "totalMs": 12000,
+  "longMs": 8000,
+  "graceMs": 10000,
+  "gapMs": 3000,
+  "lowSamples": 4,
+  "severeSamples": 2,
+  "severeRatio": 0.7,
+  "resetRatio": 1.1,
+  "halfLifeFastS": 3,
+  "halfLifeSlowS": 9,
+  "minDelayMs": 50,
+  "defaultBitrate": 16000000,
+  "freshMs": 1800000,
+  "memoryMs": 604800000,
+  "upRatio": 1.2,
+  "clearRatio": 1.5
+ },
+ "cases": [
+  {
+   "name": "startup stalls ignored, then 3 stalls in 60 s",
+   "ops": [
+    [
+     "stall",
+     2000
+    ],
+    [
+     "resume",
+     4000
+    ],
+    [
+     "stall",
+     5000
+    ],
+    [
+     "resume",
+     6000
+    ],
+    [
+     "check",
+     6000,
+     ""
+    ],
+    [
+     "stall",
+     20000
+    ],
+    [
+     "resume",
+     21000
+    ],
+    [
+     "stall",
+     30000
+    ],
+    [
+     "resume",
+     31000
+    ],
+    [
+     "check",
+     31000,
+     ""
+    ],
+    [
+     "stall",
+     40000
+    ],
+    [
+     "resume",
+     41000
+    ],
+    [
+     "check",
+     41000,
+     "stalls"
+    ],
+    [
+     "check",
+     42000,
+     ""
+    ],
+    [
+     "restart",
+     50000
+    ],
+    [
+     "check",
+     50000,
+     ""
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "stalls more than 60 s apart",
+   "ops": [
+    [
+     "stall",
+     15000
+    ],
+    [
+     "resume",
+     16000
+    ],
+    [
+     "stall",
+     50000
+    ],
+    [
+     "resume",
+     51000
+    ],
+    [
+     "stall",
+     80000
+    ],
+    [
+     "resume",
+     81000
+    ],
+    [
+     "check",
+     81000,
+     ""
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "one 8 s stall",
+   "ops": [
+    [
+     "stall",
+     20000
+    ],
+    [
+     "check",
+     27000,
+     ""
+    ],
+    [
+     "check",
+     28000,
+     "long_stall"
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "12 s stalled within 60 s",
+   "ops": [
+    [
+     "stall",
+     20000
+    ],
+    [
+     "resume",
+     27000
+    ],
+    [
+     "check",
+     27000,
+     ""
+    ],
+    [
+     "stall",
+     40000
+    ],
+    [
+     "resume",
+     45000
+    ],
+    [
+     "check",
+     45000,
+     "stall_time"
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "seek buffering is not a stall",
+   "ops": [
+    [
+     "stall",
+     20000
+    ],
+    [
+     "cancel"
+    ],
+    [
+     "stall",
+     30000
+    ],
+    [
+     "cancel"
+    ],
+    [
+     "stall",
+     35000
+    ],
+    [
+     "cancel"
+    ],
+    [
+     "check",
+     60000,
+     ""
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "4 samples under the bitrate",
+   "ops": [
+    [
+     "sample",
+     1000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     4000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     7000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     7000,
+     ""
+    ],
+    [
+     "sample",
+     8000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     8000,
+     ""
+    ],
+    [
+     "sample",
+     10000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     10000,
+     "slow"
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "dead band 1.0x to 1.1x keeps the count",
+   "ops": [
+    [
+     "sample",
+     1000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     4000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     7000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     10000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     10000,
+     ""
+    ],
+    [
+     "sample",
+     13000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     13000,
+     "slow"
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "1.1x or more resets the count",
+   "ops": [
+    [
+     "sample",
+     1000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     4000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     7000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     10000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     13000,
+     9000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     13000,
+     ""
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "2 samples under 0.7x",
+   "ops": [
+    [
+     "sample",
+     1000,
+     6000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     1000,
+     ""
+    ],
+    [
+     "sample",
+     4000,
+     6000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     4000,
+     "very_slow"
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "a merely low sample breaks the very slow run",
+   "ops": [
+    [
+     "sample",
+     1000,
+     6000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     4000,
+     8000000.0,
+     10000000.0
+    ],
+    [
+     "sample",
+     7000,
+     6000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     7000,
+     ""
+    ],
+    [
+     "sample",
+     10000,
+     6000000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     10000,
+     "very_slow"
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "unknown bitrate never counts",
+   "ops": [
+    [
+     "sample",
+     1000,
+     1000000.0,
+     0
+    ],
+    [
+     "sample",
+     4000,
+     1000000.0,
+     0
+    ],
+    [
+     "sample",
+     7000,
+     1000000.0,
+     0
+    ],
+    [
+     "sample",
+     10000,
+     1000000.0,
+     0
+    ],
+    [
+     "sample",
+     13000,
+     1000000.0,
+     0
+    ],
+    [
+     "check",
+     13000,
+     ""
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "wobble across the bitrate fires once, never again",
+   "ops": [
+    [
+     "sample",
+     1000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     1000,
+     ""
+    ],
+    [
+     "sample",
+     4000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     4000,
+     ""
+    ],
+    [
+     "sample",
+     7000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     7000,
+     ""
+    ],
+    [
+     "sample",
+     10000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     10000,
+     ""
+    ],
+    [
+     "sample",
+     13000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     13000,
+     ""
+    ],
+    [
+     "sample",
+     16000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     16000,
+     ""
+    ],
+    [
+     "sample",
+     19000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     19000,
+     "slow"
+    ],
+    [
+     "sample",
+     22000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     22000,
+     ""
+    ],
+    [
+     "sample",
+     25000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     25000,
+     ""
+    ],
+    [
+     "sample",
+     28000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     28000,
+     ""
+    ],
+    [
+     "sample",
+     31000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     31000,
+     ""
+    ],
+    [
+     "sample",
+     34000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     34000,
+     ""
+    ],
+    [
+     "sample",
+     37000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     37000,
+     ""
+    ],
+    [
+     "sample",
+     40000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     40000,
+     ""
+    ],
+    [
+     "sample",
+     43000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     43000,
+     ""
+    ],
+    [
+     "sample",
+     46000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     46000,
+     ""
+    ],
+    [
+     "sample",
+     49000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     49000,
+     ""
+    ],
+    [
+     "sample",
+     52000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     52000,
+     ""
+    ],
+    [
+     "sample",
+     55000,
+     9500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     55000,
+     ""
+    ],
+    [
+     "sample",
+     58000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     58000,
+     ""
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "wobble above the bitrate never fires",
+   "ops": [
+    [
+     "sample",
+     1000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     1000,
+     ""
+    ],
+    [
+     "sample",
+     4000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     4000,
+     ""
+    ],
+    [
+     "sample",
+     7000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     7000,
+     ""
+    ],
+    [
+     "sample",
+     10000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     10000,
+     ""
+    ],
+    [
+     "sample",
+     13000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     13000,
+     ""
+    ],
+    [
+     "sample",
+     16000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     16000,
+     ""
+    ],
+    [
+     "sample",
+     19000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     19000,
+     ""
+    ],
+    [
+     "sample",
+     22000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     22000,
+     ""
+    ],
+    [
+     "sample",
+     25000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     25000,
+     ""
+    ],
+    [
+     "sample",
+     28000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     28000,
+     ""
+    ],
+    [
+     "sample",
+     31000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     31000,
+     ""
+    ],
+    [
+     "sample",
+     34000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     34000,
+     ""
+    ],
+    [
+     "sample",
+     37000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     37000,
+     ""
+    ],
+    [
+     "sample",
+     40000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     40000,
+     ""
+    ],
+    [
+     "sample",
+     43000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     43000,
+     ""
+    ],
+    [
+     "sample",
+     46000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     46000,
+     ""
+    ],
+    [
+     "sample",
+     49000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     49000,
+     ""
+    ],
+    [
+     "sample",
+     52000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     52000,
+     ""
+    ],
+    [
+     "sample",
+     55000,
+     10500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     55000,
+     ""
+    ],
+    [
+     "sample",
+     58000,
+     11500000.0,
+     10000000.0
+    ],
+    [
+     "check",
+     58000,
+     ""
+    ]
+   ],
+   "kind": "monitor",
+   "t0": 0
+  },
+  {
+   "name": "one sample",
+   "kind": "estimator",
+   "adds": [
+    [
+     1000000,
+     1000
+    ]
+   ],
+   "expect": 8000000
+  },
+  {
+   "name": "two samples",
+   "kind": "estimator",
+   "adds": [
+    [
+     1000000,
+     1000
+    ],
+    [
+     500000,
+     1000
+    ]
+   ],
+   "expect": 5769973
+  },
+  {
+   "name": "slow then fast",
+   "kind": "estimator",
+   "adds": [
+    [
+     250000,
+     2000
+    ],
+    [
+     250000,
+     2000
+    ],
+    [
+     2000000,
+     1000
+    ]
+   ],
+   "expect": 4478917
+  },
+  {
+   "name": "tiny duration floored to 50 ms",
+   "kind": "estimator",
+   "adds": [
+    [
+     10000,
+     10
+    ]
+   ],
+   "expect": 1600000
+  },
+  {
+   "name": "nothing known",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 0,
+    "estAt": 0,
+    "br": 0,
+    "down": 0
+   },
+   "out": {
+    "tier": "4k",
+    "why": "",
+    "clear": false
+   }
+  },
+  {
+   "name": "fresh estimate under 1.2x the default 16 Mbps",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 10000000.0,
+    "estAt": 863940000,
+    "br": 0,
+    "down": 0
+   },
+   "out": {
+    "tier": "1080",
+    "why": "slow_network",
+    "clear": false
+   }
+  },
+  {
+   "name": "fresh estimate over 1.2x the default",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 25000000.0,
+    "estAt": 863940000,
+    "br": 0,
+    "down": 0
+   },
+   "out": {
+    "tier": "4k",
+    "why": "",
+    "clear": false
+   }
+  },
+  {
+   "name": "stale estimate (31 min) is ignored",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 10000000.0,
+    "estAt": 862140000,
+    "br": 0,
+    "down": 0
+   },
+   "out": {
+    "tier": "4k",
+    "why": "",
+    "clear": false
+   }
+  },
+  {
+   "name": "measured 8 Mbps stream, 10 Mbps network",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 10000000.0,
+    "estAt": 863999000,
+    "br": 8000000.0,
+    "down": 0
+   },
+   "out": {
+    "tier": "4k",
+    "why": "",
+    "clear": false
+   }
+  },
+  {
+   "name": "measured 8 Mbps stream, 9 Mbps network",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 9000000.0,
+    "estAt": 863999000,
+    "br": 8000000.0,
+    "down": 0
+   },
+   "out": {
+    "tier": "1080",
+    "why": "slow_network",
+    "clear": false
+   }
+  },
+  {
+   "name": "froze here yesterday, nothing measured",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 0,
+    "estAt": 0,
+    "br": 0,
+    "down": 777600000
+   },
+   "out": {
+    "tier": "1080",
+    "why": "froze_before",
+    "clear": false
+   }
+  },
+  {
+   "name": "froze yesterday, network now 1.5x the stream",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 13000000.0,
+    "estAt": 863999000,
+    "br": 8000000.0,
+    "down": 777600000
+   },
+   "out": {
+    "tier": "4k",
+    "why": "fast_again",
+    "clear": true
+   }
+  },
+  {
+   "name": "froze yesterday, network only 1.4x the stream",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 11000000.0,
+    "estAt": 863999000,
+    "br": 8000000.0,
+    "down": 777600000
+   },
+   "out": {
+    "tier": "1080",
+    "why": "froze_before",
+    "clear": false
+   }
+  },
+  {
+   "name": "froze 8 days ago: forgotten",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 0,
+    "estAt": 0,
+    "br": 0,
+    "down": 172800000
+   },
+   "out": {
+    "tier": "4k",
+    "why": "",
+    "clear": false
+   }
+  },
+  {
+   "name": "froze after the last fast measurement: stays 1080p (only a speed measured after the freeze can clear it)",
+   "kind": "startTier",
+   "in": {
+    "now": 864000000,
+    "est": 239000000.0,
+    "estAt": 863400000,
+    "br": 0,
+    "down": 863940000
+   },
+   "out": {
+    "tier": "1080",
+    "why": "froze_before",
+    "clear": false
+   }
+  }
+ ]
+}

@@ -107,6 +107,11 @@ object Prefs {
         get() = sp.getBoolean("slow_connection", false)
         set(v) = sp.edit().putBoolean("slow_connection", v).apply()
 
+    /** Settings > Playback > Quality: "auto" (step down from 4K when it struggles), "4k" or "1080". This TV only, never synced. */
+    var qualityMode: String
+        get() = QualityMode.clean(sp.getString("quality_mode", QualityMode.AUTO))
+        set(v) = put("quality_mode", QualityMode.clean(v))
+
     /** Source list: movie files bigger than this many GB are hidden (0 = no limit). Synced with the account. */
     var maxMovieGb: Int
         get() = sp.getInt("max_movie_gb", 40)

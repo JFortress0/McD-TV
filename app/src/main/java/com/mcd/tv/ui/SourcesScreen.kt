@@ -326,4 +326,22 @@ private class QueueNextSource(
         }
         return lastError
     }
+
+    /** Quality fallback: the first 1080p source for this title (see [com.mcd.tv.data.QualityFallback.pick1080Source]), at [positionMs]. */
+    override suspend fun stepDown(positionMs: Long): Boolean {
+        if (from.stepped) return false // already stepped down once for this title
+        val i = com.mcd.tv.data.QualityFallback.pick1080Source(list, from.queuePos) ?: return false
+        val src = list[i]
+        return try {
+            val url = Resolver.resolve(src, from.meta)
+            currentCoroutineContext().ensureActive() // left the player meanwhile: open nothing
+            nav.replace(from.copy(url = url, headers = src.headers, queuePos = i, startMs = positionMs, stepped = true))
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            com.mcd.tv.data.RecentErrors.note("Source: 1080p copy did not open: ${e.message ?: "unknown error"}")
+            false
+        }
+    }
 }

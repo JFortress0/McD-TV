@@ -1,5 +1,6 @@
 package com.mcd.tv.player
 
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import androidx.activity.compose.BackHandler
@@ -41,6 +42,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
@@ -48,11 +50,23 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.mcd.tv.data.Library
 import com.mcd.tv.data.NowPlaying
 import com.mcd.tv.data.PlayMeta
+import com.mcd.tv.data.Prefs
+import com.mcd.tv.data.BitrateMeter
+import com.mcd.tv.data.QualityFallback
+import com.mcd.tv.data.QualityLog
+import com.mcd.tv.data.QualityMemory
+import com.mcd.tv.data.QualityMode
+import com.mcd.tv.data.StallWatch
+import com.mcd.tv.data.ThroughputEstimator
 import com.mcd.tv.data.BadSources
 import com.mcd.tv.data.PlaybackRescue
 import com.mcd.tv.data.SourceHealth
@@ -73,6 +87,12 @@ interface NextSource {
 
     /** Opens the next source that works and switches the player to it (returns null), or returns what to tell the viewer. */
     suspend fun tryNext(): String?
+
+    /**
+     * 4K playback struggles: opens a 1080p source for the same title at [positionMs] and switches the player to it.
+     * Returns false when there is none (the player keeps going).
+     */
+    suspend fun stepDown(positionMs: Long): Boolean = false
 }
 
 /** Builds a MediaItem, hinting the format when the URL makes it obvious. */
@@ -108,6 +128,19 @@ fun PlayerScreen(
     onBack: (() -> Unit)? = null,
     /** A live channel: live-edge, buffer and stall-recovery settings for IPTV (see [LiveTuning]). */
     live: Boolean = false,
+    /** Raw channel or source name, for 4K by name ("4K", "UHD", "2160p"). The title is often cleaned of these. */
+    qualityLabel: String = "",
+    /**
+     * Quality Auto and 4K playback struggles on a stream with no lower track: switch to a 1080p stream
+     * (Live TV sibling channel, on-demand 1080p source). Gets the current position in ms.
+     */
+    onStepDown: ((Long) -> Unit)? = null,
+    /** Start here (ms) instead of the saved resume position. -1 = resume as usual. */
+    startPositionMs: Long = -1L,
+    /** Shown for a few seconds when playback opens (e.g. after a switch to 1080p). */
+    startNotice: String? = null,
+    /** Live TV: the channel's guide key, where [QualityMemory] keeps its measured bitrate and step-downs. */
+    qualityKey: String = "",
     /** SourceHealth.key of the playing file: a file that stops far short of the title is flagged for the house. */
     sourceKey: String? = null,
 ) {
@@ -117,9 +150,11 @@ fun PlayerScreen(
     var audioNote by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     // Saved position for this title (this TV, another TV or a phone). Read once, before the player starts.
-    // It belongs to the title, not to a source: any source resumes here.
+    // It belongs to the title, not to a source: any source resumes here. After a quality step down
+    // ([startPositionMs]) the 1080p copy resumes where the 4K one was, and PlaybackRescue treats that spot
+    // like any other resume point.
     val saved = remember { meta?.let { Library.resumeEntry(it) } }
-    val resumeMs = saved?.positionMs ?: 0L
+    val resumeMs = if (startPositionMs >= 0) startPositionMs else saved?.positionMs ?: 0L
     val savedDurMs = saved?.durationMs ?: 0L
     // The title's runtime (TMDB, usually cached by Detail): tells a cut-off source from the real end.
     var runtimeMs by remember { mutableStateOf(0L) }
@@ -154,6 +189,14 @@ fun PlayerScreen(
     // Live: how this channel plays, for Settings > Addons and Live TV.
     val stats = remember { if (live) com.mcd.tv.data.LiveStats.Recorder(title) else null }
     var liveNote by remember { mutableStateOf<String?>(null) }
+    // Quality fallback (Settings > Playback > Quality): struggle detection and the "Switched to 1080p" notice.
+    val qualityMode = remember { Prefs.qualityMode }
+    val stallWatch = remember { StallWatch(SystemClock.elapsedRealtime()) }
+    val videoNow = remember { VideoNow() }
+    var qualityNote by remember { mutableStateOf(startNotice) }
+    val currentOnStepDown by rememberUpdatedState(onStepDown)
+    // Player telemetry: throughput from finished segments, the stream's real bitrate per height, quality state.
+    val tele = remember { QualityTele() }
     // Non-live: a short note when playback had to recover (reconnect, start over, skip, next source).
     var rescueNote by remember { mutableStateOf<String?>(null) }
     var rescueNoteTick by remember { mutableIntStateOf(0) }
@@ -174,19 +217,66 @@ fun PlayerScreen(
         // try the next one instead of failing.
         val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
 
+        // Multi-quality streams: wait 15 s of good throughput before going up and use 70% of it (no flapping).
+        val selector = DefaultTrackSelector(context, AdaptiveTrackSelection.Factory(15_000, 25_000, 25_000, 0.7f))
+
         ExoPlayer.Builder(context, renderers)
+            .setTrackSelector(selector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
             .apply { if (live) setLoadControl(LiveTuning.loadControl()) }
             .setSeekBackIncrementMs(SEEK_MS)
             .setSeekForwardIncrementMs(SEEK_MS)
             .build()
             .apply {
+                // Max 1080p: never pick a video track above 1080p (a stream with only a 4K track still plays it).
+                if (qualityMode == QualityMode.MAX_1080) {
+                    trackSelectionParameters = trackSelectionParameters.buildUpon().setMaxVideoSize(1920, 1080).build()
+                }
                 if (live) setMediaSource(LiveTuning.mediaSource(dataSource, url)) else setMediaItem(mediaItemFor(url))
                 // Resume where you left off (Continue Watching), on this TV or another device.
                 if (resumeMs > 0) seekTo(resumeMs)
                 prepare()
                 playWhenReady = true
             }
+    }
+
+    fun logQuality(from: String, to: String, code: String) {
+        QualityLog.add(QualityLog.Entry(System.currentTimeMillis(), title.ifBlank { "Video" }, from, to, code, tele.estimator.estimate()))
+    }
+
+    /**
+     * Playback struggles ([why] from [StallWatch]). Quality Auto at 4K only, once per playback: cap the track
+     * selector at 1080p when the stream has a lower track, else ask the screen to switch to a 1080p stream.
+     */
+    fun onStruggle(why: String) {
+        if (qualityMode != QualityMode.AUTO || tele.stepped) return
+        val height = maxOf(videoNow.height, player.videoSize.height)
+        if (!QualityFallback.is4k(height, qualityLabel)) return
+        val heights = ArrayList<Int>()
+        for (g in player.currentTracks.groups) {
+            if (g.type != C.TRACK_TYPE_VIDEO) continue
+            for (i in 0 until g.length) if (g.isTrackSupported(i)) heights.add(g.getTrackFormat(i).height)
+        }
+        val cap = QualityFallback.canCapTo1080(heights)
+        val stepDown = currentOnStepDown
+        if (!cap && stepDown == null) return
+        // Live sports favor resolution over buffer: step down here; never grow the buffer or live offset (LiveTuning stays fixed).
+        tele.stepped = true
+        com.mcd.tv.data.RecentErrors.note("Playback: ${title.ifBlank { "video" }}: 4K kept stalling (${QualityLog.words(why)}). Trying 1080p.")
+        val from = QualityLog.rendition(player.videoSize.width, height, tele.bitrateAt(height, videoNow.bitrate))
+        if (qualityKey.isNotBlank()) {
+            QualityMemory.noteChannel(qualityKey, br = tele.uhdBitrate(), down = System.currentTimeMillis())
+            QualityMemory.save()
+        }
+        if (cap) {
+            tele.capped = true
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setMaxVideoSize(1920, 1080).build()
+            qualityNote = QualityFallback.NOTICE
+            logQuality(from, "1080p cap, same stream", why)
+        } else {
+            logQuality(from, if (live) "1080p channel" else "1080p source", why)
+            stepDown?.invoke(player.currentPosition.coerceAtLeast(0L))
+        }
     }
 
     fun showRescueNote(text: String) {
@@ -326,6 +416,13 @@ fun PlayerScreen(
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
                 stats?.onState(state)
+                val now = SystemClock.elapsedRealtime()
+                when (state) {
+                    Player.STATE_READY -> stallWatch.onReady(now)
+                    Player.STATE_BUFFERING -> if (player.playWhenReady) stallWatch.onBuffering(now)
+                    else -> stallWatch.onStop(now)
+                }
+                stallWatch.check(now).let { if (it.isNotEmpty()) onStruggle(it) }
                 if (state == Player.STATE_READY) {
                     networkRetries = 0 // playing again: reset the retry budget
                     liveNote = null
@@ -353,6 +450,15 @@ fun PlayerScreen(
                         currentOnEnded?.invoke()
                     }
                 }
+            }
+
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                // A seek buffers by design: not a stall.
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) stallWatch.onSeek()
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.height > 0) videoNow.height = videoSize.height
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -395,6 +501,7 @@ fun PlayerScreen(
                     retryJob?.cancel()
                     retryJob = scope.launch {
                         delay(wait)
+                        stallWatch.restart(SystemClock.elapsedRealtime())
                         if (live) player.seekToDefaultPosition()
                         player.prepare() // keeps the current position
                     }
@@ -405,45 +512,108 @@ fun PlayerScreen(
             }
         }
         player.addListener(listener)
-        val analytics = stats?.let { st ->
-            object : androidx.media3.exoplayer.analytics.AnalyticsListener {
-                override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
-                    st.dropped += droppedFrames
-                }
+        val st = stats
+        val analytics = object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                if (st != null) st.dropped += droppedFrames
+            }
 
-                override fun onVideoInputFormatChanged(
-                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
-                    format: androidx.media3.common.Format,
-                    decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
-                ) {
+            override fun onVideoInputFormatChanged(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                format: androidx.media3.common.Format,
+                decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+            ) {
+                // Every rendition change goes in the quality log. ExoPlayer leaving 4K by itself locks 1080p
+                // for the rest of this playback, so it never climbs back and flaps.
+                val h = format.height
+                if (h > 0 && tele.height > 0 && h != tele.height) {
+                    val from = QualityLog.rendition(tele.width, tele.height, tele.bitrateAt(tele.height, videoNow.bitrate))
+                    var code = when {
+                        tele.capped -> "capped"
+                        h < tele.height -> "player_down"
+                        else -> "player_up"
+                    }
+                    if (code == "player_down" && !tele.locked && qualityMode == QualityMode.AUTO &&
+                        tele.height >= QualityFallback.UHD_MIN_HEIGHT && h < QualityFallback.UHD_MIN_HEIGHT
+                    ) {
+                        tele.locked = true
+                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setMaxVideoSize(1920, 1080).build()
+                        code = "locked"
+                    }
+                    logQuality(from, QualityLog.rendition(format.width, h, tele.bitrateAt(h, format.bitrate)), code)
+                }
+                if (h > 0) {
+                    tele.height = h
+                    tele.width = format.width
+                    videoNow.height = h
+                }
+                videoNow.bitrate = format.bitrate // Format.NO_VALUE (-1) when the stream does not say
+                if (st != null) {
                     val fps = if (format.frameRate > 0) " ${"%.0f".format(format.frameRate)} fps" else ""
                     val codec = format.sampleMimeType?.substringAfter('/').orEmpty()
                     st.video = "${format.width}x${format.height}$fps $codec".trim()
                 }
+            }
 
-                override fun onVideoDecoderInitialized(
-                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
-                    decoderName: String,
-                    initializedTimestampMs: Long,
-                    initializationDurationMs: Long,
-                ) {
-                    st.decoder = decoderName
-                }
+            override fun onVideoDecoderInitialized(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                st?.decoder = decoderName
+            }
 
-                override fun onBandwidthEstimate(
-                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
-                    totalLoadTimeMs: Int,
-                    totalBytesLoaded: Long,
-                    bitrateEstimate: Long,
-                ) {
-                    st.kbps = (bitrateEstimate / 1000).toInt()
-                }
+            override fun onBandwidthEstimate(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                totalLoadTimeMs: Int,
+                totalBytesLoaded: Long,
+                bitrateEstimate: Long,
+            ) {
+                st?.kbps = (bitrateEstimate / 1000).toInt()
+            }
+
+            // One finished media segment: throughput (same estimator as the web app) against the stream's
+            // real bitrate (segment bytes over its media time; the declared bitrate when that is unknown).
+            // Whole-file and endless TS loads have no segment length and are skipped.
+            override fun onLoadCompleted(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                loadEventInfo: LoadEventInfo,
+                mediaLoadData: MediaLoadData,
+            ) {
+                if (mediaLoadData.dataType != C.DATA_TYPE_MEDIA) return
+                if (mediaLoadData.trackType != C.TRACK_TYPE_VIDEO && mediaLoadData.trackType != C.TRACK_TYPE_DEFAULT) return
+                val start = mediaLoadData.mediaStartTimeMs
+                val end = mediaLoadData.mediaEndTimeMs
+                if (start == C.TIME_UNSET || end == C.TIME_UNSET || end <= start || end - start > 60_000L) return
+                val bytes = loadEventInfo.bytesLoaded
+                if (bytes <= 0) return
+                val fmt = mediaLoadData.trackFormat
+                val h = fmt?.height?.takeIf { it > 0 } ?: videoNow.height
+                tele.estimator.sample(loadEventInfo.loadDurationMs, bytes)
+                tele.meter.add(h, bytes, end - start)
+                val measured = tele.meter.bps()
+                if (measured > 0) tele.bpsByHeight[h] = measured
+                if (st != null && measured > 0) st.bitrateKbps = (measured / 1000).toInt()
+                val est = tele.estimator.estimate()
+                QualityMemory.noteEstimate(est, System.currentTimeMillis())
+                val now = SystemClock.elapsedRealtime()
+                val bitrate = if (measured > 0) measured else (fmt?.bitrate ?: videoNow.bitrate).toDouble()
+                // The struggle check takes this segment's own speed: the in-a-row counts are the smoothing, and
+                // an average still full of earlier fast downloads would react 15 s late (web test A, Oct 19).
+                val segBps = bytes * 8000.0 / maxOf(loadEventInfo.loadDurationMs, 50L)
+                stallWatch.sample(now, segBps, bitrate)
+                stallWatch.check(now).let { if (it.isNotEmpty()) onStruggle(it) }
             }
         }
-        analytics?.let { player.addAnalyticsListener(it) }
+        player.addAnalyticsListener(analytics)
         onDispose {
             stats?.finish()
-            analytics?.let { player.removeAnalyticsListener(it) }
+            // What this playback learned, for the next up-front pick (one write).
+            val uhd = tele.uhdBitrate()
+            if (qualityKey.isNotBlank() && uhd > 0) QualityMemory.noteChannel(qualityKey, br = uhd)
+            QualityMemory.save()
+            player.removeAnalyticsListener(analytics)
             retryJob?.cancel()
             rescueJob?.cancel()
             progress.save(player, force = true)
@@ -483,8 +653,30 @@ fun PlayerScreen(
         recoveries++
         stats?.let { it.reconnects++ }
         liveNote = "Reconnecting…"
+        stallWatch.restart(SystemClock.elapsedRealtime())
         player.seekToDefaultPosition()
         player.prepare()
+    }
+
+    // While buffering, look once a second for a stall that has gone on too long (8 s, or 12 s within a minute).
+    LaunchedEffect(buffering) {
+        if (!buffering || stallWatch.fired) return@LaunchedEffect
+        while (true) {
+            delay(1_000)
+            val why = stallWatch.check(SystemClock.elapsedRealtime())
+            if (why.isNotEmpty()) {
+                onStruggle(why)
+                break
+            }
+        }
+    }
+
+    // "Switched to 1080p for smoother playback" stays up for 5 s.
+    LaunchedEffect(qualityNote) {
+        if (qualityNote != null) {
+            delay(5_000)
+            qualityNote = null
+        }
     }
 
     // Video (not live): buffering for PlaybackRescue.STALL_MS with no new data is a stall, e.g. a source
@@ -679,6 +871,19 @@ fun PlayerScreen(
             )
         }
 
+        if (error == null) qualityNote?.let { note ->
+            Text(
+                text = note,
+                color = McdColors.White,
+                fontSize = 18.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 150.dp)
+                    .background(McdColors.Card.copy(alpha = 0.9f))
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+
         sleepToast?.let { msg ->
             Text(
                 text = msg,
@@ -723,6 +928,33 @@ private val SLEEP_STEPS = intArrayOf(0, 30, 60, 90, SLEEP_END_OF_VIDEO)
 
 /** How long the screen stays on while the player is paused. */
 private const val SCREEN_ON_WHILE_PAUSED_MS = 10 * 60_000L
+
+/** Height and bitrate of the video playing, for the quality fallback (0 / -1 = not known yet). */
+private class VideoNow {
+    var height = 0
+    var bitrate = -1
+}
+
+/** Quality telemetry for one playback (main thread only). */
+private class QualityTele {
+    val estimator = ThroughputEstimator()
+    val meter = BitrateMeter()
+    /** Measured bitrate (bps) per picture height seen in this playback. */
+    val bpsByHeight = HashMap<Int, Double>()
+    /** The rendition on screen (from the decoder's input format). */
+    var width = 0
+    var height = 0
+    /** Stepped down once (cap or switch), capped by us, or locked at 1080p after ExoPlayer left 4K. */
+    var stepped = false
+    var capped = false
+    var locked = false
+
+    /** Measured bitrate at [h], else the declared one (<= 0 = unknown). */
+    fun bitrateAt(h: Int, declared: Int): Double = bpsByHeight[h] ?: declared.toDouble().coerceAtLeast(0.0)
+
+    /** The highest measured bitrate of a 4K rendition, 0 when none played. */
+    fun uhdBitrate(): Double = bpsByHeight.filterKeys { it >= QualityFallback.UHD_MIN_HEIGHT }.values.maxOrNull() ?: 0.0
+}
 
 /** Keeps [NowPlaying] current for this player: title, play or pause, position. Relay decides when to send it. */
 private class NowReporter(private val title: String, private val meta: PlayMeta?, private val live: Boolean) {

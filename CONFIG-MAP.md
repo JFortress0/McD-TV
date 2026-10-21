@@ -27,6 +27,8 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 | Addons, this phone only | Web Settings > Addons | `mcdtv_web_addons_mine` | setup link, invite | maybe |
 | Websites | TV home Wi-Fi page | `websites` | HouseSync | no |
 | Titles, US release dates, slow connection, size limits, intro | TV Settings; Control page (not the size limits) | `origin_filter`, `us_only`, `slow_connection`, `max_movie_gb`, `max_episode_gb`, `play_intro` | HouseSync. The phone can override titles with `mcdtv_web_origin`. | no |
+| Quality (Auto, Prefer 4K, Max 1080p) | TV Settings > Playback > Quality | `quality_mode` = `auto` (default: steps down from 4K to 1080p when playback struggles), `4k` (never steps down) or `1080` (never above 1080p; Live TV opens a 4K channel's 1080p version) | this TV only, never synced, not per profile | no |
+| Quality on the phone (Auto, Prefer 4K, Max 1080p) | Web app Settings > Playback > Quality | `mcdtv_web_quality` = `auto` (default), `4k` or `1080` | this browser only; not in the setup link or invites | no |
 | My Stream link | Control page | `custom_stream_url` | HouseSync | maybe |
 | Real-Debrid, TVs | TV Settings > Playback > Connect (device code) | `rd_client_id`, `rd_client_secret`, `rd_access`, `rd_refresh`, `rd_expires`; `rd_last_add` is per TV | HouseSync: one sign-in for the whole house. Phones only see `rd_connected`. | yes |
 | Real-Debrid, phone sign-in | Web Settings > Real-Debrid > Connect (device code, through `jarvis-rd.netlify.app`) | `mcdtv_web_rdc` = `{id, secret, t, r, exp}` | setup link only | yes |
@@ -41,7 +43,10 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 | Playlist (M3U or Xtream Codes) | Control page, TV home Wi-Fi page | `m3u_url`. Xtream user and password are read from the `get.php?username=&password=` link; there are no separate fields. | HouseSync, `web_init`. The phone loads it through `jarvis-rd.netlify.app/iptv`. | yes (the link holds the login) |
 | Guide (XMLTV) | no field | taken from the playlist header (`url-tvg`, `x-tvg-url`) or Xtream `xmltv.php`; kept in memory on the TV; phone cache `mcdtv_web_epg` | none | through the link |
 | Live TV favorites | star on the TV or phone | `live_favorites@pN`; phone `mcdtv_web_plists` | ProfileSync, `web_init` | no |
-| Recents, last channel, channel stats | automatic | `live_recents@pN`, `live_last_url@pN`, `live_stats` | this TV only | no |
+| Recents, last channel, channel stats | automatic | `live_recents@pN`, `live_last_url@pN`, `live_stats` (JSON list; `b` = measured stream bitrate in kbps, 0 in older entries) | this TV only | no |
+| Quality memory (up-front 4K or 1080p pick) | automatic | `quality_memory` = JSON `{est, estAt, ch: {guideKey: {br, down, clr}}}`: last throughput (bps) and when, per 4K channel its measured bitrate, last step-down and when a step-down was forgiven | this TV only, never synced, not per profile | no |
+| Quality changes log | automatic, shown in TV Settings > Addons and Live TV > Quality changes | `quality_log` = JSON list, newest first, last 40: `{at, t (title), f (from), to, c (reason code), e (estimate bps)}` | this TV only, never synced, not per profile | no |
+| Quality memory and log on the phone | automatic; the log shows in Web app Settings > Playback > Recent quality changes | `mcdtv_web_qmem` = JSON `{est, estAt, ch: {guideKey: {br, down, at}}}` (last measured speed, per 4K channel its measured bitrate and last step-down); `mcdtv_web_qlog` = JSON list, newest first, last 40: `{t, w (live or vod), name, from, to, why, est, br, note}` | this browser only; not in the setup link or invites | no |
 | My teams (favorite teams) | TV Settings > Addons and Live TV > My teams | `live_fav_teams@pN` (JSON list like `"NFL:Eagles"`). Not set = Dad (p1) has Eagles, Phillies, Flyers and 76ers; other profiles none. | this TV only | no |
 | Leagues in Live Games | TV Settings > Addons and Live TV > Live Games | `live_leagues_hidden@pN` (JSON list of league names). Not set = WNBA, MLS and Premier League hidden. The playlist is never changed. | this TV only | no |
 
@@ -94,7 +99,7 @@ How every setting is entered, stored, synced and read across the TV app, the Con
 
 ## What the Settings redesign (October 2026) changed in storage
 
-Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked). Later on October 19: TV `wall_cycle`.
+Nothing was renamed or removed. Added, all per device and never synced: TV `update_check` (last update check) and `recent_errors`; web `mcdtv_web_verified` (when each key last worked). Later on October 19: TV `wall_cycle`, TV `quality_mode` and web `mcdtv_web_quality`. Then TV `quality_memory`, `quality_log` and the `b` field inside `live_stats`; web `mcdtv_web_qmem` and `mcdtv_web_qlog`.
 
 ## Incomplete sources (October 19, 2026)
 
