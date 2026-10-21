@@ -125,6 +125,18 @@ describe() {
   echo "      [$1] focused holds: $(python3 .github/qa/focused.py "qa-out/ui-$1.xml" | cut -c1-300)"
   echo "      [$1] text: $(grep -o 'text="[^"]\+"' "qa-out/ui-$1.xml" 2>/dev/null | sed 's/text=//' | tr '\n' ' ' | cut -c1-700)"
 }
+# What's On rows: a lazy list only has the rows on screen, so walk DOWN through them and collect every dump.
+# Usage: rows_seen <name> (Live TV open on What's On). Writes qa-out/ui-<name>-all.xml.
+rows_seen() {
+  : > "qa-out/ui-$1-all.xml"
+  for k in 0 1 2 3 4 5 6; do
+    [ "$k" -gt 0 ] && { adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; }
+    dump "ui-$1-$k"; cat "qa-out/ui-$1-$k.xml" >> "qa-out/ui-$1-all.xml" 2>/dev/null
+  done
+}
+ROWS='"MY TEAMS" "LIVE GAMES" "HISTORY &amp; DOCS ON NOW" "MILITARY ON NOW" "CYBER, AI &amp; TECH ON NOW" "PRIMETIME ENTERTAINMENT"'
+# Rows of $ROWS not found in the file $F (prints them, empty when all are there).
+rows_missing() { local m=""; eval "set -- $ROWS"; for r in "$@"; do grep -q "text=\"$r\"" "$F" || m="$m [$r]"; done; echo "$m"; }
 KB_FAIL=""
 NAV_FAIL=""
 FIRST=1
@@ -301,9 +313,6 @@ sleep 20
 shot live-a-landing
 describe live-a-landing
 L=qa-out/ui-live-a-landing.xml
-MISSING=""
-for r in "MY TEAMS" "LIVE GAMES" "HISTORY &amp; DOCS ON NOW" "MILITARY ON NOW" "CYBER, AI &amp; TECH ON NOW" "PRIMETIME ENTERTAINMENT"; do grep -q "text=\"$r\"" "$L" || MISSING="$MISSING [$r]"; done
-[ -z "$MISSING" ] && pass "Live TV: What's On shows its six rows" || fail "Live TV: What's On rows missing:$MISSING"
 FOC=$(python3 .github/qa/focused.py "$L")
 echo "      focused: $FOC" | tee -a "$R"
 echo "$FOC" | grep -q "Eagles" && echo "$FOC" | grep -qi "MY TEAM" \
@@ -329,9 +338,14 @@ adb shell input keyevent KEYCODE_BACK; sleep 3
 describe live-b-back
 python3 .github/qa/focused.py qa-out/ui-live-b-back.xml | grep -q "Eagles" && pass "Live TV: Back from the player returns to the tile" || fail "Live TV: Back from the player returns to the tile"
 
-# (c) All Channels A-Z: the last rail entry. One row per network; RIGHT on a row opens its other feeds.
+# (c) The six rows (walked with DOWN), then All Channels A-Z: the last rail entry. One row per network; RIGHT on a
+# row opens its other feeds.
 adb shell am start -S -n com.mcd.tv/.MainActivity --es screen live >/dev/null
 sleep 20
+rows_seen live-rows
+F=qa-out/ui-live-rows-all.xml; MISSING=$(rows_missing)
+[ -z "$MISSING" ] && pass "Live TV: What's On shows its six rows" || fail "Live TV: What's On rows missing:$MISSING"
+grep -oE 'text="[^"]+"' "$F" | sed 's/text=//' | awk '!seen[$0]++' | tr '\n' ' ' | cut -c1-1500 | sed 's/^/      rows: /' | tee -a "$R"; echo | tee -a "$R"
 adb shell input keyevent KEYCODE_BACK; sleep 1
 for i in 1 2 3 4 5 6 7 8; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
 shot live-c-az
@@ -339,8 +353,8 @@ describe live-c-az
 grep -qE 'text="[0-9,]+ networks  ·  [0-9,]+ channels"' qa-out/ui-live-c-az.xml \
   && pass "Live TV: All Channels A–Z lists networks ($(grep -oE '[0-9,]+ networks  ·  [0-9,]+ channels' qa-out/ui-live-c-az.xml | head -1))" \
   || fail "Live TV: All Channels A–Z lists networks"
+# RIGHT enters the list on A&E (one feed); DOWN is AMC (five feeds); RIGHT opens them.
 adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
-adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
 adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
 adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 2
 shot live-c-feeds
@@ -406,10 +420,10 @@ adb shell am start -S -n com.mcd.tv/.MainActivity --es screen live >/dev/null
 sleep 20
 shot live-fresh
 describe live-fresh
-MISSING=""
-for r in "MY TEAMS" "LIVE GAMES" "HISTORY &amp; DOCS ON NOW" "MILITARY ON NOW" "CYBER, AI &amp; TECH ON NOW" "PRIMETIME ENTERTAINMENT"; do grep -q "text=\"$r\"" qa-out/ui-live-fresh.xml || MISSING="$MISSING [$r]"; done
-[ -z "$MISSING" ] && pass "Fresh install: What's On shows the same six rows" || fail "Fresh install: What's On rows missing:$MISSING"
 python3 .github/qa/focused.py qa-out/ui-live-fresh.xml | grep -q "Eagles" && pass "Fresh install: the live Eagles game is pinned first" || fail "Fresh install: the live Eagles game is pinned first"
+rows_seen live-fresh-rows
+F=qa-out/ui-live-fresh-rows-all.xml; MISSING=$(rows_missing)
+[ -z "$MISSING" ] && pass "Fresh install: What's On shows the same six rows" || fail "Fresh install: What's On rows missing:$MISSING"
 
 # 5) Crash check.
 adb logcat -d > qa-out/logcat.txt
