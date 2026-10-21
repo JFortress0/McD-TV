@@ -51,7 +51,10 @@ object Wall {
         fun weekday(day: Int): Int = calendar(day).get(Calendar.DAY_OF_WEEK)
     }
 
-    /** [start]/[end] are set for timed events; [day]/[endDay] for all-day events (endDay is the last day). */
+    /**
+     * [start]/[end] are set for timed events; [day]/[endDay] for all-day events (endDay is the last day).
+     * [repeats]: the event is one date of a repeating series (feed v2 and later, see WallSpotlight).
+     */
     data class Event(
         val source: Int,
         val title: String,
@@ -60,6 +63,7 @@ object Wall {
         val day: Int? = null,
         val endDay: Int? = null,
         val location: String? = null,
+        val repeats: Boolean = false,
     ) {
         val allDay: Boolean get() = day != null
 
@@ -74,7 +78,14 @@ object Wall {
     data class WeatherDay(val day: Int, val hi: Int, val lo: Int, val code: Int, val rain: Int?)
     data class Weather(val now: Int, val code: Int, val days: List<WeatherDay>)
 
-    data class Feed(val generated: Long, val sources: List<Source>, val events: List<Event>, val weather: Weather?)
+    /** [repeatsKnown]: the feed marks repeating events (v2 and later). Older feeds say nothing about repeats. */
+    data class Feed(
+        val generated: Long,
+        val sources: List<Source>,
+        val events: List<Event>,
+        val weather: Weather?,
+        val repeatsKnown: Boolean = false,
+    )
 
     val configured: Boolean get() = Prefs.wallUrl.isNotBlank() && Prefs.wallKey.isNotBlank()
 
@@ -117,55 +128,7 @@ object Wall {
     /** The phone upload page (shown as a QR code when the wall has no photos yet). */
     fun uploadPage(): String = base() + "/"
 
-    fun parseFeed(body: String): Feed {
-        val j = JSONObject(body)
-        val src = j.optJSONArray("sources")
-        val sources = List(src?.length() ?: 0) { i ->
-            val s = src!!.getJSONObject(i)
-            Source(
-                name = s.optString("name"),
-                tag = s.optString("tag").ifBlank { s.optString("name") },
-                color = parseColor(s.optString("color")),
-                kind = s.optString("kind", "personal"),
-                error = s.optString("error").takeIf { !s.isNull("error") && it.isNotBlank() },
-            )
-        }
-        val ev = j.optJSONArray("events")
-        val events = List(ev?.length() ?: 0) { i ->
-            val e = ev!!.getJSONObject(i)
-            Event(
-                source = e.optInt("s"),
-                title = e.optString("t"),
-                start = if (e.has("start")) e.getLong("start") else null,
-                end = if (e.has("end")) e.getLong("end") else null,
-                day = Day.parse(e.optString("day")),
-                endDay = Day.parse(e.optString("endDay")),
-                location = e.optString("loc").takeIf { it.isNotBlank() },
-            )
-        }.filter { it.start != null || it.day != null }
-        val w = j.optJSONObject("weather")
-        val weather = w?.let { o ->
-            val d = o.optJSONArray("days")
-            Weather(
-                now = o.optInt("now"),
-                code = o.optInt("code"),
-                days = List(d?.length() ?: 0) { i ->
-                    val x = d!!.getJSONObject(i)
-                    WeatherDay(
-                        Day.parse(x.optString("day")) ?: 0, x.optInt("hi"), x.optInt("lo"), x.optInt("code"),
-                        if (x.isNull("rain")) null else x.optInt("rain"),
-                    )
-                },
-            )
-        }
-        return Feed(j.optLong("generated"), sources, events, weather)
-    }
-
-    /** "#RRGGBB" to an opaque ARGB long; cyan when unreadable. */
-    fun parseColor(s: String): Long {
-        val hex = s.removePrefix("#")
-        return if (hex.length == 6) runCatching { 0xFF000000L or hex.toLong(16) }.getOrDefault(0xFF00E5FFL) else 0xFF00E5FFL
-    }
+    fun parseFeed(body: String): Feed = WallFeed.parse(body)
 
     /** Short words for Open-Meteo weather codes (WMO). */
     fun weatherLabel(code: Int): String = when (code) {
