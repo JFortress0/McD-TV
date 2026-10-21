@@ -6,6 +6,8 @@ import android.text.InputType
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -342,7 +344,8 @@ fun ChoiceDialog(title: String, options: List<String>, selected: Int, onPick: (I
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { withFrameNanos { }; runCatching { first.requestFocus() } }
     DialogCard(title, onDismiss) {
-        Column(verticalArrangement = Arrangement.spacedBy(Space.XS)) {
+        // Scrolls for long lists (every team in a league); the focused row stays in view.
+        Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Space.XS)) {
             options.forEachIndexed { i, o ->
                 SettingsRow(
                     label = o, onClick = { onPick(i) },
