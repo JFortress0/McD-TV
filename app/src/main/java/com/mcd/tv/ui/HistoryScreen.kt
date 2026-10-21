@@ -18,12 +18,13 @@ import com.mcd.tv.Screen
 import com.mcd.tv.data.Era
 import com.mcd.tv.data.HistoryHub
 import com.mcd.tv.data.Prefs
-import com.mcd.tv.data.Title
+import com.mcd.tv.data.HubSection
 
 /**
- * Browse > History: More Like <the latest history title this profile watched>, Ken Burns, Historical Dramas,
- * then one shelf per era (the eras this profile watches most first). Each shelf loads on its own and ends
- * in a See all tile. Keyed on the profile, like Home. QA screen "history".
+ * Browse > History: Documentaries, History, History Movies, Ken Burns, then one shelf per era in story
+ * order. Every shelf comes from catalog metadata, never from what this profile watched, so every profile
+ * sees the same shelves. Each shelf loads on its own and ends in a See all tile. Keyed on the profile
+ * ("Not for me" and "Topics to skip" still apply). QA screen "history".
  */
 @Composable
 fun HistoryScreen(nav: Nav) {
@@ -35,29 +36,21 @@ private fun HistoryContent(nav: Nav, profile: String) {
     val focus = rememberSaveable(saver = FocusMemory.Saver) { FocusMemory() }
     val listState = rememberLazyListState()
     focus.indexOfRow = { k -> listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == k }?.index }
-    val openTitle: (Title) -> Unit = { nav.push(Screen.Detail(it.type, it.id)) }
-    val more by rememberLoad(profile) { HistoryHub.moreLike(profile) }
-    val order by rememberLoad(profile) { HistoryHub.eraOrder(profile) }
     TabPage(nav, NavTab.Browse) {
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "head") {
                 Column(Modifier.padding(horizontal = 48.dp)) {
                     Text("HISTORY", style = broadcastStyle(26.sp))
                     Text(
-                        "Ken Burns, historical dramas and every era, from the founding to the frontier.",
+                        "Documentaries, history series and films, Ken Burns, and every era from the founding to the frontier.",
                         color = McdColors.Muted, fontSize = 14.sp,
                     )
                 }
             }
-            item(key = "more") {
-                (more as? Load.Ok)?.value?.let { (name, list) ->
-                    val label = "More Like $name"
-                    TitleRail(label, list, { nav.push(Screen.BrowseGrid("history", "more", label)) }, openTitle, focus, "more")
-                }
+            HubSection.entries.forEach { s ->
+                item(key = s.id) { HistoryShelf(nav, profile, s.id, s.label, focus) }
             }
-            item(key = "kenburns") { HistoryShelf(nav, profile, "kenburns", "Ken Burns", focus) }
-            item(key = "dramas") { HistoryShelf(nav, profile, "dramas", "Historical Dramas", focus) }
-            (order as? Load.Ok)?.value?.forEach { era ->
+            Era.entries.forEach { era ->
                 item(key = "era:${era.id}") { HistoryShelf(nav, profile, "era:${era.id}", era.label, focus) }
             }
         }
@@ -85,10 +78,5 @@ private fun HistoryShelf(nav: Nav, profile: String, id: String, label: String, f
 }
 
 /** The label of a hub shelf id, for its See all grid opened from a QA deep link. */
-fun historyShelfLabel(id: String): String = when {
-    id == "kenburns" -> "Ken Burns"
-    id == "dramas" -> "Historical Dramas"
-    id == "more" -> "More Like This"
-    id.startsWith("era:") -> Era.fromId(id.substringAfter(':'))?.label ?: "History"
-    else -> "History"
-}
+fun historyShelfLabel(id: String): String =
+    HubSection.fromId(id)?.label ?: if (id.startsWith("era:")) Era.fromId(id.substringAfter(':'))?.label ?: "History" else "History"

@@ -261,8 +261,8 @@ class MainActivity : ComponentActivity() {
             "wall" -> Screen.Wall
             else -> if (askExtra.isNotBlank()) Screen.AskJarvis(askExtra) else null
         }
-        // Automated QA only: "--ez qa_mode true --es qa_watched 'tv|The Civil War|1990'" marks a title watched,
-        // so the History hub's personal row can be checked against real history in the emulator.
+        // Automated QA only: "--ez qa_mode true --es qa_watched 'movie|The Irishman|2019'" marks a title watched,
+        // so the emulator run can prove the History hub looks the same whatever a profile watched.
         val qaWatched = intent?.getStringExtra("qa_watched") ?: ""
         if (qaWatched.isNotBlank() && intent?.getBooleanExtra("qa_mode", false) == true) {
             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {

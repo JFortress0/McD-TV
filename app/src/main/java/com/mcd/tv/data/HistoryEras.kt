@@ -1,9 +1,11 @@
 package com.mcd.tv.data
 
 // History hub rules: which era a title depicts, the curated marquee titles, the Ken Burns shelf order,
-// what counts as a historical drama, and which watched title seeds the personal row.
+// what each section keeps, and the editorial exclusions (crime and biopics are not history).
+// Every section is built from catalog metadata only (TMDB genres, plot keywords, crew credits), never from
+// what a profile watched, so every profile sees the same sections.
 // Pure Kotlin (no Android, no Prefs, no network), so every rule is unit tested on the JVM.
-// HistoryHub.kt gathers the data (TMDB, Library) and calls into this file.
+// HistoryHub.kt gathers the data (TMDB) and calls into this file.
 
 /** The era shelves. Era = the period a title depicts (its plot keywords), never its release year. */
 enum class Era(val id: String, val label: String) {
@@ -31,7 +33,7 @@ data class EraResult(val eras: List<Era>, val presidential: Boolean, val scores:
 
 /**
  * A title the hub always places by hand (accuracy beats keyword guessing for the famous ones).
- * [drama] = it leads the Historical Dramas shelf. Matched by name and year (within a year).
+ * [drama] = a drama (a drama movie leads the History Movies section). Matched by name and year (within a year).
  */
 data class Marquee(val type: String, val name: String, val year: Int, val eras: Set<Era>, val drama: Boolean = false)
 
@@ -45,8 +47,53 @@ data class Credit(
     val votes: Int,
 )
 
-/** One watched title, newest first, for picking the personal row's seed. */
-data class Watched(val key: String, val name: String, val progress: Float, val finished: Boolean, val at: Long)
+/** The hub's sections, in the order the hub shows them. The era shelves follow, in story order. */
+enum class HubSection(val id: String, val label: String) {
+    DOCUMENTARIES("docs", "Documentaries"),
+    HISTORY("history", "History"),
+    MOVIES("movies", "History Movies"),
+    KEN_BURNS("kenburns", "Ken Burns"),
+    ;
+
+    companion object {
+        fun fromId(id: String): HubSection? = entries.firstOrNull { it.id == id }
+    }
+}
+
+/**
+ * One title as the hub sees it: TMDB catalog metadata only. [key] = "movie:123" or "tv:456".
+ * [keywords] = its plot keyword names. [kenBurns] = it is on Ken Burns' crew credits.
+ */
+data class CatalogTitle(
+    val key: String,
+    val name: String,
+    val year: Int,
+    val genres: Set<Int>,
+    val keywords: List<String>,
+    val language: String = "en",
+    val votes: Int = 0,
+    val rating: Double = 0.0,
+    val american: Boolean = true,
+    val kenBurns: Boolean = false,
+) {
+    val type: String get() = key.substringBefore(':')
+}
+
+/** Every shelf of the hub as title keys, best first. */
+data class HubSections(
+    val documentaries: List<String>,
+    val history: List<String>,
+    val movies: List<String>,
+    val kenBurns: List<String>,
+    val eras: Map<Era, List<String>>,
+) {
+    /** Shelf id ("docs", "era:civilwar", ...) to its keys, in hub order. */
+    fun byId(): Map<String, List<String>> =
+        linkedMapOf(
+            HubSection.DOCUMENTARIES.id to documentaries, HubSection.HISTORY.id to history,
+            HubSection.MOVIES.id to movies, HubSection.KEN_BURNS.id to kenBurns,
+        ) + Era.entries.associate { "era:${it.id}" to (eras[it] ?: emptyList()) }
+}
 
 object HistoryEras {
     const val HISTORY = 36
@@ -177,14 +224,20 @@ object HistoryEras {
         Era.WEST to listOf("old west", "wild west", "american frontier", "gold rush", "cattle drive"),
     )
 
-    /** Extra discover terms for the Historical Dramas shelf (presidential stories). */
+    /** Extra discover terms for the History Movies section (presidential stories). */
     val PRESIDENTIAL_TERMS = listOf("president of the united states", "u.s. president")
+
+    /** Discover terms for history documentaries and series. */
+    val HISTORY_DISCOVER_TERMS = listOf("history", "american history", "military history", "world history")
+
+    /** Discover terms for History Movies set outside the five eras. */
+    val PERIOD_DISCOVER_TERMS = listOf("ancient rome", "roman empire", "medieval", "middle ages", "18th century", "19th century", "napoleonic wars")
 
     // ---------------------------------------------------------------- marquee titles
 
     /**
-     * Famous titles placed by hand, era by era in story order. They lead their era shelves; the ones marked
-     * drama lead Historical Dramas, oldest story first, so Young Washington opens that shelf.
+     * Famous titles placed by hand, era by era in story order. They lead their era shelves; the drama movies
+     * lead History Movies, oldest story first, so Young Washington opens that section.
      */
     val MARQUEE: List<Marquee> = listOf(
         // Revolutionary & Founding
@@ -307,33 +360,157 @@ object HistoryEras {
         return EraResult(scored.map { it.first }, presidential, scored.toMap())
     }
 
+    // ---------------------------------------------------------------- editorial exclusions
+
+    const val CRIME = 80
+    const val MUSIC = 10402
+    private const val ACTION_ADVENTURE_TV = 10759
+
     /**
-     * Historical Dramas: biopics and period dramas set in one of the eras (not the West on its own) or about
-     * a president. Never documentaries; must carry a History, War or Drama genre.
+     * Crime is not history. A Crime-genre title, or one whose keywords make it a mob, gangster, heist or
+     * true-crime story, never lands in the hub (The Irishman: Crime, Drama, History). Westerns keep their
+     * outlaws: the American West shelf needs them.
      */
-    fun isHistoricalDrama(genres: Set<Int>, result: EraResult, marqueeDrama: Boolean = false): Boolean {
-        if (marqueeDrama) return true
-        if (DOCUMENTARY in genres || genres.any { it in VETO_GENRES }) return false
-        val dramaGenre = genres.any { it == HISTORY || it == WAR || it == WAR_POLITICS || it == DRAMA }
-        val period = result.eras.any { it != Era.WEST }
-        return dramaGenre && (period || (result.presidential && HISTORY in genres))
+    private val CRIME_TERMS = listOf(
+        "mafia", "mobster", "mobsters", "=mob", "mob boss", "organized crime", "crime family", "crime boss", "gangster",
+        "gangsters", "hitman", "hit man", "contract killer", "true crime", "serial killer", "heist", "drug cartel",
+        "drug trafficking", "drug dealer", "drug lord", "cosa nostra", "yakuza", "con man", "con artist", "racketeering",
+    )
+
+    /**
+     * A biopic is not history by itself. A biography (or a music picture) counts only when it also depicts
+     * an era, a president, or a historical period (The Imitation Game: yes; Bohemian Rhapsody, Ford v Ferrari: no).
+     */
+    private val BIOPIC_TERMS = listOf("biography", "biopic", "=biographical", "musician biopic")
+
+    /** Keywords that say a documentary or series is about history. "history" must be the whole keyword. */
+    private val HISTORY_TERMS = listOf(
+        "=history", "american history", "u s history", "military history", "world history", "ancient history",
+        "=historical", "historical figure", "historical event", "civil rights movement", "presidential history",
+    )
+
+    /** Historical periods outside the five era shelves (the History Movies section takes these too). */
+    private val PERIOD_TERMS = listOf(
+        "ancient rome", "roman empire", "ancient greece", "ancient egypt", "middle ages", "medieval", "viking", "vikings",
+        "crusades", "renaissance", "tudor", "victorian era", "napoleonic wars", "french revolution", "great depression",
+        "world war", "ottoman empire", "feudal japan", "samurai",
+    )
+
+    /** "1st century" to "19th century" (the 20th and 21st are too broad to mean a period piece). */
+    private val CENTURY = Regex("(1st|2nd|3rd|[4-9]th|1[0-9]th) century( .*)?")
+
+    private fun kwsOf(t: CatalogTitle) = t.keywords.map(::norm).filter { it.isNotEmpty() }
+
+    private fun isPeriod(kws: List<String>) = anyMatch(kws, PERIOD_TERMS) || kws.any { CENTURY.matches(it) }
+
+    /** Eras, presidential story and the rest, from the title's catalog metadata. */
+    fun classify(t: CatalogTitle): EraResult = classify(t.name, t.year, t.genres, t.keywords, t.language)
+
+    /**
+     * Why the hub leaves a title out, or null when it may appear: "genre" (fantasy, sci-fi, horror,
+     * animation, kids), "crime", or "biopic". Marquee titles and Ken Burns' films are placed by hand and
+     * never left out.
+     */
+    fun exclusion(t: CatalogTitle, r: EraResult = classify(t)): String? {
+        if (t.kenBurns || marqueeFor(t.name, t.year) != null) return null
+        if (t.genres.any { it in VETO_GENRES }) return "genre"
+        val kws = kwsOf(t)
+        if (WESTERN !in t.genres && (CRIME in t.genres || anyMatch(kws, CRIME_TERMS))) return "crime"
+        val anchored = r.eras.isNotEmpty() || r.presidential || isPeriod(kws)
+        if ((anyMatch(kws, BIOPIC_TERMS) || MUSIC in t.genres) && !anchored) return "biopic"
+        return null
     }
 
-    /**
-     * A history title, for the personal row's seed: History genre, or a war story or documentary that
-     * depicts one of the eras, or anything from the Ken Burns shelf.
-     */
-    fun isHistoryTitle(genres: Set<Int>, result: EraResult, inKenBurns: Boolean = false): Boolean =
-        inKenBurns || HISTORY in genres ||
-            (result.eras.isNotEmpty() && genres.any { it == DOCUMENTARY || it == WAR || it == WAR_POLITICS })
+    /** History signs in the metadata: the History genre, an era, a president, a history keyword, a period or War. */
+    private fun historySigns(t: CatalogTitle, r: EraResult): Boolean {
+        val kws = kwsOf(t)
+        return HISTORY in t.genres || WAR in t.genres || r.eras.isNotEmpty() || r.presidential ||
+            anyMatch(kws, HISTORY_TERMS) || isPeriod(kws)
+    }
 
-    /** Within an era shelf (after the marquee titles): era fit, then American-made, votes and rating. */
+    // ---------------------------------------------------------------- what each section keeps
+
+    /** Documentaries: non-fiction (the Documentary genre) about history. Every Ken Burns film. */
+    fun isDocumentary(t: CatalogTitle, r: EraResult = classify(t)): Boolean =
+        t.kenBurns || (DOCUMENTARY in t.genres && historySigns(t, r))
+
+    /**
+     * History: history-genre programming. Movies in TMDB's History genre; series (TMDB has no History genre
+     * for TV) that are documentaries, War & Politics, dramas or adventures with history signs.
+     */
+    fun isHistoryProgram(t: CatalogTitle, r: EraResult = classify(t)): Boolean =
+        HISTORY in t.genres ||
+            (t.type == "tv" && historySigns(t, r) && t.genres.any { it == DOCUMENTARY || it == WAR_POLITICS || it == DRAMA || it == ACTION_ADVENTURE_TV })
+
+    /**
+     * History Movies: fiction films set in a historical period. Never documentaries. The marquee dramas;
+     * History, War or Drama films set in an era (not the West alone, unless History genre); History-genre
+     * presidential stories; History or War films set in another period (the Middle Ages, the 1800s); dramas
+     * set in a named period (Gladiator: ancient Rome). A costume drama with only a century keyword
+     * (Pride & Prejudice) is not one.
+     */
+    fun isHistoryMovie(t: CatalogTitle, r: EraResult = classify(t)): Boolean {
+        if (t.type != "movie" || DOCUMENTARY in t.genres) return false
+        if (marqueeFor(t.name, t.year)?.drama == true) return true
+        val historyOrWar = HISTORY in t.genres || WAR in t.genres
+        if (!historyOrWar && DRAMA !in t.genres) return false
+        val kws = kwsOf(t)
+        return r.eras.any { it != Era.WEST } || (r.eras.isNotEmpty() && HISTORY in t.genres) ||
+            (r.presidential && HISTORY in t.genres) || (historyOrWar && isPeriod(kws)) || anyMatch(kws, PERIOD_TERMS)
+    }
+
+    /** Within a section: era fit, then American-made, votes and rating. */
     fun rank(eraScore: Int, votes: Int, rating: Double, american: Boolean): Double =
         minOf(eraScore, 6) * 0.4 + kotlin.math.log10(votes + 1.0) + rating / 5.0 + (if (american) 1.0 else 0.0)
 
-    /** Era shelves in the order to show: eras the profile watched most first, the rest in story order. */
-    fun orderEras(watched: Map<Era, Int>): List<Era> =
-        Era.entries.sortedWith(compareByDescending<Era> { watched[it] ?: 0 }.thenBy { it.ordinal })
+    private fun rank(t: CatalogTitle, r: EraResult, eraScore: Int = r.best) = rank(eraScore, t.votes, t.rating, t.american)
+
+    /**
+     * One shelf from a pool of candidates: excluded titles out, [keep] decides the rest. [lead] titles (in
+     * their own order) come first, then the rest by [score]. The same film listed twice shows once.
+     */
+    private fun shelf(
+        pool: List<CatalogTitle>,
+        keep: (CatalogTitle, EraResult) -> Boolean,
+        lead: (CatalogTitle) -> Int? = { null },
+        score: (CatalogTitle, EraResult) -> Double,
+    ): List<String> {
+        val kept = pool.distinctBy { it.key }.distinctBy { normName(it.name) + "|" + it.year }
+            .map { it to classify(it) }
+            .filter { (t, r) -> exclusion(t, r) == null && keep(t, r) }
+        val (led, rest) = kept.partition { lead(it.first) != null }
+        return led.sortedBy { lead(it.first) }.map { it.first.key } +
+            rest.sortedByDescending { (t, r) -> score(t, r) }.map { it.first.key }
+    }
+
+    private fun marqueeIndex(t: CatalogTitle, keep: (Marquee) -> Boolean): Int? =
+        marqueeFor(t.name, t.year)?.takeIf(keep)?.let(MARQUEE::indexOf)
+
+    fun documentaries(pool: List<CatalogTitle>): List<String> =
+        shelf(pool, { t, r -> isDocumentary(t, r) }) { t, r -> rank(t, r) + (if (t.kenBurns) 2.0 else 0.0) }
+
+    fun historyPrograms(pool: List<CatalogTitle>): List<String> =
+        shelf(pool, { t, r -> isHistoryProgram(t, r) }) { t, r -> rank(t, r) }
+
+    /** History Movies: the marquee dramas first (Young Washington opens it), then the best matches. */
+    fun historyMovies(pool: List<CatalogTitle>): List<String> =
+        shelf(pool, { t, r -> isHistoryMovie(t, r) }, { t -> marqueeIndex(t) { it.drama && it.type == "movie" } }) { t, r -> rank(t, r) }
+
+    /** One era shelf: its marquee titles first, in story order, then the best keyword matches. */
+    fun eraShelf(era: Era, pool: List<CatalogTitle>): List<String> =
+        shelf(pool, { _, r -> era in r.eras }, { t -> marqueeIndex(t) { era in it.eras } }) { t, r -> rank(t, r, r.scores[era] ?: 0) }
+
+    /**
+     * The whole hub from one catalog and Ken Burns' credits. It takes no profile and no viewing history:
+     * a profile that has watched nothing sees exactly what any other profile sees.
+     */
+    fun sections(catalog: List<CatalogTitle>, kenBurnsCredits: List<Credit>, today: String): HubSections = HubSections(
+        documentaries = documentaries(catalog),
+        history = historyPrograms(catalog),
+        movies = historyMovies(catalog),
+        kenBurns = kenBurnsOrder(kenBurnsCredits, today),
+        eras = Era.entries.associateWith { eraShelf(it, catalog) },
+    )
 
     // ---------------------------------------------------------------- Ken Burns
 
@@ -369,13 +546,4 @@ object HistoryEras {
         val total = y * 12 + (m - 1) - months
         return String.format(java.util.Locale.US, "%04d-%02d-%s", total / 12, total % 12 + 1, date.drop(8).ifBlank { "01" })
     }
-
-    // ---------------------------------------------------------------- personal row
-
-    /**
-     * The watched title that seeds "More Like …": the newest one the profile got into (a quarter watched or
-     * finished) that [isHistory] accepts. Null when the profile has watched no history yet.
-     */
-    fun pickSeed(watched: List<Watched>, isHistory: (String) -> Boolean): Watched? =
-        watched.filter { it.finished || it.progress >= 0.25f }.sortedByDescending { it.at }.firstOrNull { isHistory(it.key) }
 }
